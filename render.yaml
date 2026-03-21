@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: obscurity-backend
+    env: rust
+    rootDir: backend
+    buildCommand: cargo build --release
+    startCommand: ./target/release/backend
+    envVars:
+      - key: LASTFM_API_KEY
+        sync: false
+      - key: LASTFM_USERNAME
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: PORT
+        value: 10000
