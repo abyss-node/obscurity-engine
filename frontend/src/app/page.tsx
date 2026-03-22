@@ -29,8 +29,9 @@ export type DiscoveryData = {
 type SortType = "composite" | "conviction" | "stickiness" | "listeners";
 
 export default function Home() {
-  const [username, setUsername] = useState("Arnuv_J");
-  const [inputLocal, setInputLocal] = useState("Arnuv_J");
+  const defaultUsername = process.env.NEXT_PUBLIC_LASTFM_USERNAME || "Arnuv_J";
+  const [username, setUsername] = useState(defaultUsername);
+  const [inputLocal, setInputLocal] = useState(defaultUsername);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [topGenres, setTopGenres] = useState<GenreWeight[]>([]);
   const [deepestDate, setDeepestDate] = useState<string | undefined>(undefined);
@@ -86,7 +87,7 @@ export default function Home() {
       setDeepestDate(undefined);
       setActiveSeedCount(0);
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+        const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
         const response = await fetch(`${apiUrl}/api/discovery?username=${inputLocal}&period=overall`);
         if (response.ok) {
           const data: DiscoveryData = await response.json();
