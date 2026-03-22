@@ -5,6 +5,7 @@ use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use dashmap::DashMap;
 use std::time::{Duration, Instant};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TopArtistsResponse {
@@ -12,8 +13,22 @@ pub struct TopArtistsResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LastfmErrorResponse {
+    pub error: u32,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TopArtists {
+    #[serde(default)]
     pub artist: Vec<Artist>,
+    #[serde(rename = "@attr", default)]
+    pub attr: Option<TopArtistsAttr>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TopArtistsAttr {
+    pub total: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,12 +93,20 @@ impl LastfmClient {
         username: &str,
         limit: u32,
         period: TimePeriod,
-    ) -> Result<TopArtistsResponse, reqwest::Error> {
+    ) -> Result<TopArtistsResponse, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
             LASTFM_API_URL, username, self.api_key, period, limit
         );
-        let response = self.client.get(&url).send().await?.error_for_status()?.json().await?;
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        
+        let json: Value = serde_json::from_str(&resp_text)?;
+        if let Some(err) = json.get("error") {
+            let err_msg: LastfmErrorResponse = serde_json::from_value(json)?;
+            return Err(format!("Last.fm Error {}: {}", err_msg.error, err_msg.message).into());
+        }
+
+        let response: TopArtistsResponse = serde_json::from_str(&resp_text)?;
         Ok(response)
     }
 
@@ -105,12 +128,22 @@ impl LastfmClient {
         username: &str,
         limit: u32,
         page: u32,
-    ) -> Result<crate::models::RecentTracksResponse, reqwest::Error> {
+    ) -> Result<crate::models::RecentTracksResponse, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!(
             "{}?method=user.getrecenttracks&user={}&api_key={}&limit={}&page={}&extended=1&format=json",
             LASTFM_API_URL, urlencoding::encode(username), self.api_key, limit, page
         );
-        let response: crate::models::RecentTracksResponse = self.client.get(&url).send().await?.error_for_status()?.json().await?;
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        
+        let json: Value = serde_json::from_str(&resp_text)?;
+        if let Some(error_node) = json.get("error") {
+             // Handle both structured error and simple error fields
+             let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown Last.fm error");
+             let code = error_node.as_u64().unwrap_or(0);
+             return Err(format!("Last.fm Error {}: {}", code, msg).into());
+        }
+
+        let response: crate::models::RecentTracksResponse = serde_json::from_str(&resp_text)?;
         Ok(response)
     }
 

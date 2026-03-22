@@ -1,0 +1,17 @@
+{
+  "name": "Obscurity Engine",
+  "short_name": "Obscurity",
+  "description": "Sonic Depth Analysis & Underground Metrics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

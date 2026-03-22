@@ -51,6 +51,18 @@ pub struct RecentTracks {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TopArtists {
+    pub artist: Vec<Artist>,
+    #[serde(rename = "@attr", default)]
+    pub attr: Option<TopArtistsAttr>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct TopArtistsAttr {
+    pub total: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Track {
     pub artist: TrackArtist,
     pub date: Option<TrackDate>,
@@ -74,6 +86,7 @@ pub struct TrackArtist {
 pub struct RecentTracksAttr {
     #[serde(rename = "totalPages")]
     pub total_pages: String,
+    pub total: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

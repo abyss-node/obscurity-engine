@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import IcebergVisual from "../components/IcebergVisual";
+import { motion, AnimatePresence } from "framer-motion";
 import PortfolioSummary from "../components/PortfolioSummary";
+import ArtistList from "../components/ArtistList";
 
 export type Artist = {
   name: string;
@@ -29,9 +30,8 @@ export type DiscoveryData = {
 type SortType = "composite" | "conviction" | "stickiness" | "listeners";
 
 export default function Home() {
-  const defaultUsername = process.env.NEXT_PUBLIC_LASTFM_USERNAME || "Arnuv_J";
-  const [username, setUsername] = useState(defaultUsername);
-  const [inputLocal, setInputLocal] = useState(defaultUsername);
+  const [username, setUsername] = useState<string | null>(null);
+  const [inputLocal, setInputLocal] = useState("");
   const [artists, setArtists] = useState<Artist[]>([]);
   const [topGenres, setTopGenres] = useState<GenreWeight[]>([]);
   const [deepestDate, setDeepestDate] = useState<string | undefined>(undefined);
@@ -39,28 +39,36 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
   const [sortBy, setSortBy] = useState<SortType>("composite");
+  const [isDark, setIsDark] = useState(true);
 
-  const topMomentumSeeds = useMemo(() => {
-    if (artists.length === 0) return [];
-    const seedMap = new Map<string, number>();
-    artists.forEach(a => {
-      a.source_seeds?.forEach(seed => {
-        if (!seedMap.has(seed.name) || seed.percentile > seedMap.get(seed.name)!) {
-          seedMap.set(seed.name, seed.percentile);
-        }
-      });
-    });
-    return Array.from(seedMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(entry => ({ name: entry[0], percentile: entry[1] }));
-  }, [artists]);
+  // Load persistence and dark mode
+  useEffect(() => {
+    const saved = localStorage.getItem("obscurity_username");
+    if (saved) {
+      setUsername(saved);
+      setInputLocal(saved);
+    }
+    const theme = localStorage.getItem("obscurity_theme");
+    // Fallback to dark if no saved preference
+    if (theme === "light") setIsDark(false);
+    else setIsDark(true);
+  }, []);
 
-  const totalUniqueSeeds = useMemo(() => {
-    const s = new Set<string>();
-    artists.forEach(a => a.source_seeds?.forEach(seed => s.add(seed.name)));
-    return s.size;
-  }, [artists]);
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem("obscurity_theme", "dark");
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem("obscurity_theme", "light");
+    }
+  }, [isDark]);
+
+  useEffect(() => {
+    if (username) {
+      localStorage.setItem("obscurity_username", username);
+    }
+  }, [username]);
 
   const stickinessThreshold = useMemo(() => {
     if (artists.length < 1) return Infinity;
@@ -80,37 +88,26 @@ export default function Home() {
 
   useEffect(() => {
     const fetchArtists = async () => {
-      if (!inputLocal.trim()) return;
-      setUsername(inputLocal);
+      if (!username) return;
       setLoading(true);
-      setArtists([]);
-      setTopGenres([]);
-      setDeepestDate(undefined);
-      setActiveSeedCount(0);
       setWakingUp(false);
-
+      
       const wakeupTimer = setTimeout(() => {
         setWakingUp(true);
-      }, 20000); // Wait 20 seconds to bypass organic Last.fm paginations before assuming cold start
+      }, 3000);
 
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const response = await fetch(`${apiUrl}/api/discovery?username=${inputLocal}&period=overall`);
+        const response = await fetch(`${apiUrl}/api/discovery?username=${username}&period=overall`);
         if (response.ok) {
           const data: DiscoveryData = await response.json();
           setArtists(data.artists || []);
           setTopGenres(data.top_genres || []);
           setDeepestDate(data.deepest_date);
           setActiveSeedCount(data.active_seed_count || 0);
-        } else {
-          console.error("Failed to fetch artists:", response.statusText);
-          setArtists([]);
-          setTopGenres([]);
         }
       } catch (e) {
         console.error("Error fetching data:", e);
-        setArtists([]);
-        setTopGenres([]);
       } finally {
         clearTimeout(wakeupTimer);
         setWakingUp(false);
@@ -121,224 +118,120 @@ export default function Home() {
   }, [username]);
 
   return (
-    <div className="flex flex-col gap-8 w-full max-w-6xl mx-auto p-4 md:p-8 animate-in fade-in duration-1000 min-h-screen">
-      {/* Header & Search Area */}
-      <div className="flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-6 gap-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-br from-white to-white/40 bg-clip-text text-transparent">
-            Obscurity Engine
-          </h1>
-          <p className="text-xs text-white/40 tracking-widest uppercase font-semibold">
-            Sonic Depth Analysis & Underground Metrics
-          </p>
-        </div>
+    <div className="flex flex-col items-center w-full px-6 py-20 min-h-screen">
+      
+      {/* THEME TOGGLE (Solar / Lunar) */}
+      <div className="fixed top-8 right-8 z-[110]">
+        <button 
+          onClick={() => setIsDark(!isDark)}
+          className="p-3 bg-white/40 dark:bg-cyan-950/20 border border-neutral-100 dark:border-cyan-500/20 rounded-2xl shadow-sm text-amber-500 dark:text-cyan-400 backdrop-blur-md transition-all duration-700 active:scale-95"
+        >
+          {isDark ? (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 5a7 7 0 100 14 7 7 0 000-14z" /></svg>
+          ) : (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+          )}
+        </button>
+      </div>
 
-        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <form 
-            onSubmit={(e) => { e.preventDefault(); setUsername(inputLocal); }}
-            className="flex relative group shadow-xl"
+      <AnimatePresence mode="wait">
+        {!username ? (
+          /* LANDING STATE */
+          <motion.div 
+            key="landing"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, y: -50 }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
+            className="flex-1 flex flex-col justify-center items-center gap-12 w-full max-w-2xl px-4"
           >
-            <input 
-              type="text" 
-              value={inputLocal}
-              onChange={(e) => setInputLocal(e.target.value)}
-              placeholder="Last.fm Username"
-              className="bg-white/5 border border-white/10 text-white px-5 py-2.5 rounded-l-xl text-sm outline-none w-56 focus:bg-white/10 focus:border-white/20 transition-all backdrop-blur-md"
-            />
-            <button type="submit" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-6 py-2.5 text-sm font-semibold rounded-r-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)]">
-              Scan
-            </button>
-          </form>
-          
-        </div>
-      </div>
+            <div className="flex flex-col items-center gap-4 text-center">
+              <h1 className="text-5xl md:text-7xl font-serif dark:font-mono italic dark:not-italic text-neutral-900 dark:text-cyan-50 mb-4 transition-all duration-1000">
+                The Obscurity Engine
+              </h1>
+              <p className="text-[10px] tracking-[0.4em] font-sans dark:font-mono text-emerald-600 dark:text-cyan-400 uppercase font-black transition-all">
+                Mapping Sonic Depth via Listening Intensity
+              </p>
+            </div>
 
-      {/* EXECUTIVE PORTFOLIO SUMMARY */}
-      {!loading && topGenres.length > 0 && (
-        <PortfolioSummary 
-          genres={topGenres} 
-          seedsAnalyzed={activeSeedCount || totalUniqueSeeds} 
-          totalPool={artists.length} 
-          deepestDate={deepestDate}
-        />
-      )}
+            <form 
+              onSubmit={(e) => { e.preventDefault(); if(inputLocal.trim()) setUsername(inputLocal.trim()); }}
+              className="w-full flex flex-col gap-8 items-center"
+            >
+              <div className="w-full relative group">
+                <input 
+                  autoFocus
+                  type="text"
+                  value={inputLocal}
+                  onChange={(e) => setInputLocal(e.target.value)}
+                  placeholder="COMMAND: ENTER LAST.FM USERNAME_"
+                  className="w-full bg-transparent border-b-2 border-emerald-500/20 dark:border-cyan-500/30 py-6 text-2xl md:text-4xl font-mono text-neutral-800 dark:text-cyan-400 outline-none focus:border-emerald-500 dark:focus:border-cyan-400 transition-all duration-1000 placeholder:text-neutral-200 dark:placeholder:text-cyan-900 text-center tracking-tight"
+                />
+              </div>
 
-      {/* SEEDS USED MATRIX */}
-      {topMomentumSeeds.length > 0 && !loading && (
-        <div className="w-full bg-white/[0.02] border border-white/10 rounded-xl p-5 backdrop-blur-xl shadow-lg relative overflow-hidden mt-6">
-          <div className="absolute top-0 left-0 w-1 h-full bg-[#10b981]/80 rounded-l-xl shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-          <h3 className="text-[11px] uppercase tracking-[0.2em] text-[#10b981] mb-4 font-bold flex items-center gap-3">
-             Top 5 Momentum Seeds
-            <div className="h-[1px] flex-1 bg-gradient-to-r from-[#10b981]/20 to-transparent" />
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            {topMomentumSeeds.map(seed => (
-              <span 
-                key={seed.name} 
-                className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg text-[10px] text-white/70 font-mono tracking-wider hover:bg-white/10 hover:text-white transition-colors cursor-default shadow-inner flex gap-2 items-center"
+              <button 
+                type="submit"
+                disabled={!inputLocal.trim()}
+                className="group px-12 py-5 bg-emerald-600 dark:bg-cyan-500 text-white dark:text-black rounded-full dark:rounded-none text-[10px] font-bold dark:font-black tracking-[0.4em] uppercase shadow-2xl hover:bg-emerald-700 dark:hover:bg-cyan-400 transition-all active:scale-95 disabled:opacity-30 flex items-center gap-4"
               >
-                {seed.name} 
-                <span className="text-[#10b981]">{seed.percentile.toFixed(2)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+                Execute Analysis
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+              </button>
+            </form>
+          </motion.div>
+        ) : (
+          /* DATA HORIZON */
+          <motion.div 
+            key="discovery"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="w-full flex flex-col items-center"
+          >
+            {/* Minimalist Sub-Header */}
+            <div className="w-full max-w-5xl flex justify-between items-end mb-20 pb-10 border-b border-emerald-500/10 dark:border-cyan-500/10">
+               <div onClick={() => setUsername(null)} className="cursor-pointer group flex flex-col gap-1">
+                  <h2 className="text-3xl font-serif dark:font-mono italic dark:not-italic text-neutral-900 dark:text-cyan-50 transition-all">Results for {username}</h2>
+                  <span className="text-[9px] tracking-widest text-emerald-600/50 dark:text-cyan-500/50 uppercase font-black group-hover:text-emerald-900 dark:group-hover:text-cyan-400 transition-all underline underline-offset-8">Click to reset session</span>
+               </div>
+            </div>
 
-      {/* Main Glassmorphic Table Panel */}
-      <div className="w-full bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden backdrop-blur-2xl shadow-2xl relative">
-        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/5 text-[10px] uppercase tracking-widest text-white/30 bg-white/[0.01]">
-                <th className="p-5 font-semibold w-16 text-center">Rnk</th>
-                <th className="p-5 font-semibold">Artist & Sources</th>
-                <th 
-                  className={`p-5 font-semibold text-center w-32 cursor-pointer hover:text-white transition-colors duration-300 ${sortBy === 'composite' ? 'text-purple-400' : ''}`}
-                  onClick={() => setSortBy('composite')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Composite Grid {sortBy === 'composite' && <span className="text-[8px]">▼</span>}
-                  </div>
-                </th>
-                <th 
-                  className={`p-5 font-semibold text-center w-32 cursor-pointer hover:text-white transition-colors duration-300 ${sortBy === 'conviction' ? 'text-[#10b981]' : ''}`}
-                  onClick={() => setSortBy('conviction')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Percentile Weight {sortBy === 'conviction' && <span className="text-[8px]">▼</span>}
-                  </div>
-                </th>
-                <th 
-                  className={`p-5 font-semibold text-right w-40 cursor-pointer hover:text-white transition-colors duration-300 ${sortBy === 'stickiness' ? 'text-emerald-400' : ''}`}
-                  onClick={() => setSortBy('stickiness')}
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    Stickiness {sortBy === 'stickiness' && <span className="text-[8px]">▼</span>}
-                  </div>
-                </th>
-                <th 
-                  className={`p-5 font-semibold text-right w-32 cursor-pointer hover:text-white transition-colors duration-300 ${sortBy === 'listeners' ? 'text-blue-400' : ''}`}
-                  onClick={() => setSortBy('listeners')}
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    Listeners {sortBy === 'listeners' && <span className="text-[8px]">▼</span>}
-                  </div>
-                </th>
-                <th className="p-5 font-semibold text-center w-20">Audit</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
+            <AnimatePresence mode="wait">
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="p-16 text-center flex-col gap-4 text-white/40 tracking-widest font-mono text-xs animate-pulse">
-                    <div>{wakingUp ? "WAKING_UP_THE_ENGINE..." : "SCANNING_THE_ABYSS..."}</div>
+                <motion.div 
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center gap-12 py-32"
+                >
+                  <div className="w-48 h-[2px] bg-emerald-500/10 dark:bg-cyan-500/10 rounded-full overflow-hidden relative">
+                    <motion.div initial={{ left: "-100%" }} animate={{ left: "100%" }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }} className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-emerald-400 dark:via-cyan-400 to-transparent" />
+                  </div>
+                  
+                  <div className="flex flex-col items-center gap-4">
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={activeSeedCount} className="text-[10px] tracking-[0.4em] font-sans dark:font-mono text-emerald-600 dark:text-cyan-500 uppercase font-bold text-center max-w-sm leading-loose">
+                      {activeSeedCount === 0 ? "Sifting through your recent favorites..." : 
+                       activeSeedCount < 50 ? "Finding the quiet voices in your library..." : 
+                       "Mapping the subterranean currents..."}
+                    </motion.p>
+                    
                     {wakingUp && (
-                      <div className="mt-4 text-[10px] text-white/30 lowercase font-sans tracking-normal max-w-sm mx-auto animate-in fade-in duration-500">
-                        (the free-tier backend is spinning up and will be ready shortly)
-                      </div>
+                      <p className="text-[9px] tracking-widest text-emerald-500 dark:text-cyan-500 animate-pulse font-mono mt-4">
+                        [SYSTEM] WAKING UP ENGINE... ESTABLISHING CONNECTION TO RENDER CLOUD...
+                      </p>
                     )}
-                  </td>
-                </tr>
-              ) : sortedArtists.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-16 text-center text-white/30 tracking-widest font-mono text-xs">
-                    NO_ACOUSTIC_SIGNATURES_FOUND.
-                  </td>
-                </tr>
+                  </div>
+                </motion.div>
               ) : (
-                sortedArtists.map((artist, idx) => {
-                  const isHighConviction = artist.conviction_score >= 250;
-                  const rowGlow = isHighConviction 
-                    ? "bg-emerald-500/[0.03] hover:bg-emerald-500/[0.06] border-emerald-500/10" 
-                    : "hover:bg-white/[0.04] border-white/5";
-
-                  return (
-                    <tr 
-                      key={idx} 
-                      className={`relative border-b last:border-0 transition-colors group cursor-default ${rowGlow}`}
-                    >
-                      <td className="p-0 text-center w-16 relative">
-                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${isHighConviction ? 'bg-[#10b981] shadow-[0_0_10px_rgba(16,185,129,1)]' : 'bg-white/5'}`} />
-                        <div className="py-5 text-white/20 font-mono text-xs">
-                          {(idx + 1).toString().padStart(2, '0')}
-                        </div>
-                      </td>
-                      <td className="p-5 font-semibold text-white/80 transition-colors">
-                        <div className="flex flex-col gap-1.5 justify-center">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14px] group-hover:text-white transition-colors">{artist.name}</span>
-                            <div className="flex gap-1">
-                              {artist.top_tags?.slice(0, 3).map(tag => (
-                                <span key={tag} className="bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px] font-mono tracking-wider text-white/40 uppercase">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          {artist.source_seeds && artist.source_seeds.length > 0 && (
-                            <span className="text-[10px] text-white/30 font-medium tracking-wide">
-                              Sources: {artist.source_seeds.slice(0, 3).map(s => `${s.name} (${s.percentile.toFixed(2)})`).join(', ')}{artist.source_seeds.length > 3 ? '...' : ''}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-5 text-center">
-                        <span className={`bg-purple-500/10 ${sortBy === 'composite' ? 'text-purple-400 border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.3)]' : 'text-purple-400/70 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]'} px-2 py-1 rounded text-xs font-bold font-mono transition-colors`}>
-                          {(artist.composite_score / 100).toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="p-5 text-center">
-                        <span className={`bg-[#10b981]/10 ${artist.conviction_score >= 250 ? 'text-[#10b981] border-[#10b981]/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'text-[#10b981]/70 border-[#10b981]/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]'} px-2 py-1 rounded text-xs font-bold font-mono transition-colors`}>
-                          {(artist.conviction_score / 100).toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="p-5 text-right">
-                        {artist.stickiness_score >= stickinessThreshold ? (
-                          <span className="bg-[#10b981]/15 text-[#10b981] border border-[#10b981]/40 px-3 py-1.5 rounded-full text-[12px] font-mono font-bold shadow-[0_0_15px_rgba(16,185,129,0.3)] animate-pulse group-hover:border-[#10b981]/70 transition-colors inline-block min-w-[70px] text-center">
-                             ★ {artist.stickiness_score.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="bg-blue-500/10 text-blue-300 border border-blue-500/20 px-3 py-1.5 rounded-full text-xs font-mono font-medium shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:border-blue-400/50 transition-colors inline-block min-w-[70px] text-center">
-                            {artist.stickiness_score.toFixed(2)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-5 text-right text-white/30 font-mono text-xs tabular-nums group-hover:text-white/50 transition-colors">
-                        {artist.total_listeners.toLocaleString()}
-                      </td>
-                      <td className="p-5 text-center">
-                        <a 
-                          href={`https://music.youtube.com/search?q=${encodeURIComponent(artist.name)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center w-7 h-7 rounded border border-white/5 text-white/20 font-bold font-mono tracking-widest hover:text-[#10b981] hover:bg-[#10b981]/10 hover:border-[#10b981]/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all bg-white/[0.02]"
-                          title={`Audit ${artist.name}`}
-                        >
-                          &gt;
-                        </a>
-                      </td>
-                    </tr>
-                  );
-                })
+                <motion.div key="results" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.5 }} className="w-full max-w-5xl flex flex-col gap-16">
+                  {topGenres.length > 0 && <PortfolioSummary genres={topGenres} seedsAnalyzed={activeSeedCount} totalPool={artists.length} deepestDate={deepestDate} />}
+                  {sortedArtists.length > 0 && <ArtistList artists={sortedArtists} sortBy={sortBy} setSortBy={setSortBy} stickinessThreshold={stickinessThreshold} />}
+                </motion.div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ICEBERG COMPONENT WRAPPER */}
-      <div className="mt-2 bg-white/[0.02] border border-white/10 rounded-2xl p-6 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-[100px]" />
-        <h2 className="text-xs tracking-widest text-indigo-300 mb-6 uppercase opacity-90 flex items-center gap-4 relative z-10">
-          <span className="font-bold">Depth Analysis Visualizer</span>
-          <div className="flex-1 h-[1px] bg-gradient-to-r from-indigo-500/30 to-transparent" />
-        </h2>
-        <div className="rounded-xl overflow-hidden shadow-inner border border-white/5 relative z-10">
-          <IcebergVisual artists={artists} />
-        </div>
-      </div>
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

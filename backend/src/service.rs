@@ -11,12 +11,28 @@ pub async fn discover_obscure_artists(
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
     let _period = period_str; // explicitly ignore the period param since we want absolute recent tracks
 
+    // 0. Setup Dynamic Threshold (total scrobbles / total artists)
+    let mut total_unique_artists: f64 = 0.0;
+    match client.fetch_user_top_artists(&username, 1, crate::lastfm::TimePeriod::Overall).await {
+        Ok(top) => {
+            if let Some(attr) = top.topartists.attr {
+                if let Ok(t) = attr.total.parse::<f64>() {
+                    total_unique_artists = t;
+                    println!("DEBUG: Found {} total unique artists in library", total_unique_artists);
+                }
+            }
+        },
+        Err(e) => eprintln!("WARNING: Could not fetch total artists from Last.fm: {}. Using fallback threshold logic.", e),
+    }
+
     // 1. The Reverse Scrobble Search (Temporal Momentum)
     let mut page = 1;
     let mut artist_plays: HashMap<String, u64> = HashMap::new();
     let mut active_seeds_set: HashSet<String> = HashSet::new();
     let mut active_seeds: Vec<String> = Vec::new();
     let mut deepest_date: Option<String> = None;
+    let mut dynamic_threshold: u64 = 15; // Starting fallback
+    let mut threshold_calculated = false;
 
     loop {
         // Sleep 250ms natively to strictly obey 5 Req/Sec threshold on continuous pagination (429 bypass)
@@ -29,6 +45,32 @@ pub async fn discover_obscure_artists(
                 break;
             }
         };
+
+        if page == 1 && !threshold_calculated {
+            if let Some(ref total_str) = recent_res.recenttracks.attr.total {
+                if let Ok(total_scrobbles) = total_str.parse::<f64>() {
+                    if total_unique_artists > 0.0 {
+                        let avg = total_scrobbles / total_unique_artists;
+                        // Use a more forgiving 1.1x multiplier for better coverage
+                        dynamic_threshold = (avg * 1.1).ceil() as u64;
+                        if dynamic_threshold < 5 { dynamic_threshold = 5; }
+                        println!("SUCCESS: Calculated Initial Dynamic Seed Threshold: {} ({} total scrobbles / {} unique artists)", dynamic_threshold, total_scrobbles, total_unique_artists);
+                        threshold_calculated = true;
+                    } else {
+                        eprintln!("WARNING: Using fallback threshold of 10 due to missing denominator.");
+                        dynamic_threshold = 10;
+                        threshold_calculated = true;
+                    }
+                }
+            }
+        }
+
+        // DYNAMIC WIDENING: If we are deep into history and haven't found seeds, aggressively lower the bar!
+        if page % 15 == 0 && active_seeds.len() < 20 && dynamic_threshold > 5 {
+            dynamic_threshold = (dynamic_threshold as f64 * 0.7).ceil() as u64;
+            if dynamic_threshold < 5 { dynamic_threshold = 5; }
+            println!("RELAXING_CONSTRAINTS: Dropping threshold to {} to find more seeds...", dynamic_threshold);
+        }
 
         let tracks = recent_res.recenttracks.track;
         if tracks.is_empty() { break; }
@@ -43,7 +85,7 @@ pub async fn discover_obscure_artists(
             let counter = artist_plays.entry(artist_name.clone()).or_insert(0);
             *counter += 1;
 
-            if *counter >= 15 && !active_seeds_set.contains(&artist_name) {
+            if *counter >= dynamic_threshold && !active_seeds_set.contains(&artist_name) {
                 active_seeds_set.insert(artist_name.clone());
                 active_seeds.push(artist_name);
             }
@@ -60,25 +102,22 @@ pub async fn discover_obscure_artists(
         page += 1;
     }
 
-    // Percentile Calculation (Sort 100 seeds by their extracted playcounts)
+    // Dynamic Normalization: Plays divided by the Threshold Base
     let mut seed_list: Vec<(String, u64)> = active_seeds
         .into_iter()
         .map(|name| {
-            let plays = *artist_plays.get(&name).unwrap_or(&15);
+            let plays = *artist_plays.get(&name).unwrap_or(&dynamic_threshold);
             (name, plays)
         })
         .collect();
 
-    // Sort ascending, meaning highest playcount is at the end (Index 99 = Rank 100)
-    seed_list.sort_by_key(|k| k.1);
-
-    let total_seeds = seed_list.len() as f64;
     let mut seed_weights: HashMap<String, f64> = HashMap::new();
 
-    for (i, (name, _plays)) in seed_list.into_iter().enumerate() {
-        let rank = i as f64 + 1.0;
-        let percentile = rank / total_seeds;
-        seed_weights.insert(name.clone(), percentile);
+    for (name, plays) in seed_list {
+        // Base normalization (e.g., 20 plays / 15 threshold = 1.33x Weight)
+        // This completely shatters percentiles, allowing intense obsessions to scale infinitely!
+        let base_multiplier = (plays as f64) / (dynamic_threshold as f64);
+        seed_weights.insert(name, base_multiplier);
     }
     
     // Generate active seeds array explicitly for traversing next batch loops
