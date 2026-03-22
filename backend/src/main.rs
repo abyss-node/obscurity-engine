@@ -83,10 +83,7 @@ async fn main() {
     let frontend_url = std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     
     let cors = CorsLayer::new()
-        .allow_origin([
-            "http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap(),
-            frontend_url.parse::<axum::http::HeaderValue>().unwrap_or_else(|_| "http://localhost:3000".parse().unwrap()),
-        ])
+        .allow_origin(tower_http::cors::Any)
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
 

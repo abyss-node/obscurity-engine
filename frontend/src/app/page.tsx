@@ -37,6 +37,7 @@ export default function Home() {
   const [deepestDate, setDeepestDate] = useState<string | undefined>(undefined);
   const [activeSeedCount, setActiveSeedCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [wakingUp, setWakingUp] = useState(false);
   const [sortBy, setSortBy] = useState<SortType>("composite");
 
   const topMomentumSeeds = useMemo(() => {
@@ -86,6 +87,12 @@ export default function Home() {
       setTopGenres([]);
       setDeepestDate(undefined);
       setActiveSeedCount(0);
+      setWakingUp(false);
+
+      const wakeupTimer = setTimeout(() => {
+        setWakingUp(true);
+      }, 5000);
+
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
         const response = await fetch(`${apiUrl}/api/discovery?username=${inputLocal}&period=overall`);
@@ -105,6 +112,8 @@ export default function Home() {
         setArtists([]);
         setTopGenres([]);
       } finally {
+        clearTimeout(wakeupTimer);
+        setWakingUp(false);
         setLoading(false);
       }
     };
@@ -223,13 +232,18 @@ export default function Home() {
             <tbody className="text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-16 text-center text-white/40 tracking-widest font-mono text-xs animate-pulse">
-                    SCANNING_THE_ABYSS...
+                  <td colSpan={7} className="p-16 text-center flex-col gap-4 text-white/40 tracking-widest font-mono text-xs animate-pulse">
+                    <div>{wakingUp ? "WAKING_UP_THE_ENGINE..." : "SCANNING_THE_ABYSS..."}</div>
+                    {wakingUp && (
+                      <div className="mt-4 text-[10px] text-white/30 lowercase font-sans tracking-normal max-w-sm mx-auto animate-in fade-in duration-500">
+                        (the free-tier backend is spinning up and will be ready shortly)
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : sortedArtists.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-16 text-center text-white/30 tracking-widest font-mono text-xs">
+                  <td colSpan={7} className="p-16 text-center text-white/30 tracking-widest font-mono text-xs">
                     NO_ACOUSTIC_SIGNATURES_FOUND.
                   </td>
                 </tr>
