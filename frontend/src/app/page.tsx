@@ -91,7 +91,7 @@ export default function Home() {
 
       const wakeupTimer = setTimeout(() => {
         setWakingUp(true);
-      }, 5000);
+      }, 20000); // Wait 20 seconds to bypass organic Last.fm paginations before assuming cold start
 
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
