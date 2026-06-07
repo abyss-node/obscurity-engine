@@ -4,7 +4,7 @@ use std::fmt;
 use dashmap::DashMap;
 use std::time::{Duration, Instant};
 use serde_json::Value;
-use crate::models::SimilarArtist;
+use crate::models::{SimilarArtist, TrackInfoResponse};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TopArtistsResponse {
@@ -72,6 +72,48 @@ impl fmt::Display for TimePeriod {
         };
         write!(f, "{}", s)
     }
+}
+
+// ── Track API types ─────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TopTracksResponse {
+    pub toptracks: TopTracks,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TopTracks {
+    #[serde(default)]
+    pub track: Vec<TopTrack>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TopTrack {
+    pub name: String,
+    pub playcount: Option<String>,
+    pub artist: TrackArtistRef,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SimilarTracksResponse {
+    pub similartracks: SimilarTracks,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SimilarTracks {
+    #[serde(default)]
+    pub track: Vec<SimilarTrackItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SimilarTrackItem {
+    pub name: String,
+    pub artist: TrackArtistRef,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackArtistRef {
+    pub name: String,
 }
 
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
@@ -154,6 +196,71 @@ impl LastfmClient {
         self.audit_cache.insert(cache_key, (Instant::now(), response.clone()));
 
         Ok(response)
+    }
+
+    pub async fn fetch_user_top_tracks(
+        &self,
+        username: &str,
+        limit: u32,
+        period: TimePeriod,
+    ) -> Result<TopTracksResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!(
+            "{}?method=user.gettoptracks&user={}&api_key={}&period={}&format=json&limit={}",
+            LASTFM_API_URL, urlencoding::encode(username), self.api_key, period, limit
+        );
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        let json: serde_json::Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            let err: LastfmErrorResponse = serde_json::from_value(json)?;
+            return Err(format!("Last.fm Error {}: {}", err.error, err.message).into());
+        }
+        Ok(serde_json::from_str(&resp_text)?)
+    }
+
+    pub async fn fetch_similar_tracks(
+        &self,
+        artist: &str,
+        track: &str,
+        limit: u32,
+    ) -> Result<SimilarTracksResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!(
+            "{}?method=track.getsimilar&artist={}&track={}&api_key={}&format=json&limit={}",
+            LASTFM_API_URL,
+            urlencoding::encode(artist),
+            urlencoding::encode(track),
+            self.api_key,
+            limit
+        );
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        let json: serde_json::Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            return Ok(SimilarTracksResponse { similartracks: SimilarTracks { track: vec![] } });
+        }
+        Ok(serde_json::from_str(&resp_text).unwrap_or(SimilarTracksResponse {
+            similartracks: SimilarTracks { track: vec![] },
+        }))
+    }
+
+    pub async fn fetch_track_info(
+        &self,
+        artist: &str,
+        track: &str,
+        username: &str,
+    ) -> Result<TrackInfoResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!(
+            "{}?method=track.getinfo&artist={}&track={}&username={}&api_key={}&format=json",
+            LASTFM_API_URL,
+            urlencoding::encode(artist),
+            urlencoding::encode(track),
+            urlencoding::encode(username),
+            self.api_key
+        );
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        let json: serde_json::Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            return Err("track not found".into());
+        }
+        Ok(serde_json::from_str(&resp_text)?)
     }
 
     pub async fn fetch_tag_top_artists(

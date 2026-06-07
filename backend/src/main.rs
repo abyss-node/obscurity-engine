@@ -17,7 +17,7 @@ mod pipeline;
 mod utils;
 
 use lastfm::LastfmClient;
-use pipeline::discover_obscure_artists;
+use pipeline::{discover_obscure_artists, discover_obscure_tracks};
 
 // Last.fm usernames: letters, digits, hyphens, underscores, 2-15 chars
 fn validate_username(username: &str) -> bool {
@@ -37,6 +37,7 @@ struct DiscoveryQuery {
 struct AppState {
     client: Arc<LastfmClient>,
     cache: RwLock<HashMap<String, (Instant, models::DiscoveryResponse)>>,
+    track_cache: RwLock<HashMap<String, (Instant, models::TrackDiscoveryResponse)>>,
 }
 
 type ApiResult = Result<Json<models::DiscoveryResponse>, (StatusCode, Json<models::ErrorResponse>)>;
@@ -88,6 +89,52 @@ async fn discovery_handler(
     }
 }
 
+type TrackApiResult = Result<Json<models::TrackDiscoveryResponse>, (StatusCode, Json<models::ErrorResponse>)>;
+
+async fn track_discovery_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<DiscoveryQuery>,
+) -> TrackApiResult {
+    if !validate_username(&query.username) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(models::ErrorResponse {
+                error: "Invalid username.".into(),
+                code: 400,
+            }),
+        ));
+    }
+
+    let cache_key = format!("tracks:{}:{}", query.username, query.period);
+
+    {
+        let cache = state.track_cache.read().await;
+        if let Some((timestamp, data)) = cache.get(&cache_key) {
+            if timestamp.elapsed() < Duration::from_secs(3600) {
+                return Ok(Json(data.clone()));
+            }
+        }
+    }
+
+    match discover_obscure_tracks(Arc::clone(&state.client), query.username, query.period).await {
+        Ok(result) => {
+            let mut cache = state.track_cache.write().await;
+            cache.insert(cache_key, (Instant::now(), result.clone()));
+            Ok(Json(result))
+        }
+        Err(e) => {
+            eprintln!("Track discovery error: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(models::ErrorResponse {
+                    error: format!("Track discovery failed: {}", e),
+                    code: 500,
+                }),
+            ))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -99,6 +146,7 @@ async fn main() {
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::new(api_key)),
         cache: RwLock::new(HashMap::new()),
+        track_cache: RwLock::new(HashMap::new()),
     });
 
     // B2: CORS — use FRONTEND_URL env var; fall back to any localhost in dev
@@ -125,6 +173,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(|| async { "ObscurityEngine Backend Alive!" }))
         .route("/api/discovery", get(discovery_handler))
+        .route("/api/discovery/tracks", get(track_discovery_handler))
         .layer(cors)
         .with_state(state);
 

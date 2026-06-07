@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ArtistList from "../components/ArtistList";
+import TrackCard from "../components/TrackCard";
 import IcebergVisual from "../components/IcebergVisual";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
 import Tooltip from "../components/Tooltip";
 import { isGeoTag } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
+import * as Spotify from "../lib/spotify";
 
 export type Artist = {
   name: string;
@@ -21,6 +23,18 @@ export type Artist = {
   cross_validated?: boolean;
   taste_alignment?: number;
   velocity?: number;
+};
+
+export type TrackItem = {
+  name: string;
+  artist: string;
+  conviction_score: number;
+  stickiness_score: number;
+  composite_score: number;
+  total_listeners: number;
+  top_tags: string[];
+  source_seeds: { track: string; artist: string; percentile: number }[];
+  taste_alignment: number;
 };
 
 export type GenreWeight = {
@@ -37,7 +51,16 @@ export type DiscoveryData = {
   message?: string;
 };
 
+export type TrackDiscoveryData = {
+  tracks: TrackItem[];
+  top_genres: GenreWeight[];
+  active_seed_count: number;
+  depth_score: number;
+  message?: string;
+};
+
 type SortType = "composite" | "conviction" | "stickiness" | "listeners";
+type DiscoveryMode = "artists" | "tracks";
 
 const PERIOD_LABELS: Record<string, string> = {
   blend: "MIX",
@@ -53,7 +76,9 @@ export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
   const [inputLocal, setInputLocal] = useState("");
   const [period, setPeriod] = useState("blend");
+  const [mode, setMode] = useState<DiscoveryMode>("artists");
   const [artists, setArtists] = useState<Artist[]>([]);
+  const [tracks, setTracks] = useState<TrackItem[]>([]);
   const [topGenres, setTopGenres] = useState<GenreWeight[]>([]);
   const [activeSeedCount, setActiveSeedCount] = useState(0);
   const [depthScore, setDepthScore] = useState(0);
@@ -67,11 +92,39 @@ export default function Home() {
   const [icebergOpen, setIcebergOpen] = useState(true);
   const [isSharedView, setIsSharedView] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+
+    // Handle Spotify OAuth callback
+    if (code && state) {
+      window.history.replaceState({}, "", window.location.pathname);
+      const storedTracks = Spotify.getStoredTracks();
+      const meta = Spotify.getStoredMeta();
+      if (storedTracks && meta) {
+        setUsername(meta.username);
+        setInputLocal(meta.username);
+        setMode("tracks");
+        setTracks(storedTracks);
+        setSpotifyStatus("loading");
+        Spotify.exchangeCode(code, state).then((token) => {
+          if (!token) { setSpotifyStatus("error"); return; }
+          return Spotify.createPlaylist(token, storedTracks, meta.username, meta.period);
+        }).then((url) => {
+          Spotify.clearSpotifySession();
+          if (url) { setPlaylistUrl(url); setSpotifyStatus("success"); }
+          else setSpotifyStatus("error");
+        }).catch(() => setSpotifyStatus("error"));
+      }
+      return;
+    }
+
     const urlUser = params.get("u");
     const urlPeriod = params.get("p");
     if (urlUser) {
@@ -132,19 +185,19 @@ export default function Home() {
     );
   }, [sortedArtists, selectedGeoTags]);
 
-  const isInitialLoad = loading && artists.length === 0;
-  const isRefreshing = loading && artists.length > 0;
+  const resultCount = mode === "tracks" ? tracks.length : artists.length;
+  const isInitialLoad = loading && resultCount === 0;
+  const isRefreshing = loading && resultCount > 0;
 
   useEffect(() => {
-    const fetchArtists = async () => {
+    const fetchData = async () => {
       if (!username) return;
-      if (username !== lastFetchedUsernameRef.current) {
-        setArtists([]);
-        setTopGenres([]);
-        setDepthScore(0);
-        setLowDataMessage(null);
-        setSelectedGeoTags([]);
-      }
+      setArtists([]);
+      setTracks([]);
+      setTopGenres([]);
+      setDepthScore(0);
+      setLowDataMessage(null);
+      setSelectedGeoTags([]);
       setLoading(true);
       setWakingUp(false);
       setError(null);
@@ -152,10 +205,10 @@ export default function Home() {
       const wakeupTimer = setTimeout(() => setWakingUp(true), 3000);
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const response = await fetch(
-          `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}`,
-          { signal: AbortSignal.timeout(90_000) }
-        );
+        const endpoint = mode === "tracks"
+          ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}`
+          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}`;
+        const response = await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
         if (!response.ok) {
           let errMsg = `[ERR] SONAR_FAILURE — HTTP ${response.status}`;
           try {
@@ -165,12 +218,21 @@ export default function Home() {
           setError(errMsg);
           return;
         }
-        const data: DiscoveryData = await response.json();
-        setArtists(data.artists || []);
-        setTopGenres(data.top_genres || []);
-        setActiveSeedCount(data.active_seed_count || 0);
-        setDepthScore(data.depth_score ?? 0);
-        setLowDataMessage(data.message ?? null);
+        if (mode === "tracks") {
+          const data: TrackDiscoveryData = await response.json();
+          setTracks(data.tracks || []);
+          setTopGenres(data.top_genres || []);
+          setActiveSeedCount(data.active_seed_count || 0);
+          setDepthScore(data.depth_score ?? 0);
+          setLowDataMessage(data.message ?? null);
+        } else {
+          const data: DiscoveryData = await response.json();
+          setArtists(data.artists || []);
+          setTopGenres(data.top_genres || []);
+          setActiveSeedCount(data.active_seed_count || 0);
+          setDepthScore(data.depth_score ?? 0);
+          setLowDataMessage(data.message ?? null);
+        }
       } catch (e) {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
         setError(
@@ -184,8 +246,8 @@ export default function Home() {
         setLoading(false);
       }
     };
-    fetchArtists();
-  }, [username, period, fetchTrigger]);
+    fetchData();
+  }, [username, period, mode, fetchTrigger]);
 
   const handleShare = () => {
     if (!username) return;
@@ -200,9 +262,21 @@ export default function Home() {
     setIsSharedView(false);
     setUsername(null);
     setArtists([]);
+    setTracks([]);
     setTopGenres([]);
     setDepthScore(0);
     setError(null);
+    setSpotifyStatus("idle");
+    setPlaylistUrl(null);
+  };
+
+  const handleExportSpotify = async () => {
+    if (!username || tracks.length === 0) return;
+    if (!Spotify.isConfigured()) {
+      alert("Spotify export is not configured. Set NEXT_PUBLIC_SPOTIFY_CLIENT_ID.");
+      return;
+    }
+    await Spotify.initiateSpotifyAuth(tracks, username, period);
   };
 
   const depthProse =
@@ -311,6 +385,25 @@ export default function Home() {
               <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>
                 |
               </span>
+
+              {/* Mode toggle */}
+              <div className="flex gap-1 shrink-0">
+                {(["artists", "tracks"] as DiscoveryMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
+                    style={{
+                      borderColor: mode === m ? "var(--accent)" : "var(--border)",
+                      color: mode === m ? "var(--accent)" : "var(--dim)",
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>|</span>
 
               {/* Period pills */}
               <div className="flex flex-wrap gap-1 flex-1 min-w-0">
@@ -455,7 +548,7 @@ export default function Home() {
                     )}
 
                     {/* Artist List */}
-                    {sortedArtists.length > 0 && (
+                    {mode === "artists" && sortedArtists.length > 0 && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -472,6 +565,58 @@ export default function Home() {
                         />
                       </motion.div>
                     )}
+
+                    {/* Track List */}
+                    {mode === "tracks" && tracks.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.4, duration: 0.6 }}
+                        className="flex flex-col gap-6"
+                      >
+                        {/* Spotify export */}
+                        <div className="flex items-center gap-4">
+                          {spotifyStatus === "idle" && (
+                            <button
+                              onClick={handleExportSpotify}
+                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70"
+                              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+                            >
+                              ↗ export to spotify
+                            </button>
+                          )}
+                          {spotifyStatus === "loading" && (
+                            <span className="font-mono text-[10px] tracking-widest animate-pulse" style={{ color: "var(--dim)" }}>
+                              creating playlist...
+                            </span>
+                          )}
+                          {spotifyStatus === "success" && playlistUrl && (
+                            <a
+                              href={playlistUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70"
+                              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+                            >
+                              ↗ open playlist
+                            </a>
+                          )}
+                          {spotifyStatus === "error" && (
+                            <span className="font-mono text-[10px] tracking-widest" style={{ color: "var(--muted)" }}>
+                              spotify export failed — try again
+                            </span>
+                          )}
+                        </div>
+
+                        <TrackCard key={`${tracks[0].name}-hero`} track={tracks[0]} rank={1} isHero />
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {tracks.slice(1).map((track, idx) => (
+                            <TrackCard key={`${track.name}-${track.artist}-${idx}`} track={track} rank={idx + 2} />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+
                   </div>
                 )}
               </AnimatePresence>

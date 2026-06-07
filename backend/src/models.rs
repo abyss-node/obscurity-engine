@@ -103,6 +103,91 @@ pub struct SimilarArtist {
     pub url: String,
 }
 
+// ── Track discovery models ───────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackDiscoveryResponse {
+    pub tracks: Vec<TrackDiscoveryItem>,
+    pub top_genres: Vec<GenreWeight>,
+    #[serde(default)]
+    pub active_seed_count: usize,
+    #[serde(default)]
+    pub depth_score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackDiscoveryItem {
+    pub name: String,
+    pub artist: String,
+    pub conviction_score: usize,
+    pub stickiness_score: f64,
+    pub composite_score: f64,
+    pub total_listeners: u64,
+    pub top_tags: Vec<String>,
+    pub source_seeds: Vec<TrackSourceSeed>,
+    #[serde(default)]
+    pub taste_alignment: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackSourceSeed {
+    pub track: String,
+    pub artist: String,
+    pub percentile: f64,
+}
+
+// ── track.getInfo response types ─────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackInfoResponse {
+    pub track: TrackInfo,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackInfo {
+    pub name: String,
+    pub artist: TrackInfoArtist,
+    #[serde(deserialize_with = "deserialize_u64", default)]
+    pub listeners: u64,
+    #[serde(deserialize_with = "deserialize_u64", default)]
+    pub playcount: u64,
+    #[serde(default)]
+    pub userplaycount: Option<serde_json::Value>,
+    #[serde(default)]
+    pub toptags: Option<TrackTags>,
+}
+
+impl TrackInfo {
+    pub fn user_plays(&self) -> u64 {
+        match &self.userplaycount {
+            Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
+            Some(serde_json::Value::String(s)) => s.parse().unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    pub fn stickiness(&self) -> f64 {
+        if self.listeners > 0 {
+            self.playcount as f64 / self.listeners as f64
+        } else {
+            0.0
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackInfoArtist {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TrackTags {
+    #[serde(default)]
+    pub tag: Vec<Tag>,
+}
+
 /// Parses Last.fm's string-encoded counts into u64 during deserialization
 fn deserialize_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
