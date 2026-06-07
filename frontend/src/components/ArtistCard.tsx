@@ -6,6 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import Tooltip from "./Tooltip";
 import { firstGenreTag, isGeoTag, formatGeoTag } from "../lib/geoTags";
 
+function formatListeners(n: number): string {
+  if (n === 0) return "unknown listeners";
+  if (n < 1000) return `${n} listeners`;
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}K listeners`;
+  return `${Math.round(n / 1000)}K listeners`;
+}
+
 interface ArtistCardProps {
   artist: Artist;
   rank: number;
@@ -104,6 +111,15 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                   ))}
               </AnimatePresence>
             </div>
+
+            <Tooltip text="Total number of unique listeners on Last.fm. The lower this number, the more underground the artist.">
+              <span
+                className="font-mono text-[10px] tracking-wider"
+                style={{ color: "var(--dim)" }}
+              >
+                {formatListeners(artist.total_listeners)}
+              </span>
+            </Tooltip>
           </div>
 
           <span
@@ -125,14 +141,16 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
             className="mt-6 pt-6 border-t flex flex-col gap-5"
             style={{ borderColor: "var(--border)" }}
           >
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-3 gap-6">
               <div className="flex flex-col gap-1">
-                <span
-                  className="font-mono text-[9px] tracking-widest uppercase"
-                  style={{ color: "var(--dim)" }}
-                >
-                  conviction
-                </span>
+                <Tooltip text="How many artists you already love point toward this one.">
+                  <span
+                    className="font-mono text-[9px] tracking-widest uppercase"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    conviction
+                  </span>
+                </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {(artist.conviction_score / 100).toFixed(2)}
                 </span>
@@ -141,14 +159,32 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                 className="flex flex-col gap-1 border-l pl-6"
                 style={{ borderColor: "var(--border)" }}
               >
-                <span
-                  className="font-mono text-[9px] tracking-widest uppercase"
-                  style={{ color: "var(--dim)" }}
-                >
-                  stickiness
-                </span>
+                <Tooltip text="Ratio of monthly to total listeners — high stickiness means people keep coming back.">
+                  <span
+                    className="font-mono text-[9px] tracking-widest uppercase"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    stickiness
+                  </span>
+                </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {artist.stickiness_score.toFixed(2)}
+                </span>
+              </div>
+              <div
+                className="flex flex-col gap-1 border-l pl-6"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <Tooltip text="Total unique listeners on Last.fm globally.">
+                  <span
+                    className="font-mono text-[9px] tracking-widest uppercase"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    listeners
+                  </span>
+                </Tooltip>
+                <span className="font-mono text-base" style={{ color: "var(--text)" }}>
+                  {artist.total_listeners.toLocaleString()}
                 </span>
               </div>
             </div>
