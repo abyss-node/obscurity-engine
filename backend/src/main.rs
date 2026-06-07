@@ -13,10 +13,11 @@ use tokio::sync::RwLock;
 
 mod lastfm;
 mod models;
-mod service;
+mod pipeline;
+mod utils;
 
 use lastfm::LastfmClient;
-use service::discover_obscure_artists;
+use pipeline::discover_obscure_artists;
 
 // Last.fm usernames: letters, digits, hyphens, underscores, 2-15 chars
 fn validate_username(username: &str) -> bool {

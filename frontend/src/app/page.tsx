@@ -4,8 +4,11 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ArtistList from "../components/ArtistList";
 import IcebergVisual from "../components/IcebergVisual";
+import LoadingState from "../components/LoadingState";
+import ErrorState from "../components/ErrorState";
 import Tooltip from "../components/Tooltip";
 import { isGeoTag } from "../lib/geoTags";
+import { getDepthProse } from "../lib/scoring";
 
 export type Artist = {
   name: string;
@@ -45,17 +48,6 @@ const PERIOD_LABELS: Record<string, string> = {
   "12month": "1Y",
   overall: "ALL",
 };
-
-function getDepthProse(score: number, topGenre?: string): string {
-  let tier: string;
-  if (score >= 85) tier = "collector-grade";
-  else if (score >= 70) tier = "serious listener";
-  else if (score >= 55) tier = "adventurous";
-  else if (score >= 40) tier = "eclectic";
-  else tier = "chart-adjacent";
-
-  return topGenre ? `${tier}, ${topGenre} focus` : tier;
-}
 
 export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
@@ -359,66 +351,12 @@ export default function Home() {
             <div className="pt-12 min-h-screen">
               <AnimatePresence mode="wait">
                 {isInitialLoad ? (
-                  /* ── LOADING ──────────────────────────────────────── */
-                  <motion.div
-                    key="loading"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex flex-col items-center justify-center gap-6 pt-40"
-                  >
-                    <div
-                      className="relative w-48 h-px overflow-hidden"
-                      style={{ background: "var(--border)" }}
-                    >
-                      <motion.div
-                        initial={{ x: "-100%" }}
-                        animate={{ x: "200%" }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                        className="absolute inset-y-0 w-1/2"
-                        style={{
-                          background:
-                            "linear-gradient(to right, transparent, var(--accent), transparent)",
-                        }}
-                      />
-                    </div>
-                    <p
-                      className="font-mono text-[11px] tracking-widest"
-                      style={{ color: "var(--muted)" }}
-                    >
-                      calibrating sonar...
-                    </p>
-                    {wakingUp && (
-                      <p
-                        className="font-mono text-[10px] tracking-wider animate-pulse"
-                        style={{ color: "var(--dim)" }}
-                      >
-                        waking up — this may take a moment
-                      </p>
-                    )}
-                  </motion.div>
+                  <LoadingState wakingUp={wakingUp} />
                 ) : error && !isRefreshing ? (
-                  /* ── ERROR ────────────────────────────────────────── */
-                  <motion.div
-                    key="error"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex flex-col items-center justify-center gap-6 pt-40 px-6"
-                  >
-                    <p
-                      className="font-mono text-[11px] tracking-wider text-center max-w-md leading-loose"
-                      style={{ color: "var(--discovery)" }}
-                    >
-                      {error}
-                    </p>
-                    <button
-                      onClick={() => setFetchTrigger((t) => t + 1)}
-                      className="font-mono text-[10px] tracking-widest px-6 py-2 border transition-opacity duration-150 hover:opacity-70"
-                      style={{ borderColor: "var(--discovery)", color: "var(--discovery)" }}
-                    >
-                      retry →
-                    </button>
-                  </motion.div>
+                  <ErrorState
+                    error={error}
+                    onRetry={() => setFetchTrigger((t) => t + 1)}
+                  />
                 ) : (
                   /* ── RESULTS ──────────────────────────────────────── */
                   <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
