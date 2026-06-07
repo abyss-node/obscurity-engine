@@ -54,58 +54,6 @@ pub struct ArtistInfoResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RecentTracksResponse {
-    pub recenttracks: RecentTracks,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RecentTracks {
-    #[serde(default)]
-    pub track: Vec<Track>,
-    #[serde(rename = "@attr")]
-    pub attr: RecentTracksAttr,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TopArtists {
-    pub artist: Vec<Artist>,
-    #[serde(rename = "@attr", default)]
-    pub attr: Option<TopArtistsAttr>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct TopArtistsAttr {
-    pub total: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Track {
-    pub artist: TrackArtist,
-    pub date: Option<TrackDate>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TrackDate {
-    #[serde(alias = "text")]
-    #[serde(alias = "#text")]
-    pub text: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TrackArtist {
-    #[serde(alias = "name")]
-    #[serde(alias = "#text")]
-    pub name: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RecentTracksAttr {
-    #[serde(rename = "totalPages")]
-    pub total_pages: String,
-    pub total: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Artist {
     pub name: String,
     pub stats: Stats,
@@ -120,7 +68,6 @@ pub struct Artist {
 }
 
 impl Artist {
-    /// Calculate the stickiness score correctly and populate the derived field
     pub fn calculate_stickiness(&mut self) {
         if self.stats.listeners > 0 {
             self.stickiness_score = Some(self.stats.playcount as f64 / self.stats.listeners as f64);
@@ -151,23 +98,12 @@ pub struct Stats {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ArtistSimilarResponse {
-    pub similarartists: SimilarArtists,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SimilarArtists {
-    #[serde(default)]
-    pub artist: Vec<SimilarArtist>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimilarArtist {
     pub name: String,
     pub url: String,
 }
 
-/// Helper to gracefully parse Last.fm's string counts into u64 during deserialization
+/// Parses Last.fm's string-encoded counts into u64 during deserialization
 fn deserialize_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
