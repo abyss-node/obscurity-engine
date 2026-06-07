@@ -8,8 +8,6 @@ services:
     envVars:
       - key: LASTFM_API_KEY
         sync: false
-      - key: LASTFM_USERNAME
-        sync: false
       - key: FRONTEND_URL
         sync: false
       - key: PORT

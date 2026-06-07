@@ -6,6 +6,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use dashmap::DashMap;
 use std::time::{Duration, Instant};
 use serde_json::Value;
+use crate::models::SimilarArtist;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TopArtistsResponse {
@@ -55,6 +56,8 @@ pub struct Artist {
 pub enum TimePeriod {
     SevenDay,
     OneMonth,
+    ThreeMonth,
+    SixMonth,
     TwelveMonth,
     Overall,
 }
@@ -62,10 +65,12 @@ pub enum TimePeriod {
 impl fmt::Display for TimePeriod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            TimePeriod::SevenDay => "7day",
-            TimePeriod::OneMonth => "1month",
+            TimePeriod::SevenDay    => "7day",
+            TimePeriod::OneMonth    => "1month",
+            TimePeriod::ThreeMonth  => "3month",
+            TimePeriod::SixMonth    => "6month",
             TimePeriod::TwelveMonth => "12month",
-            TimePeriod::Overall => "overall",
+            TimePeriod::Overall     => "overall",
         };
         write!(f, "{}", s)
     }
@@ -96,7 +101,7 @@ impl LastfmClient {
     ) -> Result<TopArtistsResponse, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
-            LASTFM_API_URL, username, self.api_key, period, limit
+            LASTFM_API_URL, urlencoding::encode(username), self.api_key, period, limit
         );
         let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
         
@@ -128,10 +133,14 @@ impl LastfmClient {
         username: &str,
         limit: u32,
         page: u32,
+        from_ts: Option<u64>,
     ) -> Result<crate::models::RecentTracksResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let from_param = from_ts
+            .map(|ts| format!("&from={}", ts))
+            .unwrap_or_default();
         let url = format!(
-            "{}?method=user.getrecenttracks&user={}&api_key={}&limit={}&page={}&extended=1&format=json",
-            LASTFM_API_URL, urlencoding::encode(username), self.api_key, limit, page
+            "{}?method=user.getrecenttracks&user={}&api_key={}&limit={}&page={}&extended=1&format=json{}",
+            LASTFM_API_URL, urlencoding::encode(username), self.api_key, limit, page, from_param
         );
         let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
         
@@ -167,12 +176,41 @@ impl LastfmClient {
         );
         let response: crate::models::ArtistInfoResponse = self.client.get(&url).send().await?.error_for_status()?.json().await?;
         
-        // Populate the DashMap on successful fetch
+        // A2: Cap the cache at 10,000 entries to prevent unbounded memory growth on long-running instances
+        if self.audit_cache.len() >= 10_000 {
+            if let Some(entry) = self.audit_cache.iter().next().map(|e| e.key().clone()) {
+                self.audit_cache.remove(&entry);
+            }
+        }
         self.audit_cache.insert(cache_key, (Instant::now(), response.clone()));
-        
+
         Ok(response)
     }
-    
+
+    /// Phase 5 (dual-graph): fetch top artists for a given genre tag
+    pub async fn fetch_tag_top_artists(
+        &self,
+        tag: &str,
+        limit: u32,
+    ) -> Result<Vec<SimilarArtist>, Box<dyn std::error::Error + Send + Sync>> {
+        #[derive(serde::Deserialize)]
+        struct TagTopArtistsResponse {
+            topartists: TagTopArtists,
+        }
+        #[derive(serde::Deserialize)]
+        struct TagTopArtists {
+            #[serde(default)]
+            artist: Vec<SimilarArtist>,
+        }
+        let url = format!(
+            "{}?method=tag.gettopartists&tag={}&api_key={}&format=json&limit={}",
+            LASTFM_API_URL, urlencoding::encode(tag), self.api_key, limit
+        );
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;
+        Ok(response.topartists.artist)
+    }
+
     /// Fetches the top 10 artists across all 4 time periods, then in parallel fetches 20
     /// similar artists for each unique historical top artist.
     pub async fn fetch_all_periods_and_similar(

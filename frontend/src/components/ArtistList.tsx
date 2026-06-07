@@ -66,21 +66,32 @@ export default function ArtistList({ artists, sortBy, setSortBy, stickinessThres
         </div>
       </div>
 
-      {/* THE GRID: Staggered Reveal */}
-      <motion.div 
+      {/* THE GRID: first artist gets hero slot (TASTE #2), rest stagger in 3-column grid */}
+      <motion.div
         variants={listVariants}
         initial="hidden"
         animate="visible"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12 w-full max-w-7xl mx-auto"
+        className="flex flex-col gap-8 md:gap-12 w-full max-w-7xl mx-auto"
       >
-        {artists.map((artist, idx) => (
-          <ArtistCard 
-            key={`${artist.name}-${idx}`} 
-            artist={artist} 
-            rank={idx + 1} 
-            stickinessThreshold={stickinessThreshold} 
+        {artists.length > 0 && (
+          <ArtistCard
+            key={`${artists[0].name}-hero`}
+            artist={artists[0]}
+            rank={1}
+            stickinessThreshold={stickinessThreshold}
+            isHero
           />
-        ))}
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
+          {artists.slice(1).map((artist, idx) => (
+            <ArtistCard
+              key={`${artist.name}-${idx + 1}`}
+              artist={artist}
+              rank={idx + 2}
+              stickinessThreshold={stickinessThreshold}
+            />
+          ))}
+        </div>
       </motion.div>
     </div>
   );

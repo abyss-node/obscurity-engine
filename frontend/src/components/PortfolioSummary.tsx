@@ -9,9 +9,10 @@ interface PortfolioSummaryProps {
   seedsAnalyzed: number;
   totalPool: number;
   deepestDate?: string;
+  depthScore?: number;
 }
 
-export default function PortfolioSummary({ genres, seedsAnalyzed, totalPool, deepestDate }: PortfolioSummaryProps) {
+export default function PortfolioSummary({ genres, seedsAnalyzed, totalPool, deepestDate, depthScore }: PortfolioSummaryProps) {
   if (genres.length === 0) return null;
 
   return (
@@ -48,6 +49,7 @@ export default function PortfolioSummary({ genres, seedsAnalyzed, totalPool, dee
             <span className="text-[9px] uppercase tracking-widest text-emerald-600/40 dark:text-cyan-500/40 font-black mb-1 transition-all">Depth</span>
             <span className="text-lg font-light dark:font-mono text-neutral-800 dark:text-cyan-400">{deepestDate?.split(',')[0]}</span>
           </div>
+
         </div>
       </div>
 

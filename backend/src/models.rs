@@ -7,6 +7,16 @@ pub struct DiscoveryResponse {
     pub deepest_date: Option<String>,
     #[serde(default)]
     pub active_seed_count: usize,
+    #[serde(default)]
+    pub depth_score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ErrorResponse {
+    pub error: String,
+    pub code: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,6 +40,12 @@ pub struct DiscoveryResponseItem {
     pub total_listeners: u64,
     pub top_tags: Vec<String>,
     pub source_seeds: Vec<SourceSeed>,
+    #[serde(default)]
+    pub cross_validated: bool,
+    #[serde(default)]
+    pub taste_alignment: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub velocity: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -141,6 +157,7 @@ pub struct ArtistSimilarResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimilarArtists {
+    #[serde(default)]
     pub artist: Vec<SimilarArtist>,
 }
 
