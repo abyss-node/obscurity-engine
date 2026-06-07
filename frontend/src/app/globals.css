@@ -2,9 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg:        #080806;
+  --surface:   #111110;
+  --surface2:  #1A1916;
+  --border:    #2A2824;
+  --text:      #EDE8DC;
+  --muted:     #7A7265;
+  --dim:       #4A4640;
+  --accent:    #B8832E;
+  --accent2:   #8B5E2A;
+  --discovery: #8B3A2A;
+}
+
 @layer base {
-  body {
-    background-color: theme('colors.background');
-    color: theme('colors.foreground');
+  html, body {
+    background-color: var(--bg);
+    color: var(--text);
   }
+  ::selection {
+    background-color: var(--surface2);
+  }
+}
+
+@layer components {
+  .obs-input::placeholder { color: var(--dim); }
+  .obs-input:focus { border-color: var(--accent); outline: none; }
 }

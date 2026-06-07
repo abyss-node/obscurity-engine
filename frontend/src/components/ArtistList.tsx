@@ -2,97 +2,160 @@
 
 import { Artist } from "../app/page";
 import ArtistCard from "./ArtistCard";
-import { motion } from "framer-motion";
+import Tooltip from "./Tooltip";
+import { formatGeoTag } from "../lib/geoTags";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface ArtistListProps {
   artists: Artist[];
   sortBy: string;
-  setSortBy: (val: any) => void;
+  setSortBy: (val: string) => void;
   stickinessThreshold: number;
+  availableGeoTags: { tag: string; count: number }[];
+  selectedGeoTags: string[];
+  setSelectedGeoTags: (tags: string[]) => void;
 }
 
 const listVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.3
-    }
-  }
+    transition: { staggerChildren: 0.05, delayChildren: 0 },
+  },
 };
 
-export default function ArtistList({ artists, sortBy, setSortBy, stickinessThreshold }: ArtistListProps) {
-  if (artists.length === 0) return null;
+const SORT_OPTIONS = [
+  { id: "composite",  label: "composite",  tip: "Conviction × stickiness. Balances how strongly your taste recommends an artist with how dedicated their fanbase is." },
+  { id: "conviction", label: "conviction", tip: "How many artists you already love point toward this one. Multiple independent signals from your listening history." },
+  { id: "stickiness", label: "stickiness", tip: "Ratio of monthly to total listeners. High stickiness = people who find this artist keep coming back." },
+  { id: "listeners",  label: "listeners",  tip: "Raw Last.fm listener count. Sort to find the deepest cuts." },
+];
 
-  const sortOptions = [
-    { id: 'composite', label: 'Composite', icon: '◈' },
-    { id: 'conviction', label: 'Conviction', icon: '●' },
-    { id: 'stickiness', label: 'Stickiness', icon: '❈' },
-    { id: 'listeners', label: 'Listeners', icon: '◎' }
-  ];
+export default function ArtistList({
+  artists,
+  sortBy,
+  setSortBy,
+  stickinessThreshold,
+  availableGeoTags,
+  selectedGeoTags,
+  setSelectedGeoTags,
+}: ArtistListProps) {
+  const toggleGeo = (tag: string) => {
+    setSelectedGeoTags(
+      selectedGeoTags.includes(tag)
+        ? selectedGeoTags.filter(t => t !== tag)
+        : [...selectedGeoTags, tag]
+    );
+  };
 
   return (
-    <div className="w-full flex flex-col gap-12 lg:gap-20">
-      
-      {/* HIGH-END SEGMENTED SORTING */}
-      <div className="flex flex-col items-center gap-6">
-        <span className="text-[9px] uppercase tracking-[0.5em] text-neutral-400 dark:text-cyan-500/30 font-black mb-2 transition-all duration-1000">
-          Ordering Systems
-        </span>
-        
-        <div className="flex flex-wrap justify-center items-center p-2 bg-neutral-50 dark:bg-black/40 border border-neutral-100 dark:border-cyan-500/10 rounded-[2.5rem] dark:rounded-none shadow-inner backdrop-blur-md transition-all duration-1000">
-          {sortOptions.map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => setSortBy(opt.id as any)}
-              className={`relative flex items-center gap-3 px-6 lg:px-10 py-3 lg:py-4 transition-all duration-700 overflow-hidden
-                ${sortBy === opt.id 
-                    ? 'text-neutral-900 dark:text-cyan-400 font-bold scale-105' 
-                    : 'text-neutral-400 dark:text-cyan-500/20 hover:text-neutral-600 dark:hover:text-cyan-400/50 grayscale'}`}
-            >
-              {/* Active Indicator (Solar/Lunar Pill) */}
-              {sortBy === opt.id && (
-                <motion.div 
-                  layoutId="activeSort"
-                  className="absolute inset-0 bg-white dark:bg-cyan-500/5 rounded-full dark:rounded-none border border-neutral-100 dark:border-cyan-500/30 shadow-sm z-0"
-                />
-              )}
-              
-              <span className="relative z-10 text-[10px] md:text-xs font-mono opacity-50">{opt.icon}</span>
-              <span className="relative z-10 text-[10px] uppercase tracking-[0.2em] font-black">{opt.label}</span>
-            </button>
-          ))}
+    <div className="w-full flex flex-col gap-10">
+      {/* Controls row */}
+      <div className="flex flex-col gap-6">
+        {/* Sort */}
+        <div className="flex flex-col gap-3">
+          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+            sort by
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {SORT_OPTIONS.map((opt) => (
+              <Tooltip key={opt.id} text={opt.tip}>
+                <button
+                  onClick={() => setSortBy(opt.id)}
+                  className="font-mono text-[10px] tracking-wider px-3 py-1.5 border transition-colors duration-150"
+                  style={{
+                    borderColor: sortBy === opt.id ? "var(--accent)" : "var(--border)",
+                    color: sortBy === opt.id ? "var(--accent)" : "var(--dim)",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              </Tooltip>
+            ))}
+          </div>
         </div>
+
+        {/* Geo filter */}
+        {availableGeoTags.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                filter by origin
+              </span>
+              {selectedGeoTags.length > 0 && (
+                <button
+                  onClick={() => setSelectedGeoTags([])}
+                  className="font-mono text-[9px] tracking-wider transition-opacity hover:opacity-60"
+                  style={{ color: "var(--dim)" }}
+                >
+                  clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {availableGeoTags.map(({ tag, count }) => {
+                const active = selectedGeoTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleGeo(tag)}
+                    className="font-mono text-[10px] tracking-wider px-3 py-1.5 border transition-colors duration-150"
+                    style={{
+                      borderColor: active ? "var(--accent)" : "var(--border)",
+                      color: active ? "var(--accent)" : "var(--dim)",
+                    }}
+                  >
+                    {formatGeoTag(tag)}
+                    <span className="ml-1.5 opacity-40">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* THE GRID: first artist gets hero slot (TASTE #2), rest stagger in 3-column grid */}
-      <motion.div
-        variants={listVariants}
-        initial="hidden"
-        animate="visible"
-        className="flex flex-col gap-8 md:gap-12 w-full max-w-7xl mx-auto"
-      >
-        {artists.length > 0 && (
-          <ArtistCard
-            key={`${artists[0].name}-hero`}
-            artist={artists[0]}
-            rank={1}
-            stickinessThreshold={stickinessThreshold}
-            isHero
-          />
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
-          {artists.slice(1).map((artist, idx) => (
+      {/* Artist grid */}
+      <AnimatePresence mode="wait">
+        {artists.length === 0 ? (
+          <motion.p
+            key="empty"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="font-mono text-[11px] tracking-wider"
+            style={{ color: "var(--dim)" }}
+          >
+            no artists match the selected filter
+          </motion.p>
+        ) : (
+          <motion.div
+            key="grid"
+            variants={listVariants}
+            initial="hidden"
+            animate="visible"
+            className="flex flex-col gap-6 w-full"
+          >
             <ArtistCard
-              key={`${artist.name}-${idx + 1}`}
-              artist={artist}
-              rank={idx + 2}
+              key={`${artists[0].name}-hero`}
+              artist={artists[0]}
+              rank={1}
               stickinessThreshold={stickinessThreshold}
+              isHero
             />
-          ))}
-        </div>
-      </motion.div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {artists.slice(1).map((artist, idx) => (
+                <ArtistCard
+                  key={`${artist.name}-${idx + 1}`}
+                  artist={artist}
+                  rank={idx + 2}
+                  stickinessThreshold={stickinessThreshold}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -100,23 +100,25 @@ async fn main() {
         cache: RwLock::new(HashMap::new()),
     });
 
-    // B2: CORS — use FRONTEND_URL env var; fall back to localhost only in dev
-    let cors = {
-        let frontend_url = std::env::var("FRONTEND_URL")
-            .unwrap_or_else(|_| "http://localhost:3000".to_string());
-        match frontend_url.parse::<axum::http::HeaderValue>() {
+    // B2: CORS — use FRONTEND_URL env var; fall back to any localhost in dev
+    let cors = match std::env::var("FRONTEND_URL") {
+        Ok(url) => match url.parse::<axum::http::HeaderValue>() {
             Ok(origin) => CorsLayer::new()
                 .allow_origin(AllowOrigin::exact(origin))
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers(tower_http::cors::Any),
             Err(_) => {
-                eprintln!("Warning: FRONTEND_URL is not a valid header value — falling back to localhost CORS");
+                eprintln!("Warning: FRONTEND_URL is not a valid header value — allowing any origin in dev");
                 CorsLayer::new()
-                    .allow_origin("http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap())
+                    .allow_origin(tower_http::cors::Any)
                     .allow_methods(tower_http::cors::Any)
                     .allow_headers(tower_http::cors::Any)
             }
-        }
+        },
+        Err(_) => CorsLayer::new()
+            .allow_origin(tower_http::cors::Any)
+            .allow_methods(tower_http::cors::Any)
+            .allow_headers(tower_http::cors::Any),
     };
 
     let app = Router::new()

@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import PortfolioSummary from "../components/PortfolioSummary";
 import ArtistList from "../components/ArtistList";
 import IcebergVisual from "../components/IcebergVisual";
+import Tooltip from "../components/Tooltip";
+import { isGeoTag } from "../lib/geoTags";
 
 export type Artist = {
   name: string;
@@ -13,7 +14,7 @@ export type Artist = {
   composite_score: number;
   total_listeners: number;
   top_tags: string[];
-  source_seeds: { name: string; percentile: number; }[];
+  source_seeds: { name: string; percentile: number }[];
   cross_validated?: boolean;
   taste_alignment?: number;
   velocity?: number;
@@ -36,39 +37,51 @@ export type DiscoveryData = {
 type SortType = "composite" | "conviction" | "stickiness" | "listeners";
 
 const PERIOD_LABELS: Record<string, string> = {
-  "7day": "7D", "1month": "1M", "3month": "3M",
-  "6month": "6M", "12month": "1Y", "overall": "ALL",
+  blend: "MIX",
+  "7day": "7D",
+  "1month": "1M",
+  "3month": "3M",
+  "6month": "6M",
+  "12month": "1Y",
+  overall: "ALL",
 };
+
+function getDepthProse(score: number, topGenre?: string): string {
+  let tier: string;
+  if (score >= 85) tier = "collector-grade";
+  else if (score >= 70) tier = "serious listener";
+  else if (score >= 55) tier = "adventurous";
+  else if (score >= 40) tier = "eclectic";
+  else tier = "chart-adjacent";
+
+  return topGenre ? `${tier}, ${topGenre} focus` : tier;
+}
 
 export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
   const [inputLocal, setInputLocal] = useState("");
-  const [period, setPeriod] = useState("overall");
+  const [period, setPeriod] = useState("blend");
   const [artists, setArtists] = useState<Artist[]>([]);
   const [topGenres, setTopGenres] = useState<GenreWeight[]>([]);
-  const [deepestDate, setDeepestDate] = useState<string | undefined>(undefined);
-  const [activeSeedCount, setActiveSeedCount] = useState<number>(0);
-  const [depthScore, setDepthScore] = useState<number>(0);
+  const [activeSeedCount, setActiveSeedCount] = useState(0);
+  const [depthScore, setDepthScore] = useState(0);
   const [lowDataMessage, setLowDataMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fetchTrigger, setFetchTrigger] = useState(0);
   const [sortBy, setSortBy] = useState<SortType>("composite");
-  const [isDark, setIsDark] = useState(true);
+  const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
   const [icebergOpen, setIcebergOpen] = useState(true);
   const [isSharedView, setIsSharedView] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Tracks the last username we actually fetched so we can detect username vs period changes
   const lastFetchedUsernameRef = useRef<string | null>(null);
 
-  // D6 + D10: URL params override localStorage on mount; share URLs don't pollute the user's saved session
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlUser = params.get("u");
     const urlPeriod = params.get("p");
-
     if (urlUser) {
       setUsername(urlUser);
       setInputLocal(urlUser);
@@ -78,25 +91,10 @@ export default function Home() {
       const saved = localStorage.getItem("obscurity_username");
       if (saved) { setUsername(saved); setInputLocal(saved); }
       const savedPeriod = localStorage.getItem("obscurity_period");
-      if (savedPeriod) setPeriod(savedPeriod);
+      if (savedPeriod && PERIOD_LABELS[savedPeriod]) setPeriod(savedPeriod);
     }
-
-    const theme = localStorage.getItem("obscurity_theme");
-    if (theme === "light") setIsDark(false);
-    else setIsDark(true);
   }, []);
 
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("obscurity_theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("obscurity_theme", "light");
-    }
-  }, [isDark]);
-
-  // D6: Don't persist shared-view username/period into the user's own session
   useEffect(() => {
     if (username && !isSharedView) localStorage.setItem("obscurity_username", username);
   }, [username, isSharedView]);
@@ -107,9 +105,8 @@ export default function Home() {
 
   const stickinessThreshold = useMemo(() => {
     if (artists.length < 1) return Infinity;
-    const scores = artists.map(a => a.stickiness_score).sort((a, b) => b - a);
-    const thresholdIndex = Math.max(0, Math.floor(scores.length * 0.1) - 1);
-    return scores[thresholdIndex] || Infinity;
+    const scores = artists.map((a) => a.stickiness_score).sort((a, b) => b - a);
+    return scores[Math.max(0, Math.floor(scores.length * 0.1) - 1)] ?? Infinity;
   }, [artists]);
 
   const sortedArtists = useMemo(() => {
@@ -121,67 +118,80 @@ export default function Home() {
     return arr;
   }, [artists, sortBy]);
 
-  // D2: distinguish first load (full spinner) from period refresh (stale results + indicator)
+  const availableGeoTags = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of sortedArtists) {
+      for (const t of a.top_tags) {
+        if (isGeoTag(t)) {
+          const key = t.toLowerCase();
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+      }
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag, count]) => ({ tag, count }));
+  }, [sortedArtists]);
+
+  const filteredArtists = useMemo(() => {
+    if (selectedGeoTags.length === 0) return sortedArtists;
+    return sortedArtists.filter(a =>
+      selectedGeoTags.every(sel => a.top_tags.some(t => t.toLowerCase() === sel))
+    );
+  }, [sortedArtists, selectedGeoTags]);
+
   const isInitialLoad = loading && artists.length === 0;
   const isRefreshing = loading && artists.length > 0;
 
   useEffect(() => {
     const fetchArtists = async () => {
       if (!username) return;
-
-      // On username switch: clear stale data so we never show wrong user's results
       if (username !== lastFetchedUsernameRef.current) {
         setArtists([]);
         setTopGenres([]);
         setDepthScore(0);
         setLowDataMessage(null);
+        setSelectedGeoTags([]);
       }
-
       setLoading(true);
       setWakingUp(false);
       setError(null);
       lastFetchedUsernameRef.current = username;
-
       const wakeupTimer = setTimeout(() => setWakingUp(true), 3000);
-
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
         const response = await fetch(
           `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}`,
           { signal: AbortSignal.timeout(90_000) }
         );
-
         if (!response.ok) {
           let errMsg = `[ERR] SONAR_FAILURE — HTTP ${response.status}`;
           try {
             const body = await response.json();
             if (body?.error) errMsg = `[ERR] SONAR_FAILURE — ${body.error}`;
-          } catch { /* non-JSON error body */ }
+          } catch { /* non-JSON */ }
           setError(errMsg);
           return;
         }
-
         const data: DiscoveryData = await response.json();
         setArtists(data.artists || []);
         setTopGenres(data.top_genres || []);
-        setDeepestDate(data.deepest_date);
         setActiveSeedCount(data.active_seed_count || 0);
         setDepthScore(data.depth_score ?? 0);
         setLowDataMessage(data.message ?? null);
       } catch (e) {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
-        setError(isTimeout
-          ? "[ERR] SONAR_FAILURE — Request timed out after 90s. The engine is under heavy load."
-          : "[ERR] SONAR_FAILURE — Network error. Check your connection and retry."
+        setError(
+          isTimeout
+            ? "[ERR] SONAR_FAILURE — Request timed out after 90s."
+            : "[ERR] SONAR_FAILURE — Network error. Check your connection."
         );
-        console.error("Fetch error:", e);
       } finally {
         clearTimeout(wakeupTimer);
         setWakingUp(false);
         setLoading(false);
       }
     };
-
     fetchArtists();
   }, [username, period, fetchTrigger]);
 
@@ -203,43 +213,38 @@ export default function Home() {
     setError(null);
   };
 
-  return (
-    <div className="flex flex-col items-center w-full px-6 py-20 min-h-screen">
+  const depthProse =
+    depthScore > 0
+      ? getDepthProse(
+          depthScore,
+          topGenres[0]?.weight > 10 ? topGenres[0]?.name : undefined
+        )
+      : null;
 
-      {/* THEME TOGGLE */}
-      <div className="fixed top-8 right-8 z-[110]">
-        <button
-          onClick={() => setIsDark(!isDark)}
-          className="p-3 bg-white/40 dark:bg-cyan-950/20 border border-neutral-100 dark:border-cyan-500/20 rounded-2xl shadow-sm text-amber-500 dark:text-cyan-400 backdrop-blur-md transition-all duration-700 active:scale-95"
+  return (
+    <>
+      {/* Fixed wordmark */}
+      <div className="fixed top-0 left-0 z-50 px-6 h-12 flex items-center pointer-events-none">
+        <span
+          className="font-serif text-[13px] font-semibold tracking-wide cursor-pointer pointer-events-auto transition-opacity duration-200 hover:opacity-70"
+          style={{ color: "var(--accent)" }}
+          onClick={handleReset}
         >
-          {isDark ? (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 9h-1m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 5a7 7 0 100 14 7 7 0 000-14z" /></svg>
-          ) : (
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-          )}
-        </button>
+          OBSCURITY ENGINE
+        </span>
       </div>
 
       <AnimatePresence mode="wait">
         {!username ? (
-          /* LANDING STATE */
+          /* ── LANDING ─────────────────────────────────────────────── */
           <motion.div
             key="landing"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, y: -50 }}
-            transition={{ duration: 1.2, ease: "easeOut" }}
-            className="flex-1 flex flex-col justify-center items-center gap-12 w-full max-w-2xl px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.35 }}
+            className="min-h-screen flex items-center justify-center px-6"
           >
-            <div className="flex flex-col items-center gap-4 text-center">
-              <h1 className="text-5xl md:text-7xl font-serif dark:font-mono italic dark:not-italic text-neutral-900 dark:text-cyan-50 mb-4 transition-all duration-1000">
-                The Obscurity Engine
-              </h1>
-              <p className="text-[10px] tracking-[0.4em] font-sans dark:font-mono text-emerald-600 dark:text-cyan-400 uppercase font-black transition-all">
-                Mapping Sonic Depth via Listening Intensity
-              </p>
-            </div>
-
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -250,224 +255,292 @@ export default function Home() {
                   setUsername(inputLocal.trim());
                 }
               }}
-              className="w-full flex flex-col gap-8 items-center"
+              className="w-full max-w-md flex flex-col items-center gap-8"
             >
-              <div className="w-full relative group">
-                <input
-                  autoFocus
-                  type="text"
-                  value={inputLocal}
-                  onChange={(e) => setInputLocal(e.target.value)}
-                  placeholder="COMMAND: ENTER LAST.FM USERNAME_"
-                  className="w-full bg-transparent border-b-2 border-emerald-500/20 dark:border-cyan-500/30 py-6 text-2xl md:text-4xl font-mono text-neutral-800 dark:text-cyan-400 outline-none focus:border-emerald-500 dark:focus:border-cyan-400 transition-all duration-1000 placeholder:text-neutral-200 dark:placeholder:text-cyan-900 text-center tracking-tight"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={!inputLocal.trim()}
-                className="group px-12 py-5 bg-emerald-600 dark:bg-cyan-500 text-white dark:text-black rounded-full dark:rounded-none text-[10px] font-bold dark:font-black tracking-[0.4em] uppercase shadow-2xl hover:bg-emerald-700 dark:hover:bg-cyan-400 transition-all active:scale-95 disabled:opacity-30 flex items-center gap-4"
-              >
-                Execute Analysis
-                <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
-              </button>
+              <input
+                autoFocus
+                type="text"
+                value={inputLocal}
+                onChange={(e) => setInputLocal(e.target.value)}
+                placeholder="enter last.fm username"
+                className="obs-input w-full bg-transparent border-b-2 py-3 text-2xl font-mono outline-none text-center transition-colors duration-200"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                  caretColor: "var(--accent)",
+                }}
+              />
+              <AnimatePresence>
+                {inputLocal.trim() && (
+                  <motion.button
+                    type="submit"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="font-mono text-[11px] tracking-widest transition-opacity duration-200 hover:opacity-60"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    analyse →
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </form>
           </motion.div>
         ) : (
-          /* DATA HORIZON */
+          /* ── RESULTS VIEW ────────────────────────────────────────── */
           <motion.div
-            key="discovery"
+            key="results-shell"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="w-full flex flex-col items-center"
+            transition={{ duration: 0.3 }}
           >
-            {/* Sub-Header: identity + period selector + share */}
-            <div className="w-full max-w-5xl flex flex-col gap-5 mb-16 pb-10 border-b border-emerald-500/10 dark:border-cyan-500/10">
-              <div className="flex justify-between items-start">
-                <div onClick={handleReset} className="cursor-pointer group flex flex-col gap-1">
-                  <h2 className="text-3xl font-serif dark:font-mono italic dark:not-italic text-neutral-900 dark:text-cyan-50 transition-all">
-                    Results for {username}
-                  </h2>
-                  <span className="text-[9px] tracking-widest text-emerald-600/50 dark:text-cyan-500/50 uppercase font-black group-hover:text-emerald-900 dark:group-hover:text-cyan-400 transition-all underline underline-offset-8">
-                    Click to reset session
-                  </span>
-                </div>
+            {/* Fixed top bar */}
+            <div
+              className="fixed top-0 left-0 right-0 z-40 h-12 flex items-center px-6 gap-4 border-b"
+              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+            >
+              {/* Wordmark spacer */}
+              <div className="w-40 shrink-0" />
 
-                {/* 3.6: Share button */}
-                <button
-                  onClick={handleShare}
-                  className="self-start text-[9px] font-mono tracking-[0.3em] uppercase px-5 py-2.5 border border-emerald-500/20 dark:border-cyan-500/20 text-emerald-600/60 dark:text-cyan-500/50 hover:border-emerald-500/60 dark:hover:border-cyan-400/50 hover:text-emerald-700 dark:hover:text-cyan-400 transition-all active:scale-95"
-                >
-                  {copied ? "COPIED ✓" : "↑ SHARE"}
-                </button>
-              </div>
+              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>
+                |
+              </span>
 
-              {/* 3.2: Period selector */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[8px] tracking-[0.4em] uppercase font-mono text-emerald-500/30 dark:text-cyan-500/20 mr-1">
-                  Period
-                </span>
+              {/* Username */}
+              <button
+                onClick={handleReset}
+                className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-50 shrink-0"
+                style={{ color: "var(--muted)" }}
+              >
+                {username}
+              </button>
+
+              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>
+                |
+              </span>
+
+              {/* Period pills */}
+              <div className="flex flex-wrap gap-1 flex-1 min-w-0">
                 {Object.entries(PERIOD_LABELS).map(([val, label]) => (
                   <button
                     key={val}
                     onClick={() => setPeriod(val)}
-                    className={`text-[9px] font-mono tracking-widest px-3 py-1.5 border transition-all active:scale-95 ${
-                      period === val
-                        ? "border-emerald-500 dark:border-cyan-400 text-emerald-700 dark:text-cyan-400 bg-emerald-50/50 dark:bg-cyan-950/30"
-                        : "border-emerald-500/15 dark:border-cyan-500/15 text-emerald-500/40 dark:text-cyan-500/25 hover:border-emerald-500/40 dark:hover:border-cyan-500/40 hover:text-emerald-600/70 dark:hover:text-cyan-500/60"
-                    }`}
+                    className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
+                    style={{
+                      borderColor: period === val ? "var(--accent)" : "var(--border)",
+                      color: period === val ? "var(--accent)" : "var(--dim)",
+                    }}
                   >
                     {label}
                   </button>
                 ))}
-                {/* D2: inline refresh indicator — stale results stay visible while new ones load */}
                 {isRefreshing && (
-                  <span className="text-[8px] font-mono tracking-widest uppercase text-cyan-400 dark:text-cyan-400 animate-pulse ml-2">
-                    REFRESHING...
+                  <span
+                    className="font-mono text-[9px] tracking-widest animate-pulse self-center ml-1"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    ...
                   </span>
                 )}
               </div>
+
+              {/* Share */}
+              <button
+                onClick={handleShare}
+                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60"
+                style={{ color: "var(--dim)" }}
+              >
+                {copied ? "copied" : "↑ share"}
+              </button>
             </div>
 
-            <AnimatePresence mode="wait">
-              {isInitialLoad ? (
-                <motion.div
-                  key="loading"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-12 py-32"
-                >
-                  <div className="w-48 h-[2px] bg-emerald-500/10 dark:bg-cyan-500/10 rounded-full overflow-hidden relative">
-                    <motion.div
-                      initial={{ left: "-100%" }}
-                      animate={{ left: "100%" }}
-                      transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                      className="absolute inset-0 w-1/2 bg-gradient-to-r from-transparent via-emerald-400 dark:via-cyan-400 to-transparent"
-                    />
-                  </div>
-                  <div className="flex flex-col items-center gap-4">
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-[10px] tracking-[0.4em] font-sans dark:font-mono text-emerald-600 dark:text-cyan-500 uppercase font-bold text-center max-w-sm leading-loose"
+            {/* Scrollable content */}
+            <div className="pt-12 min-h-screen">
+              <AnimatePresence mode="wait">
+                {isInitialLoad ? (
+                  /* ── LOADING ──────────────────────────────────────── */
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center justify-center gap-6 pt-40"
+                  >
+                    <div
+                      className="relative w-48 h-px overflow-hidden"
+                      style={{ background: "var(--border)" }}
                     >
-                      Mapping the subterranean currents...
-                    </motion.p>
+                      <motion.div
+                        initial={{ x: "-100%" }}
+                        animate={{ x: "200%" }}
+                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                        className="absolute inset-y-0 w-1/2"
+                        style={{
+                          background:
+                            "linear-gradient(to right, transparent, var(--accent), transparent)",
+                        }}
+                      />
+                    </div>
+                    <p
+                      className="font-mono text-[11px] tracking-widest"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      calibrating sonar...
+                    </p>
                     {wakingUp && (
-                      <p className="text-[9px] tracking-widest text-emerald-500 dark:text-cyan-500 animate-pulse font-mono mt-4">
-                        [SYSTEM] WAKING UP ENGINE... ESTABLISHING CONNECTION TO RENDER CLOUD...
+                      <p
+                        className="font-mono text-[10px] tracking-wider animate-pulse"
+                        style={{ color: "var(--dim)" }}
+                      >
+                        waking up — this may take a moment
                       </p>
                     )}
-                  </div>
-                </motion.div>
-              ) : error && !isRefreshing ? (
-                /* ERROR STATE — only shown when we don't have stale results to display */
-                <motion.div
-                  key="error"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-center gap-8 py-32"
-                >
-                  <p className="text-[11px] tracking-[0.35em] font-mono text-red-500 dark:text-red-400 uppercase text-center max-w-md leading-loose">
-                    {error}
-                  </p>
-                  <button
-                    onClick={() => setFetchTrigger(t => t + 1)}
-                    className="px-8 py-3 border border-red-500/40 dark:border-red-400/30 text-red-500 dark:text-red-400 text-[9px] tracking-[0.4em] uppercase font-mono hover:bg-red-500/10 transition-all active:scale-95"
+                  </motion.div>
+                ) : error && !isRefreshing ? (
+                  /* ── ERROR ────────────────────────────────────────── */
+                  <motion.div
+                    key="error"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center justify-center gap-6 pt-40 px-6"
                   >
-                    Retry Analysis →
-                  </button>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="results"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 1.5 }}
-                  className="w-full max-w-5xl flex flex-col gap-16"
-                >
-                  {/* Low-data warning */}
-                  {lowDataMessage && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="w-full border border-amber-500/30 dark:border-yellow-500/20 bg-amber-50/50 dark:bg-yellow-950/20 px-6 py-4"
+                    <p
+                      className="font-mono text-[11px] tracking-wider text-center max-w-md leading-loose"
+                      style={{ color: "var(--discovery)" }}
                     >
-                      <p className="text-[10px] tracking-[0.3em] font-mono text-amber-700 dark:text-yellow-400 uppercase leading-loose">
-                        [WARN] {lowDataMessage}
-                      </p>
-                    </motion.div>
-                  )}
-
-                  {/* D9: OBSCURITY_INDEX hero — the headline number */}
-                  {depthScore > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.3 }}
-                      className="flex flex-col items-center gap-2 py-4"
+                      {error}
+                    </p>
+                    <button
+                      onClick={() => setFetchTrigger((t) => t + 1)}
+                      className="font-mono text-[10px] tracking-widest px-6 py-2 border transition-opacity duration-150 hover:opacity-70"
+                      style={{ borderColor: "var(--discovery)", color: "var(--discovery)" }}
                     >
-                      <span className="text-[8px] tracking-[0.6em] uppercase font-mono text-emerald-500/40 dark:text-cyan-500/30">
-                        Obscurity Index
-                      </span>
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-7xl md:text-9xl font-mono font-thin text-emerald-800 dark:text-cyan-300 tabular-nums">
-                          {depthScore.toFixed(0)}
-                        </span>
-                        <span className="text-2xl font-mono text-emerald-400/40 dark:text-cyan-500/30">/ 100</span>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {topGenres.length > 0 && (
-                    <PortfolioSummary
-                      genres={topGenres}
-                      seedsAnalyzed={activeSeedCount}
-                      totalPool={artists.length}
-                      deepestDate={deepestDate}
-                    />
-                  )}
-
-                  {/* Iceberg Visual — collapsible, default open (TASTE #3) */}
-                  {sortedArtists.length > 0 && (
-                    <div className="flex flex-col gap-4">
-                      <button
-                        onClick={() => setIcebergOpen(o => !o)}
-                        className="self-start text-[9px] tracking-[0.4em] font-mono uppercase text-emerald-600/60 dark:text-cyan-500/60 hover:text-emerald-700 dark:hover:text-cyan-400 transition-all"
+                      retry →
+                    </button>
+                  </motion.div>
+                ) : (
+                  /* ── RESULTS ──────────────────────────────────────── */
+                  <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
+                    {lowDataMessage && (
+                      <div
+                        className="border px-5 py-3"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
                       >
-                        {icebergOpen ? "▼ SONAR MAP" : "▶ SONAR MAP"}
-                      </button>
-                      <AnimatePresence>
-                        {icebergOpen && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.4 }}
-                            className="overflow-hidden"
-                          >
-                            <IcebergVisual artists={sortedArtists} />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
+                        <p
+                          className="font-mono text-[10px] tracking-wider leading-loose"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          [WARN] {lowDataMessage}
+                        </p>
+                      </div>
+                    )}
 
-                  {sortedArtists.length > 0 && (
-                    <ArtistList
-                      artists={sortedArtists}
-                      sortBy={sortBy}
-                      setSortBy={setSortBy}
-                      stickinessThreshold={stickinessThreshold}
-                    />
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    {/* Depth Assessment */}
+                    {depthScore > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.6 }}
+                        className="flex flex-col gap-3 pb-8 border-b"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <Tooltip text="A score from 0–100. Higher means your taste skews toward artists with small but dedicated fanbases — the deeper the cut, the higher the score.">
+                          <span
+                            className="font-mono text-[10px] tracking-widest uppercase"
+                            style={{ color: "var(--dim)" }}
+                          >
+                            obscurity index
+                          </span>
+                        </Tooltip>
+                        <div className="flex items-baseline gap-3">
+                          <span
+                            className="font-serif text-7xl sm:text-8xl font-bold italic leading-none"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            {depthScore.toFixed(0)}
+                          </span>
+                          <span className="font-mono text-sm" style={{ color: "var(--dim)" }}>
+                            / 100
+                          </span>
+                        </div>
+                        {depthProse && (
+                          <p
+                            className="font-body text-lg font-light italic"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            {depthProse}
+                          </p>
+                        )}
+                        <Tooltip text="Seeds are artists from your listening history used to find recommendations. Candidates are all similar artists evaluated before filtering.">
+                          <p
+                            className="font-mono text-[10px] tracking-wider"
+                            style={{ color: "var(--dim)" }}
+                          >
+                            {activeSeedCount} seeds · {artists.length} candidates
+                          </p>
+                        </Tooltip>
+                      </motion.div>
+                    )}
+
+                    {/* Sonar Map */}
+                    {sortedArtists.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2, duration: 0.6 }}
+                        className="flex flex-col gap-3"
+                      >
+                        <Tooltip text="Artists plotted by obscurity depth. Higher up = more mainstream (more listeners). Lower = deeper cuts. Hover a dot to see the artist.">
+                          <button
+                            onClick={() => setIcebergOpen((o) => !o)}
+                            className="self-start font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
+                            style={{ color: "var(--dim)" }}
+                          >
+                            {icebergOpen ? "▼" : "▶"} sonar map
+                          </button>
+                        </Tooltip>
+                        <AnimatePresence>
+                          {icebergOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.35 }}
+                              className="overflow-hidden"
+                            >
+                              <IcebergVisual artists={sortedArtists} />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    )}
+
+                    {/* Artist List */}
+                    {sortedArtists.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.4, duration: 0.6 }}
+                      >
+                        <ArtistList
+                          artists={filteredArtists}
+                          sortBy={sortBy}
+                          setSortBy={(val) => setSortBy(val as SortType)}
+                          stickinessThreshold={stickinessThreshold}
+                          availableGeoTags={availableGeoTags}
+                          selectedGeoTags={selectedGeoTags}
+                          setSelectedGeoTags={setSelectedGeoTags}
+                        />
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

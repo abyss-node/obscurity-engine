@@ -6,12 +6,23 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 const MAX_SEEDS: usize = 100;
-const SIMILAR_CONCURRENCY: usize = 5;
-const INFO_CONCURRENCY: usize = 8;
-// E1: Hard page cap prevents 300k-scrobble users from triggering 225s+ timeouts on Render free tier
-const MAX_PAGES: u32 = 50;
+const SIMILAR_CONCURRENCY: usize = 8;
+const INFO_CONCURRENCY: usize = 12;
 // A3: Cap per-seed conviction to prevent one dominant artist flooding the ranking
 const CONVICTION_CAP: f64 = 3.0;
+
+fn normalize_artist_name(name: &str) -> String {
+    let lower = name.trim().to_lowercase();
+    // Strip leading "the " so "The Cure" and "Cure" don't duplicate
+    let s = lower.strip_prefix("the ").unwrap_or(&lower);
+    // Keep only alphanumerics and spaces; collapse whitespace
+    s.chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 fn parse_period(period_str: &str) -> TimePeriod {
     match period_str {
@@ -24,153 +35,88 @@ fn parse_period(period_str: &str) -> TimePeriod {
     }
 }
 
-/// Returns the unix timestamp for the start of the period, or None for 'overall'
-fn period_from_timestamp(period: TimePeriod) -> Option<u64> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    match period {
-        TimePeriod::SevenDay   => Some(now.saturating_sub(7 * 86400)),
-        TimePeriod::OneMonth   => Some(now.saturating_sub(30 * 86400)),
-        TimePeriod::ThreeMonth => Some(now.saturating_sub(90 * 86400)),
-        TimePeriod::SixMonth   => Some(now.saturating_sub(180 * 86400)),
-        TimePeriod::TwelveMonth => Some(now.saturating_sub(365 * 86400)),
-        TimePeriod::Overall    => None,
-    }
-}
-
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
     username: String,
     period_str: String,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
-    let period = parse_period(&period_str);
-    let from_ts = period_from_timestamp(period);
+    // ── 1. Collect seeds ──────────────────────────────────────────────────────
+    let mut seed_weights: HashMap<String, f64> = HashMap::new();
+    let mut active_seeds: Vec<String> = Vec::new();
+    let deepest_date: Option<String> = None;
 
-    // ── 0. Dynamic threshold calc ─────────────────────────────────────────────
-    let mut total_unique_artists: f64 = 0.0;
-    match client.fetch_user_top_artists(&username, 1, period).await {
-        Ok(top) => {
-            if let Some(attr) = top.topartists.attr {
-                if let Ok(t) = attr.total.parse::<f64>() {
-                    total_unique_artists = t;
-                    println!("DEBUG: {} total unique artists in library", total_unique_artists);
+    if period_str == "blend" {
+        // Blend mode: fetch all 6 periods in parallel, weight each by 7/days to
+        // normalise playcounts to a comparable per-week rate before summing.
+        let blend_periods: [(TimePeriod, f64); 6] = [
+            (TimePeriod::SevenDay,    1.0),
+            (TimePeriod::OneMonth,    7.0 / 30.0),
+            (TimePeriod::ThreeMonth,  7.0 / 90.0),
+            (TimePeriod::SixMonth,    7.0 / 180.0),
+            (TimePeriod::TwelveMonth, 7.0 / 365.0),
+            (TimePeriod::Overall,     7.0 / 1095.0),
+        ];
+
+        let mut period_futures = FuturesUnordered::new();
+        for (p, factor) in &blend_periods {
+            let c = Arc::clone(&client);
+            let u = username.clone();
+            let p = *p;
+            let f = *factor;
+            period_futures.push(tokio::spawn(async move {
+                let res = c.fetch_user_top_artists(&u, 200, p).await;
+                (res, f)
+            }));
+        }
+
+        let mut merged: HashMap<String, f64> = HashMap::new();
+        while let Some(res) = period_futures.next().await {
+            if let Ok((Ok(top_response), factor)) = res {
+                for artist in top_response.topartists.artist.into_iter().take(MAX_SEEDS) {
+                    let plays = artist.playcount.as_ref()
+                        .and_then(|p| p.parse::<f64>().ok())
+                        .unwrap_or(1.0)
+                        .max(1.0);
+                    *merged.entry(artist.name).or_insert(0.0) += plays.log2().max(1.0) * factor;
                 }
             }
-        },
-        Err(e) => eprintln!("WARNING: Could not fetch total artists: {}. Using fallback.", e),
-    }
+        }
 
-    // ── 1. Reverse Scrobble Search (sequential, but minimal delay) ────────────
-    let mut page = 1u32;
-    let mut artist_plays: HashMap<String, u64> = HashMap::new();
-    // A4: tracks the most recent scrobble unix timestamp per artist for time-weighting
-    let mut artist_last_scrobble: HashMap<String, i64> = HashMap::new();
-    let mut active_seeds_set: HashSet<String> = HashSet::new();
-    let mut active_seeds: Vec<String> = Vec::new();
-    let mut deepest_date: Option<String> = None;
-    let mut dynamic_threshold: u64 = 15;
-    let mut threshold_calculated = false;
-    let mut total_pages: u32 = 1;
+        let mut sorted: Vec<(String, f64)> = merged.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.truncate(MAX_SEEDS);
 
-    loop {
-        // Minimal delay — just enough to stay within 5 req/s on Last.fm
-        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        if sorted.is_empty() {
+            return Err("No listening history found for this user.".into());
+        }
 
-        let recent_res = match client.fetch_recent_tracks(&username, 200, page, from_ts).await {
-            Ok(res) => res,
-            Err(e) => {
-                eprintln!("Error fetching recent tracks page {}: {}", page, e);
-                break;
-            }
+        for (name, weight) in sorted {
+            seed_weights.insert(name.clone(), weight);
+            active_seeds.push(name);
+        }
+        println!("BLEND: {} merged seeds across all periods", active_seeds.len());
+    } else {
+        // Single period: one fast gettopartists call
+        let period = parse_period(&period_str);
+        let top_response = match client.fetch_user_top_artists(&username, 200, period).await {
+            Ok(r) => r,
+            Err(e) => return Err(format!("Failed to fetch top artists: {}", e).into()),
         };
 
-        // Grab total pages on first fetch
-        if page == 1 {
-            if let Ok(tp) = recent_res.recenttracks.attr.total_pages.parse::<u32>() {
-                total_pages = tp;
-                println!("DEBUG: {} total pages in scrobble history", total_pages);
-            }
+        let top_artists = top_response.topartists.artist;
+        if top_artists.is_empty() {
+            return Err("No listening history found for this user.".into());
         }
 
-        // Calculate dynamic threshold once
-        if !threshold_calculated {
-            if let Some(ref total_str) = recent_res.recenttracks.attr.total {
-                if let Ok(total_scrobbles) = total_str.parse::<f64>() {
-                    if total_unique_artists > 0.0 {
-                        let avg = total_scrobbles / total_unique_artists;
-                        dynamic_threshold = (avg * 1.1).ceil() as u64;
-                        if dynamic_threshold < 5 { dynamic_threshold = 5; }
-                        if dynamic_threshold > 50 { dynamic_threshold = 50; } // cap it - don't make seeds impossible
-                        println!("SUCCESS: Dynamic seed threshold: {} ({} scrobbles / {} artists)", 
-                            dynamic_threshold, total_scrobbles, total_unique_artists);
-                    } else {
-                        dynamic_threshold = 10;
-                    }
-                    threshold_calculated = true;
-                }
-            }
+        for artist in top_artists.into_iter().take(MAX_SEEDS) {
+            let plays = artist.playcount.as_ref()
+                .and_then(|p| p.parse::<f64>().ok())
+                .unwrap_or(1.0)
+                .max(1.0);
+            seed_weights.insert(artist.name.clone(), plays.log2().max(1.0));
+            active_seeds.push(artist.name);
         }
-
-        // Adaptive widening — lower threshold if we're struggling
-        if page % 10 == 0 && active_seeds.len() < 20 && dynamic_threshold > 5 {
-            dynamic_threshold = (dynamic_threshold as f64 * 0.75).ceil() as u64;
-            if dynamic_threshold < 5 { dynamic_threshold = 5; }
-            println!("RELAXING: Seed threshold dropped to {}", dynamic_threshold);
-        }
-
-        let tracks = recent_res.recenttracks.track;
-        if tracks.is_empty() { break; }
-
-        for track in tracks {
-            if let Some(ref d) = track.date {
-                deepest_date = Some(d.text.clone());
-            }
-            let artist_name = track.artist.name;
-            let counter = artist_plays.entry(artist_name.clone()).or_insert(0);
-            *counter += 1;
-            // A4: record the most recent scrobble timestamp for time-weighted seed scoring
-            if let Some(ref d) = track.date {
-                if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&d.text, "%d %b %Y, %H:%M") {
-                    let ts = dt.and_utc().timestamp();
-                    let entry = artist_last_scrobble.entry(artist_name.clone()).or_insert(0);
-                    if ts > *entry { *entry = ts; }
-                }
-            }
-
-            if *counter >= dynamic_threshold && !active_seeds_set.contains(&artist_name) {
-                active_seeds_set.insert(artist_name.clone());
-                active_seeds.push(artist_name);
-            }
-
-            if active_seeds.len() >= MAX_SEEDS { break; }
-        }
-
-        if active_seeds.len() >= MAX_SEEDS { break; }
-        if page >= total_pages { break; }
-        if page >= MAX_PAGES { break; }  // E1: hard cap to prevent timeout on large libraries
-        page += 1;
-    }
-
-    println!("SEEDS COLLECTED: {} seeds across {} scrobble pages", active_seeds.len(), page);
-
-    // A4: time-weighted seed scoring — recent listening is stronger discovery signal
-    let now_ts = chrono::Utc::now().timestamp();
-    let mut seed_weights: HashMap<String, f64> = HashMap::new();
-    for name in &active_seeds {
-        let plays = *artist_plays.get(name).unwrap_or(&dynamic_threshold);
-        let base_multiplier = (plays as f64) / (dynamic_threshold as f64);
-        let recency_mult = artist_last_scrobble.get(name)
-            .map(|&last_ts| {
-                let days_ago = (now_ts - last_ts).max(0) / 86400;
-                if days_ago <= 30 { 2.0_f64 }
-                else if days_ago <= 90 { 1.5_f64 }
-                else { 1.0_f64 }
-            })
-            .unwrap_or(1.0);
-        seed_weights.insert(name.clone(), base_multiplier * recency_mult);
+        println!("SEEDS COLLECTED: {} seeds from user.gettopartists", active_seeds.len());
     }
 
     // ── 1.5. Phase 5: Dual-graph — derive genre tags from top seeds, fetch tag-graph ──
@@ -227,7 +173,7 @@ pub async fn discover_obscure_artists(
         while let Some(res) = tag_fetch_futures.next().await {
             if let Ok(Ok(artists)) = res {
                 for a in artists {
-                    candidates.insert(a.name.to_lowercase());
+                    candidates.insert(normalize_artist_name(&a.name));
                 }
             }
         }
@@ -252,14 +198,17 @@ pub async fn discover_obscure_artists(
         }));
     }
 
-    let mut candidate_map: HashMap<String, Vec<String>> = HashMap::new();
+    // (normalized_name → (display_name, recommenders))
+    let mut candidate_map: HashMap<String, (String, Vec<String>)> = HashMap::new();
 
     while let Some(res) = similar_fetch_futures.next().await {
         if let Ok((seed_name, Ok(similar_res))) = res {
             for sim_artist in similar_res.similarartists.artist {
-                candidate_map.entry(sim_artist.name)
-                    .or_default()
-                    .push(seed_name.clone());
+                let norm = normalize_artist_name(&sim_artist.name);
+                let entry = candidate_map
+                    .entry(norm)
+                    .or_insert_with(|| (sim_artist.name.clone(), Vec::new()));
+                entry.1.push(seed_name.clone());
             }
         }
     }
@@ -270,7 +219,7 @@ pub async fn discover_obscure_artists(
     let info_semaphore = Arc::new(Semaphore::new(INFO_CONCURRENCY));
     let mut info_fetch_futures = FuturesUnordered::new();
 
-    for (name, recommenders) in candidate_map {
+    for (_norm, (name, recommenders)) in candidate_map {
         let c = Arc::clone(&client);
         let u = username.clone();
         let sem = Arc::clone(&info_semaphore);
@@ -307,7 +256,7 @@ pub async fn discover_obscure_artists(
             }
 
             // Phase 5: cross-validate against tag graph; flat +0.5 bonus if confirmed by both signals
-            let cross_validated = tag_candidates.contains(&artist.name.to_lowercase());
+            let cross_validated = tag_candidates.contains(&normalize_artist_name(&artist.name));
             if cross_validated {
                 weighted_conviction += 0.5;
             }
