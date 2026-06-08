@@ -172,19 +172,19 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
           <div className="mt-6 pt-6 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
             <div className="grid grid-cols-3 gap-6">
               <div className="flex flex-col gap-1">
-                <Tooltip text="How many of your top artists led to this recommendation via similar-artist expansion.">
+                <Tooltip text="How strongly your listening history points toward this track. 10 = recommended by many of your top artists.">
                   <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {(track.conviction_score / 100).toFixed(2)}
+                  {Math.min(track.conviction_score / 300, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div className="flex flex-col gap-1 border-l pl-6" style={{ borderColor: "var(--border)" }}>
-                <Tooltip text="Playcount ÷ listeners. High = dedicated repeat listeners.">
+                <Tooltip text="Plays-per-listener ratio — high stickiness means fans keep coming back. 10 = extremely dedicated fanbase.">
                   <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {track.stickiness_score.toFixed(2)}
+                  {Math.min(track.stickiness_score / 2, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div className="flex flex-col gap-1 border-l pl-6" style={{ borderColor: "var(--border)" }}>

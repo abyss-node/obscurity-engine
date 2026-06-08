@@ -143,7 +143,7 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
           >
             <div className="grid grid-cols-3 gap-6">
               <div className="flex flex-col gap-1">
-                <Tooltip text="How many artists you already love point toward this one.">
+                <Tooltip text="How strongly your listening history points toward this artist. 10 = recommended by many of your top artists.">
                   <span
                     className="font-mono text-[9px] tracking-widest uppercase"
                     style={{ color: "var(--dim)" }}
@@ -152,14 +152,14 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                   </span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {(artist.conviction_score / 100).toFixed(2)}
+                  {Math.min(artist.conviction_score / 300, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div
                 className="flex flex-col gap-1 border-l pl-6"
                 style={{ borderColor: "var(--border)" }}
               >
-                <Tooltip text="Ratio of monthly to total listeners — high stickiness means people keep coming back.">
+                <Tooltip text="Plays-per-listener ratio — high stickiness means fans keep coming back. 10 = extremely dedicated fanbase.">
                   <span
                     className="font-mono text-[9px] tracking-widest uppercase"
                     style={{ color: "var(--dim)" }}
@@ -168,7 +168,7 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                   </span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {artist.stickiness_score.toFixed(2)}
+                  {Math.min(artist.stickiness_score / 2, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div
