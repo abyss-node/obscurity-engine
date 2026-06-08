@@ -619,13 +619,13 @@ export default function Home() {
                         transition={{ delay: 0.2, duration: 0.6 }}
                         className="flex flex-col gap-3"
                       >
-                        <Tooltip text="Artists plotted by obscurity depth. Higher up = more mainstream (more listeners). Lower = deeper cuts. Hover a dot to see the artist.">
+                        <Tooltip text="Artists grouped by listener depth: SURFACE (10K+), MID (3K–10K), DEEP (500–3K), ABYSS (<500). Lower tier = more underground.">
                           <button
                             onClick={() => setIcebergOpen((o) => !o)}
                             className="self-start font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
                             style={{ color: "var(--dim)" }}
                           >
-                            {icebergOpen ? "▼" : "▶"} sonar map
+                            {icebergOpen ? "▼" : "▶"} depth map
                           </button>
                         </Tooltip>
                         <AnimatePresence>

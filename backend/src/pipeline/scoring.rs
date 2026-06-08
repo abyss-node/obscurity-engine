@@ -1,17 +1,16 @@
 /// Phase 3+4: score candidates, enforce diversity, compute the depth score.
 ///
 /// For each candidate:
-/// 1. Fetch artist info (listener count, tags, user play count)
-/// 2. Filter out artists the user already listens to
-/// 3. Filter out artists above the listener ceiling (too mainstream)
+/// 1. Fetch all artist info (filter only user's already-heard artists)
+/// 2. Compute genre-relative listener ceilings from the full candidate pool
+/// 3. Filter out artists above their genre ceiling (too mainstream for their scene)
 /// 4. Score: conviction (weighted recommender count) × stickiness (monthly/total listeners)
 /// 5. Cross-validation bonus if the artist also appeared in the tag graph
 ///
 /// Post-processing:
 /// - Aggregate genre weights from the result set
 /// - Compute taste_alignment per artist (tag overlap with user genre profile)
-/// - Diversity enforcement: cap at 3 artists per primary genre to prevent
-///   one genre from monopolising the results
+/// - Diversity enforcement: cap at 3 artists per primary genre
 /// - Depth score: listener-weighted obscurity metric (0–100)
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -24,9 +23,14 @@ use super::seeds::Seeds;
 use super::candidates::CandidateMap;
 
 const INFO_CONCURRENCY: usize = 12;
-const MAX_LISTENER_CEILING: u64 = 25_000;
-/// Cap each seed's contribution to conviction so one dominant artist
-/// doesn't flood the ranking at the expense of multi-seed agreement
+/// Accept artists up to this multiple above their genre's median listener count.
+const GENRE_CEILING_MULTIPLIER: f64 = 2.0;
+/// Hard cap regardless of genre — no truly mainstream artists.
+const ABSOLUTE_LISTENER_CAP: u64 = 75_000;
+/// Min samples needed to trust a genre's median; smaller buckets fall back to global median.
+const MIN_GENRE_SAMPLES: usize = 3;
+/// Fallback ceiling when a genre bucket is too small.
+const FALLBACK_CEILING: u64 = 25_000;
 const CONVICTION_CAP: f64 = 3.0;
 const CROSS_VALIDATION_BONUS: f64 = 0.5;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
@@ -42,13 +46,12 @@ pub async fn score_and_rank(
     Ok(post_process(scored, seeds.weights.len()))
 }
 
-async fn fetch_and_score(
+/// Fetch raw artist info for all candidates, filtering only artists the user already plays.
+async fn fetch_all_raw(
     client: &Arc<LastfmClient>,
     username: &str,
     candidate_map: CandidateMap,
-    seeds: &Seeds,
-    tag_candidates: &HashSet<String>,
-) -> Vec<DiscoveryResponseItem> {
+) -> Vec<(Artist, Vec<String>)> {
     let semaphore = Arc::new(Semaphore::new(INFO_CONCURRENCY));
     let mut info_futures = FuturesUnordered::new();
 
@@ -63,20 +66,91 @@ async fn fetch_and_score(
         }));
     }
 
-    let mut scored_artists = Vec::new();
+    let mut raw = Vec::new();
     while let Some(task_result) = info_futures.next().await {
         if let Ok((Ok(info_response), recommenders)) = task_result {
-            if let Some(item) = score_candidate(info_response.artist, recommenders, seeds, tag_candidates) {
-                scored_artists.push(item);
+            let artist = info_response.artist;
+            let user_plays = artist.stats.userplaycount.as_ref()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            if user_plays > 0 {
+                continue;
             }
+            raw.push((artist, recommenders));
         }
     }
+    raw
+}
 
-    scored_artists.sort_by(|a, b| {
+fn primary_tag(artist: &Artist) -> String {
+    artist.tags.as_ref()
+        .and_then(|tags| tags.tag.first())
+        .map(|t| t.name.to_lowercase())
+        .unwrap_or_else(|| "untagged".to_string())
+}
+
+fn median_u64(values: &mut Vec<u64>) -> Option<u64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    let mid = values.len() / 2;
+    Some(if values.len() % 2 == 0 {
+        (values[mid - 1] + values[mid]) / 2
+    } else {
+        values[mid]
+    })
+}
+
+/// Compute per-genre listener ceilings from the raw candidate pool.
+/// Genre = primary tag (top_tags[0]). Falls back to global median for small buckets.
+fn compute_genre_ceilings(raw: &[(Artist, Vec<String>)]) -> HashMap<String, u64> {
+    let mut genre_listeners: HashMap<String, Vec<u64>> = HashMap::new();
+    let mut all_listeners: Vec<u64> = Vec::new();
+
+    for (artist, _) in raw {
+        let listeners = artist.stats.listeners;
+        all_listeners.push(listeners);
+        genre_listeners.entry(primary_tag(artist)).or_default().push(listeners);
+    }
+
+    let global_median = median_u64(&mut all_listeners).unwrap_or(FALLBACK_CEILING);
+    println!("GENRE_CEILINGS: global median listeners = {}", global_median);
+
+    let mut ceilings = HashMap::new();
+    for (genre, mut counts) in genre_listeners {
+        let median = if counts.len() >= MIN_GENRE_SAMPLES {
+            median_u64(&mut counts).unwrap_or(global_median)
+        } else {
+            global_median
+        };
+        let ceiling = ((median as f64) * GENRE_CEILING_MULTIPLIER) as u64;
+        ceilings.insert(genre, ceiling.min(ABSOLUTE_LISTENER_CAP));
+    }
+    ceilings
+}
+
+async fn fetch_and_score(
+    client: &Arc<LastfmClient>,
+    username: &str,
+    candidate_map: CandidateMap,
+    seeds: &Seeds,
+    tag_candidates: &HashSet<String>,
+) -> Vec<DiscoveryResponseItem> {
+    let raw = fetch_all_raw(client, username, candidate_map).await;
+    let genre_ceilings = compute_genre_ceilings(&raw);
+
+    let mut scored: Vec<DiscoveryResponseItem> = raw
+        .into_iter()
+        .filter_map(|(artist, recommenders)| {
+            score_candidate(artist, recommenders, seeds, tag_candidates, &genre_ceilings)
+        })
+        .collect();
+
+    scored.sort_by(|a, b| {
         b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal)
     });
-
-    scored_artists
+    scored
 }
 
 fn score_candidate(
@@ -84,21 +158,15 @@ fn score_candidate(
     recommenders: Vec<String>,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    genre_ceilings: &HashMap<String, u64>,
 ) -> Option<DiscoveryResponseItem> {
-    // Skip artists the user already listens to
-    let user_plays = artist.stats.userplaycount.as_ref()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-    if user_plays > 0 {
+    // Genre-relative ceiling: reject artists more than 2× above their genre's median
+    let genre = primary_tag(&artist);
+    let ceiling = genre_ceilings.get(&genre).copied().unwrap_or(FALLBACK_CEILING);
+    if artist.stats.listeners > ceiling {
         return None;
     }
 
-    // Skip artists above the listener ceiling (too mainstream to surface)
-    if artist.stats.listeners > MAX_LISTENER_CEILING {
-        return None;
-    }
-
-    // Deduplicate recommenders; compute conviction as weighted sum of seed weights
     let mut unique_recommenders = recommenders;
     unique_recommenders.sort();
     unique_recommenders.dedup();
@@ -113,7 +181,6 @@ fn score_candidate(
         }
     }
 
-    // Bonus if the artist was independently confirmed by the tag graph
     let cross_validated = tag_candidates.contains(&normalize_artist_name(&artist.name));
     if cross_validated {
         weighted_conviction += CROSS_VALIDATION_BONUS;
@@ -147,7 +214,6 @@ fn score_candidate(
 fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize) -> DiscoveryResponse {
     let top_genres = aggregate_genres(&artists);
 
-    // taste_alignment: fraction of this artist's tags that overlap the user's genre profile
     let genre_weight_map: HashMap<String, f64> = top_genres.iter()
         .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
         .collect();
@@ -204,8 +270,6 @@ fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
     genres
 }
 
-/// Keep at most DIVERSITY_SLOTS_PER_GENRE artists per primary genre.
-/// "Primary genre" = the tag with the highest weight in the user's profile.
 fn enforce_diversity(
     artists: Vec<DiscoveryResponseItem>,
     genre_weight_map: &HashMap<String, f64>,
@@ -226,13 +290,12 @@ fn enforce_diversity(
 }
 
 /// Depth score (0–100): listener-weighted average obscurity across the result set.
-/// Ceiling is log10(MAX_LISTENER_CEILING + 1). An artist with 1 listener scores
-/// near 100; one with 25,000 scores near 0.
+/// Uses ABSOLUTE_LISTENER_CAP as the ceiling reference so scores spread across the full range.
 fn compute_depth_score(artists: &[DiscoveryResponseItem]) -> f64 {
     if artists.is_empty() {
         return 0.0;
     }
-    let ceiling = (MAX_LISTENER_CEILING as f64 + 1.0).log10();
+    let ceiling = (ABSOLUTE_LISTENER_CAP as f64 + 1.0).log10();
     let total_weight: f64 = artists.iter().map(|a| a.composite_score).sum();
     if total_weight <= 0.0 {
         return 0.0;
