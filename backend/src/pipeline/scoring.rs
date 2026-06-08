@@ -79,14 +79,26 @@ async fn fetch_and_score(
         }));
     }
 
-    let mut scored_artists = Vec::new();
+    // Collect all raw results first so we can build a listener map for collab checks.
+    let mut raw: Vec<(Artist, Vec<String>)> = Vec::new();
     while let Some(task_result) = info_futures.next().await {
         if let Ok((Ok(info_response), recommenders)) = task_result {
-            if let Some(item) = score_candidate(info_response.artist, recommenders, seeds, tag_candidates) {
-                scored_artists.push(item);
-            }
+            raw.push((info_response.artist, recommenders));
         }
     }
+
+    // Map of normalised name → listener count, used to verify collab components.
+    // e.g. "Kendrick Lamar & SZA" → check "kendrick lamar" and "sza" individually.
+    let listener_map: HashMap<String, u64> = raw.iter()
+        .map(|(a, _)| (normalize_artist_name(&a.name), a.stats.listeners))
+        .collect();
+
+    let mut scored_artists: Vec<DiscoveryResponseItem> = raw
+        .into_iter()
+        .filter_map(|(artist, recommenders)| {
+            score_candidate(artist, recommenders, seeds, tag_candidates, &listener_map)
+        })
+        .collect();
 
     scored_artists.sort_by(|a, b| {
         b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal)
@@ -95,11 +107,22 @@ async fn fetch_and_score(
     scored_artists
 }
 
+fn collab_components(name: &str) -> Vec<String> {
+    let lower = name.to_lowercase();
+    for sep in &[" & ", " feat. ", " ft. ", " x "] {
+        if lower.contains(sep) {
+            return name.split(sep).map(|s| s.trim().to_string()).collect();
+        }
+    }
+    vec![]
+}
+
 fn score_candidate(
     mut artist: Artist,
     recommenders: Vec<String>,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    listener_map: &HashMap<String, u64>,
 ) -> Option<DiscoveryResponseItem> {
     // Skip artists the user already listens to
     let user_plays = artist.stats.userplaycount.as_ref()
@@ -112,6 +135,19 @@ fn score_candidate(
     // Skip artists above the listener ceiling (too mainstream to surface)
     if artist.stats.listeners > MAX_LISTENER_CEILING {
         return None;
+    }
+
+    // For collaboration names (e.g. "Kendrick Lamar & SZA"), reject if any
+    // component artist is individually above the ceiling. The joint entity can
+    // have far fewer listeners than either artist alone, bypassing the filter.
+    let components = collab_components(&artist.name);
+    if !components.is_empty() {
+        for component in &components {
+            let norm = normalize_artist_name(component);
+            if listener_map.get(&norm).map_or(false, |&l| l > MAX_LISTENER_CEILING) {
+                return None;
+            }
+        }
     }
 
     // Deduplicate recommenders; compute conviction as weighted sum of seed weights
