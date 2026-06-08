@@ -22,8 +22,9 @@ use super::track_seeds::TrackSeeds;
 
 const INFO_CONCURRENCY: usize = 10;
 const MAX_LISTENER_CEILING: u64 = 50_000;
-const DIVERSITY_SLOTS_PER_GENRE: usize = 10;
+const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
+const MAX_RESULTS: usize = 30;
 
 pub async fn score_and_rank(
     client: &Arc<LastfmClient>,
@@ -103,13 +104,18 @@ fn score_candidate(
     let composite = conviction * stickiness * 10_000.0;
     let conv_score = (conviction * 100.0) as usize;
 
-    let top_tags: Vec<String> = info
+    let mut top_tags: Vec<String> = info
         .toptags
         .map(|mut t| {
             t.tag.truncate(5);
             t.tag.into_iter().map(|tag| tag.name).collect()
         })
         .unwrap_or_default();
+    // Last.fm rarely tags individual tracks; fall back to artist name so the
+    // diversity enforcer doesn't bucket all untagged tracks into one slot.
+    if top_tags.is_empty() {
+        top_tags.push(artist.to_lowercase());
+    }
 
     Some(TrackDiscoveryItem {
         name: track_name,
@@ -140,7 +146,8 @@ fn post_process(mut tracks: Vec<TrackDiscoveryItem>, seed_count: usize) -> Track
         t.taste_alignment = (alignment / 5.0).min(1.0);
     }
 
-    let diverse = enforce_diversity(tracks, &genre_weight_map);
+    let mut diverse = enforce_diversity(tracks, &genre_weight_map);
+    diverse.truncate(MAX_RESULTS);
     let depth_score = compute_depth_score(&diverse);
 
     println!("TRACK_DONE: {} tracks after diversity pass", diverse.len());
