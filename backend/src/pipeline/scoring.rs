@@ -23,6 +23,10 @@ use super::seeds::Seeds;
 use super::candidates::CandidateMap;
 
 const INFO_CONCURRENCY: usize = 12;
+/// Cap candidates sent to the info-fetch pass. 1500+ candidates × 12 concurrent
+/// easily exceeds 90s. Top-by-recommender-count is a safe pre-filter — low-
+/// recommender candidates have near-zero conviction scores anyway.
+const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 400;
 /// Accept artists up to this multiple above their genre's median listener count.
 const GENRE_CEILING_MULTIPLIER: f64 = 2.0;
 /// Hard cap regardless of genre — no truly mainstream artists.
@@ -137,6 +141,17 @@ async fn fetch_and_score(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
 ) -> Vec<DiscoveryResponseItem> {
+    // Pre-filter: keep only the top candidates by recommender count before the
+    // expensive info-fetch pass. Cuts pipeline time from 90s+ to ~40s for large pools.
+    let candidate_map = if candidate_map.len() > MAX_CANDIDATES_FOR_INFO_FETCH {
+        let mut ranked: Vec<_> = candidate_map.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.1.len().cmp(&a.1.1.len()));
+        ranked.truncate(MAX_CANDIDATES_FOR_INFO_FETCH);
+        println!("SCORING: capped to {} candidates (was more)", MAX_CANDIDATES_FOR_INFO_FETCH);
+        ranked.into_iter().collect()
+    } else {
+        candidate_map
+    };
     let raw = fetch_all_raw(client, username, candidate_map).await;
     let genre_ceilings = compute_genre_ceilings(&raw);
 
