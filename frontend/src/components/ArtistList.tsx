@@ -14,6 +14,7 @@ interface ArtistListProps {
   availableGeoTags: { tag: string; count: number }[];
   selectedGeoTags: string[];
   setSelectedGeoTags: (tags: string[]) => void;
+  focusedArtist?: string | null;
 }
 
 const listVariants = {
@@ -39,6 +40,7 @@ export default function ArtistList({
   availableGeoTags,
   selectedGeoTags,
   setSelectedGeoTags,
+  focusedArtist,
 }: ArtistListProps) {
   const toggleGeo = (tag: string) => {
     setSelectedGeoTags(
@@ -142,6 +144,7 @@ export default function ArtistList({
               rank={1}
               stickinessThreshold={stickinessThreshold}
               isHero
+              isFocused={focusedArtist === artists[0].name}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {artists.slice(1).map((artist, idx) => (
@@ -150,6 +153,7 @@ export default function ArtistList({
                   artist={artist}
                   rank={idx + 2}
                   stickinessThreshold={stickinessThreshold}
+                  isFocused={focusedArtist === artist.name}
                 />
               ))}
             </div>

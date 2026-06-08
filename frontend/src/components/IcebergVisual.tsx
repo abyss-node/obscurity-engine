@@ -6,6 +6,7 @@ import { Artist } from "../app/page";
 
 type IcebergVisualProps = {
   artists: Artist[];
+  onArtistClick?: (name: string) => void;
 };
 
 type Tier = {
@@ -28,7 +29,7 @@ function formatListeners(n: number): string {
   return `${Math.round(n / 1000)}K`;
 }
 
-export default function IcebergVisual({ artists }: IcebergVisualProps) {
+export default function IcebergVisual({ artists, onArtistClick }: IcebergVisualProps) {
   const grouped = useMemo(() => {
     return TIERS.map((tier) => ({
       tier,
@@ -96,16 +97,13 @@ export default function IcebergVisual({ artists }: IcebergVisualProps) {
                 transition={{ delay: j * 0.03 }}
                 className="flex flex-col gap-0.5"
               >
-                <a
-                  href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="font-mono text-[11px] leading-tight transition-opacity duration-150 hover:opacity-50"
+                <button
+                  onClick={() => onArtistClick?.(artist.name)}
+                  className="font-mono text-[11px] leading-tight text-left transition-opacity duration-150 hover:opacity-50"
                   style={{ color: "var(--text)" }}
                 >
                   {artist.name}
-                </a>
+                </button>
                 <span
                   className="font-mono text-[9px] tracking-wider"
                   style={{ color: "var(--dim)" }}

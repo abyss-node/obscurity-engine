@@ -100,6 +100,7 @@ export default function Home() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
   const forceFreshRef = useRef(false);
@@ -706,7 +707,13 @@ export default function Home() {
                               transition={{ duration: 0.35 }}
                               className="overflow-hidden"
                             >
-                              <IcebergVisual artists={sortedArtists} />
+                              <IcebergVisual
+                                artists={sortedArtists}
+                                onArtistClick={(name) => {
+                                  setFocusedArtist(null);
+                                  setTimeout(() => setFocusedArtist(name), 0);
+                                }}
+                              />
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -728,6 +735,7 @@ export default function Home() {
                           availableGeoTags={availableGeoTags}
                           selectedGeoTags={selectedGeoTags}
                           setSelectedGeoTags={setSelectedGeoTags}
+                          focusedArtist={focusedArtist}
                         />
                       </motion.div>
                     )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Artist } from "../app/page";
 import { motion, AnimatePresence } from "framer-motion";
 import Tooltip from "./Tooltip";
@@ -18,6 +18,7 @@ interface ArtistCardProps {
   rank: number;
   stickinessThreshold: number;
   isHero?: boolean;
+  isFocused?: boolean;
 }
 
 const itemVariants = {
@@ -33,8 +34,16 @@ const itemVariants = {
   },
 };
 
-export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
+export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isFocused) {
+      setIsExpanded(true);
+      setTimeout(() => cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    }
+  }, [isFocused]);
 
   const primaryTag = firstGenreTag(artist.top_tags);
   const geoTags = artist.top_tags.filter(t => isGeoTag(t)).slice(0, 2);
@@ -46,14 +55,15 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
 
   return (
     <motion.div
+      ref={cardRef}
       layout
       variants={itemVariants}
       onClick={() => setIsExpanded(!isExpanded)}
       className={`relative cursor-pointer border transition-colors duration-150 flex flex-col
         ${isHero ? "p-10 md:p-14" : "p-6"}`}
-      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+      style={{ background: "var(--surface)", borderColor: isFocused ? "var(--accent)" : "var(--border)" }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)")}
-      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--border)")}
+      onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = isFocused ? "var(--accent)" : "var(--border)")}
     >
       <div className="flex flex-col gap-3">
         {/* Header row */}
