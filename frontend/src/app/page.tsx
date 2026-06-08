@@ -97,6 +97,9 @@ export default function Home() {
   const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKey, setApiKey] = useState("");
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
   const forceFreshRef = useRef(false);
@@ -143,6 +146,8 @@ export default function Home() {
       if (saved) setInputLocal(saved); // pre-fill input but don't auto-fetch; user submits
       const savedPeriod = localStorage.getItem("obscurity_period");
       if (savedPeriod && PERIOD_LABELS[savedPeriod]) setPeriod(savedPeriod);
+      const savedKey = localStorage.getItem("obscurity_api_key");
+      if (savedKey) { setApiKey(savedKey); setApiKeyInput(savedKey); }
     }
   }, []);
 
@@ -246,9 +251,10 @@ export default function Home() {
       const wakeupTimer = setTimeout(() => setWakingUp(true), 3000);
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+        const keyParam = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
         const endpoint = mode === "tracks"
-          ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}`
-          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}`;
+          ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}${keyParam}`
+          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}${keyParam}`;
         const response = await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
         if (!response.ok) {
           let errMsg = `[ERR] SONAR_FAILURE — HTTP ${response.status}`;
@@ -432,6 +438,14 @@ export default function Home() {
                   >
                     connect your music {showSetup ? "▲" : "▼"}
                   </button>
+                  <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
+                  <button
+                    onClick={() => setShowApiKey((s) => !s)}
+                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: apiKey ? "var(--accent)" : "var(--dim)" }}
+                  >
+                    {apiKey ? "api key active ▼" : `api key ${showApiKey ? "▲" : "▼"}`}
+                  </button>
                 </div>
 
                 <AnimatePresence>
@@ -444,6 +458,56 @@ export default function Home() {
                       className="w-full"
                     >
                       <OnboardingGuide />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {showApiKey && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="w-full flex flex-col gap-3"
+                    >
+                      <div className="border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
+                        <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
+                          Use your own Last.fm API key to avoid shared rate limits.{" "}
+                          <a
+                            href="https://www.last.fm/api/account/create"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="transition-opacity hover:opacity-60"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            get a free key →
+                          </a>
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            value={apiKeyInput}
+                            onChange={(e) => setApiKeyInput(e.target.value)}
+                            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                            className="flex-1 bg-transparent border-b py-1 font-mono text-[11px] outline-none transition-colors duration-200"
+                            style={{ borderColor: "var(--border)", color: "var(--text)", caretColor: "var(--accent)" }}
+                          />
+                          <button
+                            onClick={() => {
+                              const trimmed = apiKeyInput.trim();
+                              setApiKey(trimmed);
+                              if (trimmed) localStorage.setItem("obscurity_api_key", trimmed);
+                              else localStorage.removeItem("obscurity_api_key");
+                              setShowApiKey(false);
+                            }}
+                            className="font-mono text-[10px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
+                            style={{ color: "var(--muted)" }}
+                          >
+                            {apiKeyInput.trim() ? "save" : "clear"}
+                          </button>
+                        </div>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>

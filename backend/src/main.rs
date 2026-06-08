@@ -34,6 +34,9 @@ fn validate_username(username: &str) -> bool {
 struct DiscoveryQuery {
     period: String,
     username: String,
+    /// Optional user-supplied Last.fm API key. When present, bypasses the
+    /// server key and skips the cache (results are not stored server-side).
+    api_key: Option<String>,
 }
 
 struct AppState {
@@ -60,34 +63,49 @@ async fn discovery_handler(
         ));
     }
 
-    let cache_key = format!("reverse_scrobble:{}:{}", query.username, query.period);
+    let custom_key = query.api_key.as_deref().filter(|k| !k.is_empty());
+    let client: Arc<LastfmClient> = match custom_key {
+        Some(key) => Arc::new(LastfmClient::new(key.to_string())),
+        None => Arc::clone(&state.client),
+    };
 
-    {
-        let cache = state.cache.read().await;
-        if let Some((timestamp, data)) = cache.get(&cache_key) {
-            if timestamp.elapsed() < Duration::from_secs(3600) {
-                println!("Cache hit: {}", cache_key);
-                return Ok(Json(data.clone()));
+    // Custom-key requests skip the cache — results aren't stored server-side.
+    if custom_key.is_none() {
+        let cache_key = format!("reverse_scrobble:{}:{}", query.username, query.period);
+        {
+            let cache = state.cache.read().await;
+            if let Some((timestamp, data)) = cache.get(&cache_key) {
+                if timestamp.elapsed() < Duration::from_secs(3600) {
+                    println!("Cache hit: {}", cache_key);
+                    return Ok(Json(data.clone()));
+                }
             }
         }
-    }
-
-    println!("Cache miss: {}", cache_key);
-    match discover_obscure_artists(Arc::clone(&state.client), query.username, query.period).await {
-        Ok(result) => {
-            let mut cache = state.cache.write().await;
-            cache.insert(cache_key, (Instant::now(), result.clone()));
-            Ok(Json(result))
-        }
-        Err(e) => {
-            eprintln!("Discovery error: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(models::ErrorResponse {
+        println!("Cache miss: {}", cache_key);
+        match discover_obscure_artists(client, query.username, query.period).await {
+            Ok(result) => {
+                let mut cache = state.cache.write().await;
+                cache.insert(cache_key, (Instant::now(), result.clone()));
+                Ok(Json(result))
+            }
+            Err(e) => {
+                eprintln!("Discovery error: {}", e);
+                Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
                     error: format!("Discovery failed: {}", e),
                     code: 500,
-                }),
-            ))
+                })))
+            }
+        }
+    } else {
+        match discover_obscure_artists(client, query.username, query.period).await {
+            Ok(result) => Ok(Json(result)),
+            Err(e) => {
+                eprintln!("Discovery error (custom key): {}", e);
+                Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
+                    error: format!("Discovery failed: {}", e),
+                    code: 500,
+                })))
+            }
         }
     }
 }
@@ -108,32 +126,46 @@ async fn track_discovery_handler(
         ));
     }
 
-    let cache_key = format!("tracks:{}:{}", query.username, query.period);
+    let custom_key = query.api_key.as_deref().filter(|k| !k.is_empty());
+    let client: Arc<LastfmClient> = match custom_key {
+        Some(key) => Arc::new(LastfmClient::new(key.to_string())),
+        None => Arc::clone(&state.client),
+    };
 
-    {
-        let cache = state.track_cache.read().await;
-        if let Some((timestamp, data)) = cache.get(&cache_key) {
-            if timestamp.elapsed() < Duration::from_secs(3600) {
-                return Ok(Json(data.clone()));
+    if custom_key.is_none() {
+        let cache_key = format!("tracks:{}:{}", query.username, query.period);
+        {
+            let cache = state.track_cache.read().await;
+            if let Some((timestamp, data)) = cache.get(&cache_key) {
+                if timestamp.elapsed() < Duration::from_secs(3600) {
+                    return Ok(Json(data.clone()));
+                }
             }
         }
-    }
-
-    match discover_obscure_tracks(Arc::clone(&state.client), query.username, query.period).await {
-        Ok(result) => {
-            let mut cache = state.track_cache.write().await;
-            cache.insert(cache_key, (Instant::now(), result.clone()));
-            Ok(Json(result))
-        }
-        Err(e) => {
-            eprintln!("Track discovery error: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(models::ErrorResponse {
+        match discover_obscure_tracks(client, query.username, query.period).await {
+            Ok(result) => {
+                let mut cache = state.track_cache.write().await;
+                cache.insert(cache_key, (Instant::now(), result.clone()));
+                Ok(Json(result))
+            }
+            Err(e) => {
+                eprintln!("Track discovery error: {}", e);
+                Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
                     error: format!("Track discovery failed: {}", e),
                     code: 500,
-                }),
-            ))
+                })))
+            }
+        }
+    } else {
+        match discover_obscure_tracks(client, query.username, query.period).await {
+            Ok(result) => Ok(Json(result)),
+            Err(e) => {
+                eprintln!("Track discovery error (custom key): {}", e);
+                Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
+                    error: format!("Track discovery failed: {}", e),
+                    code: 500,
+                })))
+            }
         }
     }
 }
