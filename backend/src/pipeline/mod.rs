@@ -21,6 +21,7 @@ mod track_seeds;
 use std::sync::Arc;
 use crate::lastfm::LastfmClient;
 use crate::models::{DiscoveryResponse, TrackDiscoveryResponse};
+use crate::spotify::SpotifyClient;
 
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
@@ -35,10 +36,14 @@ pub async fn discover_obscure_artists(
 
 pub async fn discover_obscure_tracks(
     client: Arc<LastfmClient>,
+    spotify: Arc<SpotifyClient>,
     username: String,
     period_str: String,
 ) -> Result<TrackDiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
     let seeds = track_seeds::collect(&client, &username, &period_str).await?;
-    let candidate_map = track_candidates::build(&client, &seeds.entries).await;
-    track_scoring::score_and_rank(&client, &username, candidate_map, &seeds).await
+    let (candidate_map, total_batches) = track_candidates::build(&spotify, &seeds.entries).await;
+    if candidate_map.is_empty() {
+        return Err("No track candidates found — check Spotify credentials or try a different period.".into());
+    }
+    track_scoring::score_and_rank(&client, &username, candidate_map, total_batches, &seeds).await
 }

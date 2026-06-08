@@ -14,9 +14,11 @@ use tokio::sync::RwLock;
 mod lastfm;
 mod models;
 mod pipeline;
+mod spotify;
 mod utils;
 
 use lastfm::LastfmClient;
+use spotify::SpotifyClient;
 use pipeline::{discover_obscure_artists, discover_obscure_tracks};
 
 // Last.fm usernames: letters, digits, hyphens, underscores, 2-15 chars
@@ -36,6 +38,7 @@ struct DiscoveryQuery {
 
 struct AppState {
     client: Arc<LastfmClient>,
+    spotify: Option<Arc<SpotifyClient>>,
     cache: RwLock<HashMap<String, (Instant, models::DiscoveryResponse)>>,
     track_cache: RwLock<HashMap<String, (Instant, models::TrackDiscoveryResponse)>>,
 }
@@ -116,7 +119,18 @@ async fn track_discovery_handler(
         }
     }
 
-    match discover_obscure_tracks(Arc::clone(&state.client), query.username, query.period).await {
+    let spotify = match &state.spotify {
+        Some(s) => Arc::clone(s),
+        None => return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(models::ErrorResponse {
+                error: "Track discovery requires Spotify credentials. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.".into(),
+                code: 503,
+            }),
+        )),
+    };
+
+    match discover_obscure_tracks(Arc::clone(&state.client), spotify, query.username, query.period).await {
         Ok(result) => {
             let mut cache = state.track_cache.write().await;
             cache.insert(cache_key, (Instant::now(), result.clone()));
@@ -143,8 +157,23 @@ async fn main() {
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
+    let spotify = match (
+        std::env::var("SPOTIFY_CLIENT_ID"),
+        std::env::var("SPOTIFY_CLIENT_SECRET"),
+    ) {
+        (Ok(id), Ok(secret)) => {
+            println!("Spotify credentials loaded — track discovery enabled");
+            Some(Arc::new(SpotifyClient::new(id, secret)))
+        }
+        _ => {
+            println!("Warning: SPOTIFY_CLIENT_ID/SECRET not set — track discovery disabled");
+            None
+        }
+    };
+
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::new(api_key)),
+        spotify,
         cache: RwLock::new(HashMap::new()),
         track_cache: RwLock::new(HashMap::new()),
     });
