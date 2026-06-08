@@ -96,12 +96,16 @@ export default function IcebergVisual({ artists }: IcebergVisualProps) {
                 transition={{ delay: j * 0.03 }}
                 className="flex flex-col gap-0.5"
               >
-                <span
-                  className="font-mono text-[11px] leading-tight"
+                <a
+                  href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-mono text-[11px] leading-tight transition-opacity duration-150 hover:opacity-50"
                   style={{ color: "var(--text)" }}
                 >
                   {artist.name}
-                </span>
+                </a>
                 <span
                   className="font-mono text-[9px] tracking-wider"
                   style={{ color: "var(--dim)" }}

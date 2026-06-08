@@ -4,6 +4,7 @@ import { useState } from "react";
 import { TrackItem } from "../app/page";
 import { motion, AnimatePresence } from "framer-motion";
 import Tooltip from "./Tooltip";
+import { firstGenreTag, isGeoTag, formatGeoTag } from "../lib/geoTags";
 
 interface TrackCardProps {
   track: TrackItem;
@@ -73,7 +74,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
         <div className="flex justify-between items-start">
           <div className="flex flex-col gap-1 pr-4 flex-1">
             <h3
-              className={`font-serif font-semibold leading-tight ${
+              className={`font-serif font-semibold leading-tight break-words ${
                 isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl"
               }`}
               style={{ color: "var(--text)" }}
@@ -86,13 +87,19 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
             >
               {track.artist}
             </span>
-            {track.top_tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-1">
-                <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
-                  {track.top_tags[0]}
-                </span>
+            <div className="flex items-center gap-2 flex-wrap mt-1">
+                {firstGenreTag(track.top_tags) && (
+                  <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
+                    {firstGenreTag(track.top_tags)}
+                  </span>
+                )}
+                {track.top_tags.filter(t => isGeoTag(t)).slice(0, 1).map(t => (
+                  <span key={t} className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                    {formatGeoTag(t.toLowerCase())}
+                  </span>
+                ))}
                 <AnimatePresence>
-                  {isExpanded && track.top_tags.slice(1, 4).map((tag) => (
+                  {isExpanded && track.top_tags.filter(t => !isGeoTag(t)).slice(1, 4).map((tag) => (
                     <motion.span
                       key={tag}
                       initial={{ opacity: 0, x: -4 }}
@@ -105,7 +112,6 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
                   ))}
                 </AnimatePresence>
               </div>
-            )}
             <Tooltip text="Total unique listeners on Last.fm globally. Lower = deeper cut.">
               <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
                 {formatListeners(track.total_listeners)}
@@ -170,29 +176,23 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
           className="overflow-hidden"
         >
           <div className="mt-6 pt-6 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <div className="flex flex-col gap-1">
-                <Tooltip text="How strongly your listening history points toward this track. 10 = recommended by many of your top artists.">
-                  <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
-                </Tooltip>
+                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {Math.min(track.conviction_score / 100, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
-              <div className="flex flex-col gap-1 border-l pl-6" style={{ borderColor: "var(--border)" }}>
-                <Tooltip text="Plays-per-listener ratio — high stickiness means fans keep coming back. 10 = extremely dedicated fanbase.">
-                  <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
-                </Tooltip>
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {Math.min(Math.log10(track.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
-              <div className="flex flex-col gap-1 border-l pl-6" style={{ borderColor: "var(--border)" }}>
-                <Tooltip text="Total unique listeners on Last.fm.">
-                  <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listeners</span>
-                </Tooltip>
+              <div className="flex flex-col gap-1">
+                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listeners</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {track.total_listeners.toLocaleString()}
+                  {formatListeners(track.total_listeners).replace(" listeners", "")}
                 </span>
               </div>
             </div>
