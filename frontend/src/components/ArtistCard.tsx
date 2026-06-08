@@ -152,7 +152,7 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                   </span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {Math.min(artist.conviction_score / 300, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+                  {Math.min(artist.conviction_score / 100, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div
@@ -168,7 +168,7 @@ export default function ArtistCard({ artist, rank, isHero }: ArtistCardProps) {
                   </span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {Math.min(artist.stickiness_score / 2, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+                  {Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
                 </span>
               </div>
               <div
