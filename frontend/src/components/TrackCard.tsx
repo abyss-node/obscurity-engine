@@ -11,6 +11,8 @@ interface TrackCardProps {
   isHero?: boolean;
 }
 
+type PreviewState = "idle" | "loading" | { id: string } | "error";
+
 function formatListeners(n: number): string {
   if (n === 0) return "unknown listeners";
   if (n < 1000) return `${n} listeners`;
@@ -29,6 +31,31 @@ const itemVariants = {
 
 export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [preview, setPreview] = useState<PreviewState>("idle");
+
+  const handlePreview = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (typeof preview === "object") {
+      // already loaded — toggle iframe visibility by resetting
+      setPreview("idle");
+      return;
+    }
+    if (preview === "loading") return;
+    setPreview("loading");
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      const res = await fetch(
+        `${apiUrl}/api/spotify/track?artist=${encodeURIComponent(track.artist)}&track=${encodeURIComponent(track.name)}`
+      );
+      if (!res.ok) { setPreview("error"); return; }
+      const data = await res.json();
+      setPreview({ id: data.id });
+    } catch {
+      setPreview("error");
+    }
+  };
+
+  const previewLoaded = typeof preview === "object";
 
   return (
     <motion.div
@@ -85,12 +112,57 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
               </span>
             </Tooltip>
           </div>
-          <span className="font-mono text-[9px] tracking-widest mt-1 shrink-0" style={{ color: "var(--dim)" }}>
-            /{rank.toString().padStart(2, "0")}
-          </span>
+
+          {/* Top-right: preview button + rank */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <span className="font-mono text-[9px] tracking-widest" style={{ color: "var(--dim)" }}>
+              /{rank.toString().padStart(2, "0")}
+            </span>
+            <button
+              onClick={handlePreview}
+              title={previewLoaded ? "Hide preview" : "Preview on Spotify"}
+              className="font-mono text-[9px] tracking-widest border px-2 py-1 transition-all duration-150"
+              style={{
+                borderColor: previewLoaded ? "#1DB954" : "var(--border)",
+                color: previewLoaded ? "#1DB954" : "var(--dim)",
+              }}
+            >
+              {preview === "loading" ? "..." : previewLoaded ? "▶ hide" : "▶"}
+            </button>
+          </div>
         </div>
 
-        {/* Expandable */}
+        {/* Spotify embed — appears when preview loaded */}
+        <AnimatePresence>
+          {previewLoaded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <iframe
+                src={`https://open.spotify.com/embed/track/${(preview as { id: string }).id}?utm_source=generator&theme=0`}
+                width="100%"
+                height="80"
+                frameBorder="0"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy"
+                className="rounded-sm mt-2"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {preview === "error" && (
+          <p className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)" }}>
+            not found on spotify
+          </p>
+        )}
+
+        {/* Expandable details */}
         <motion.div
           layout
           initial={false}
@@ -100,7 +172,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
           <div className="mt-6 pt-6 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
             <div className="grid grid-cols-3 gap-6">
               <div className="flex flex-col gap-1">
-                <Tooltip text="How many of your top tracks led to this recommendation.">
+                <Tooltip text="How many of your top artists led to this recommendation via similar-artist expansion.">
                   <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
                 </Tooltip>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>

@@ -119,18 +119,7 @@ async fn track_discovery_handler(
         }
     }
 
-    let spotify = match &state.spotify {
-        Some(s) => Arc::clone(s),
-        None => return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(models::ErrorResponse {
-                error: "Track discovery requires Spotify credentials. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.".into(),
-                code: 503,
-            }),
-        )),
-    };
-
-    match discover_obscure_tracks(Arc::clone(&state.client), spotify, query.username, query.period).await {
+    match discover_obscure_tracks(Arc::clone(&state.client), query.username, query.period).await {
         Ok(result) => {
             let mut cache = state.track_cache.write().await;
             cache.insert(cache_key, (Instant::now(), result.clone()));
@@ -149,6 +138,32 @@ async fn track_discovery_handler(
     }
 }
 
+#[derive(serde::Deserialize)]
+struct SpotifyTrackQuery {
+    artist: String,
+    track: String,
+}
+
+async fn spotify_track_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SpotifyTrackQuery>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let Some(spotify) = &state.spotify else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(models::ErrorResponse { error: "Spotify not configured".into(), code: 404 }),
+        ).into_response();
+    };
+    match spotify.lookup_track(&query.artist, &query.track).await {
+        Some(info) => Json(info).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(models::ErrorResponse { error: "Track not found on Spotify".into(), code: 404 }),
+        ).into_response(),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -162,11 +177,11 @@ async fn main() {
         std::env::var("SPOTIFY_CLIENT_SECRET"),
     ) {
         (Ok(id), Ok(secret)) => {
-            println!("Spotify credentials loaded — track discovery enabled");
+            println!("Spotify credentials loaded — preview endpoint enabled");
             Some(Arc::new(SpotifyClient::new(id, secret)))
         }
         _ => {
-            println!("Warning: SPOTIFY_CLIENT_ID/SECRET not set — track discovery disabled");
+            println!("Spotify credentials not set — /api/spotify/track will return 404");
             None
         }
     };
@@ -203,6 +218,7 @@ async fn main() {
         .route("/", get(|| async { "ObscurityEngine Backend Alive!" }))
         .route("/api/discovery", get(discovery_handler))
         .route("/api/discovery/tracks", get(track_discovery_handler))
+        .route("/api/spotify/track", get(spotify_track_handler))
         .layer(cors)
         .with_state(state);
 

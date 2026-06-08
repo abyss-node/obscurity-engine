@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ArtistList from "../components/ArtistList";
 import TrackCard from "../components/TrackCard";
@@ -11,6 +11,8 @@ import Tooltip from "../components/Tooltip";
 import { isGeoTag } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
 import * as Spotify from "../lib/spotify";
+import { loadCache, saveCache } from "../lib/cache";
+import OnboardingGuide from "../components/OnboardingGuide";
 
 export type Artist = {
   name: string;
@@ -94,8 +96,10 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
+  const forceFreshRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -127,14 +131,16 @@ export default function Home() {
 
     const urlUser = params.get("u");
     const urlPeriod = params.get("p");
+    const urlMode = params.get("m");
     if (urlUser) {
       setUsername(urlUser);
       setInputLocal(urlUser);
       setIsSharedView(true);
       if (urlPeriod && PERIOD_LABELS[urlPeriod]) setPeriod(urlPeriod);
+      if (urlMode === "tracks" || urlMode === "artists") setMode(urlMode as DiscoveryMode);
     } else {
       const saved = localStorage.getItem("obscurity_username");
-      if (saved) { setUsername(saved); setInputLocal(saved); }
+      if (saved) setInputLocal(saved); // pre-fill input but don't auto-fetch; user submits
       const savedPeriod = localStorage.getItem("obscurity_period");
       if (savedPeriod && PERIOD_LABELS[savedPeriod]) setPeriod(savedPeriod);
     }
@@ -189,19 +195,54 @@ export default function Home() {
   const isInitialLoad = loading && resultCount === 0;
   const isRefreshing = loading && resultCount > 0;
 
+  const applyData = useCallback((data: DiscoveryData | TrackDiscoveryData, m: DiscoveryMode) => {
+    if (m === "tracks") {
+      const d = data as TrackDiscoveryData;
+      setTracks(d.tracks || []);
+      setTopGenres(d.top_genres || []);
+      setActiveSeedCount(d.active_seed_count || 0);
+      setDepthScore(d.depth_score ?? 0);
+      setLowDataMessage(d.message ?? null);
+    } else {
+      const d = data as DiscoveryData;
+      setArtists(d.artists || []);
+      setTopGenres(d.top_genres || []);
+      setActiveSeedCount(d.active_seed_count || 0);
+      setDepthScore(d.depth_score ?? 0);
+      setLowDataMessage(d.message ?? null);
+    }
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       if (!username) return;
+
+      const isForceFresh = forceFreshRef.current;
+      forceFreshRef.current = false;
+
+      setError(null);
+      setLowDataMessage(null);
+      setSelectedGeoTags([]);
+      lastFetchedUsernameRef.current = username;
+
+      // Serve from cache when fresh and not a forced retry
+      if (!isForceFresh) {
+        const cached = loadCache<DiscoveryData | TrackDiscoveryData>(username, period, mode);
+        if (cached) {
+          if (mode === "tracks") setArtists([]);
+          else setTracks([]);
+          applyData(cached, mode);
+          setLoading(false);
+          return;
+        }
+      }
+
       setArtists([]);
       setTracks([]);
       setTopGenres([]);
       setDepthScore(0);
-      setLowDataMessage(null);
-      setSelectedGeoTags([]);
       setLoading(true);
       setWakingUp(false);
-      setError(null);
-      lastFetchedUsernameRef.current = username;
       const wakeupTimer = setTimeout(() => setWakingUp(true), 3000);
       try {
         const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
@@ -220,18 +261,12 @@ export default function Home() {
         }
         if (mode === "tracks") {
           const data: TrackDiscoveryData = await response.json();
-          setTracks(data.tracks || []);
-          setTopGenres(data.top_genres || []);
-          setActiveSeedCount(data.active_seed_count || 0);
-          setDepthScore(data.depth_score ?? 0);
-          setLowDataMessage(data.message ?? null);
+          applyData(data, mode);
+          saveCache(username, period, mode, data);
         } else {
           const data: DiscoveryData = await response.json();
-          setArtists(data.artists || []);
-          setTopGenres(data.top_genres || []);
-          setActiveSeedCount(data.active_seed_count || 0);
-          setDepthScore(data.depth_score ?? 0);
-          setLowDataMessage(data.message ?? null);
+          applyData(data, mode);
+          saveCache(username, period, mode, data);
         }
       } catch (e) {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
@@ -247,15 +282,20 @@ export default function Home() {
       }
     };
     fetchData();
-  }, [username, period, mode, fetchTrigger]);
+  }, [username, period, mode, fetchTrigger, applyData]);
 
   const handleShare = () => {
     if (!username) return;
-    const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}`;
+    const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&m=${mode}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleRetry = () => {
+    forceFreshRef.current = true;
+    setFetchTrigger((t) => t + 1);
   };
 
   const handleReset = () => {
@@ -311,47 +351,104 @@ export default function Home() {
             transition={{ duration: 0.35 }}
             className="min-h-screen flex items-center justify-center px-6"
           >
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (inputLocal.trim()) {
-                  setIsSharedView(false);
-                  setArtists([]);
-                  setTopGenres([]);
-                  setUsername(inputLocal.trim());
-                }
-              }}
-              className="w-full max-w-md flex flex-col items-center gap-8"
-            >
-              <input
-                autoFocus
-                type="text"
-                value={inputLocal}
-                onChange={(e) => setInputLocal(e.target.value)}
-                placeholder="enter last.fm username"
-                className="obs-input w-full bg-transparent border-b-2 py-3 text-2xl font-mono outline-none text-center transition-colors duration-200"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--text)",
-                  caretColor: "var(--accent)",
+            <div className="w-full max-w-md flex flex-col items-center gap-8">
+              {/* Headline */}
+              <div className="flex flex-col items-center gap-3 text-center">
+                <h1
+                  className="font-serif text-4xl md:text-5xl font-bold italic leading-tight"
+                  style={{ color: "var(--text)" }}
+                >
+                  Find your new<br />favorite artist.
+                </h1>
+                <p
+                  className="font-body text-sm font-light max-w-xs leading-relaxed"
+                  style={{ color: "var(--muted)" }}
+                >
+                  Connects to your Last.fm history. Surfaces artists and tracks
+                  that match your taste but haven&apos;t broken through yet.
+                </p>
+              </div>
+
+              {/* Input */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (inputLocal.trim()) {
+                    setIsSharedView(false);
+                    setArtists([]);
+                    setTopGenres([]);
+                    setUsername(inputLocal.trim());
+                  }
                 }}
-              />
-              <AnimatePresence>
-                {inputLocal.trim() && (
-                  <motion.button
-                    type="submit"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="font-mono text-[11px] tracking-widest transition-opacity duration-200 hover:opacity-60"
-                    style={{ color: "var(--muted)" }}
+                className="w-full flex flex-col items-center gap-6"
+              >
+                <input
+                  autoFocus
+                  type="text"
+                  value={inputLocal}
+                  onChange={(e) => setInputLocal(e.target.value)}
+                  placeholder="last.fm username"
+                  className="obs-input w-full bg-transparent border-b-2 py-3 text-2xl font-mono outline-none text-center transition-colors duration-200"
+                  style={{
+                    borderColor: "var(--border)",
+                    color: "var(--text)",
+                    caretColor: "var(--accent)",
+                  }}
+                />
+                <AnimatePresence>
+                  {inputLocal.trim() && (
+                    <motion.button
+                      type="submit"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="font-mono text-[11px] tracking-widest transition-opacity duration-200 hover:opacity-60"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      analyse →
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              </form>
+
+              {/* Onboarding links */}
+              <div className="w-full flex flex-col items-center gap-5">
+                <div className="flex items-center gap-4">
+                  <a
+                    href="https://www.last.fm/join"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: "var(--accent)" }}
                   >
-                    analyse →
-                  </motion.button>
-                )}
-              </AnimatePresence>
-            </form>
+                    new to last.fm? create account →
+                  </a>
+                  <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
+                  <button
+                    onClick={() => setShowSetup((s) => !s)}
+                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    connect your music {showSetup ? "▲" : "▼"}
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {showSetup && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="w-full"
+                    >
+                      <OnboardingGuide />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </motion.div>
         ) : (
           /* ── RESULTS VIEW ────────────────────────────────────────── */
@@ -448,7 +545,7 @@ export default function Home() {
                 ) : error && !isRefreshing ? (
                   <ErrorState
                     error={error}
-                    onRetry={() => setFetchTrigger((t) => t + 1)}
+                    onRetry={handleRetry}
                   />
                 ) : (
                   /* ── RESULTS ──────────────────────────────────────── */
@@ -566,6 +663,29 @@ export default function Home() {
                       </motion.div>
                     )}
 
+                    {/* Track empty state */}
+                    {mode === "tracks" && tracks.length === 0 && !loading && !error && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.5 }}
+                        className="flex flex-col gap-4 py-16 items-center text-center"
+                      >
+                        <span
+                          className="font-mono text-[10px] tracking-widest uppercase"
+                          style={{ color: "var(--dim)" }}
+                        >
+                          [SONAR] no signal
+                        </span>
+                        <p className="font-body text-lg font-light" style={{ color: "var(--muted)" }}>
+                          No obscure tracks found for this period.
+                        </p>
+                        <p className="font-mono text-[10px] tracking-wider max-w-xs" style={{ color: "var(--dim)" }}>
+                          Try a longer time window — MIX or ALL give the most seeds to work from.
+                        </p>
+                      </motion.div>
+                    )}
+
                     {/* Track List */}
                     {mode === "tracks" && tracks.length > 0 && (
                       <motion.div
@@ -574,15 +694,15 @@ export default function Home() {
                         transition={{ delay: 0.4, duration: 0.6 }}
                         className="flex flex-col gap-6"
                       >
-                        {/* Spotify export */}
+                        {/* Spotify playlist */}
                         <div className="flex items-center gap-4">
                           {spotifyStatus === "idle" && (
                             <button
                               onClick={handleExportSpotify}
-                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70"
+                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
                               style={{ borderColor: "var(--border)", color: "var(--muted)" }}
                             >
-                              ↗ export to spotify
+                              <span style={{ color: "#1DB954" }}>♫</span> add to spotify
                             </button>
                           )}
                           {spotifyStatus === "loading" && (
@@ -595,10 +715,10 @@ export default function Home() {
                               href={playlistUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70"
-                              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
+                              style={{ borderColor: "#1DB954", color: "#1DB954" }}
                             >
-                              ↗ open playlist
+                              <span>♫</span> open playlist ↗
                             </a>
                           )}
                           {spotifyStatus === "error" && (

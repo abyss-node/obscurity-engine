@@ -263,6 +263,25 @@ impl LastfmClient {
         Ok(serde_json::from_str(&resp_text)?)
     }
 
+    pub async fn fetch_artist_top_tracks(
+        &self,
+        artist: &str,
+        limit: u32,
+    ) -> Result<TopTracksResponse, Box<dyn std::error::Error + Send + Sync>> {
+        let url = format!(
+            "{}?method=artist.gettoptracks&artist={}&api_key={}&format=json&limit={}",
+            LASTFM_API_URL, urlencoding::encode(artist), self.api_key, limit
+        );
+        let resp_text = self.client.get(&url).send().await?.error_for_status()?.text().await?;
+        let json: serde_json::Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            return Ok(TopTracksResponse { toptracks: TopTracks { track: vec![] } });
+        }
+        Ok(serde_json::from_str(&resp_text).unwrap_or_else(|_| TopTracksResponse {
+            toptracks: TopTracks { track: vec![] },
+        }))
+    }
+
     pub async fn fetch_tag_top_artists(
         &self,
         tag: &str,
