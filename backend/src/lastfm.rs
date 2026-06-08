@@ -317,6 +317,32 @@ impl LastfmClient {
         }))
     }
 
+    pub async fn fetch_artist_tags(&self, artist: &str) -> Vec<String> {
+        #[derive(serde::Deserialize)]
+        struct Resp { toptags: TopTags }
+        #[derive(serde::Deserialize)]
+        struct TopTags { #[serde(default)] tag: Vec<TagEntry> }
+        #[derive(serde::Deserialize)]
+        struct TagEntry { name: String }
+
+        let url = format!(
+            "{}?method=artist.gettoptags&artist={}&api_key={}&format=json",
+            LASTFM_API_URL, urlencoding::encode(artist), self.api_key
+        );
+        let text = match self.get_with_retry(&url).await {
+            Ok(t) => t,
+            Err(_) => return vec![],
+        };
+        let json: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => return vec![],
+        };
+        if json.get("error").is_some() { return vec![]; }
+        serde_json::from_str::<Resp>(&text)
+            .map(|r| r.toptags.tag.into_iter().take(6).map(|t| t.name).collect())
+            .unwrap_or_default()
+    }
+
     pub async fn fetch_tag_top_artists(
         &self,
         tag: &str,

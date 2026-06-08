@@ -42,8 +42,50 @@ pub async fn score_and_rank(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
+    let seed_tag_profile = build_seed_tag_profile(client, seeds).await;
     let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates).await;
-    Ok(post_process(scored, seeds.weights.len()))
+    Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
+}
+
+/// Fetch tags for the top N seed artists in parallel and build a weighted tag
+/// frequency map reflecting the user's actual genre taste.
+/// Each seed contributes proportionally to its blended weight; tags shared by
+/// many high-weight seeds score highest.
+async fn build_seed_tag_profile(
+    client: &Arc<LastfmClient>,
+    seeds: &Seeds,
+) -> HashMap<String, f64> {
+    const TOP_SEEDS: usize = 25;
+    let mut sorted: Vec<_> = seeds.weights.iter().collect();
+    sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let top: Vec<(String, f64)> = sorted.into_iter()
+        .take(TOP_SEEDS)
+        .map(|(n, w)| (n.clone(), *w))
+        .collect();
+    let total: f64 = top.iter().map(|(_, w)| w).sum::<f64>().max(1.0);
+
+    let sem = Arc::new(Semaphore::new(8));
+    let mut futs: FuturesUnordered<_> = top.into_iter().map(|(name, weight)| {
+        let client = Arc::clone(client);
+        let sem = Arc::clone(&sem);
+        tokio::spawn(async move {
+            let _permit = sem.acquire().await;
+            let tags = client.fetch_artist_tags(&name).await;
+            (tags, weight)
+        })
+    }).collect();
+
+    let mut profile: HashMap<String, f64> = HashMap::new();
+    while let Some(task) = futs.next().await {
+        if let Ok((tags, weight)) = task {
+            let share = weight / total;
+            for tag in tags.iter().take(3) {
+                *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
+            }
+        }
+    }
+    println!("SEED_TAGS: profile with {} unique tags", profile.len());
+    profile
 }
 
 async fn fetch_and_score(
@@ -196,20 +238,22 @@ fn score_candidate(
     })
 }
 
-fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize) -> DiscoveryResponse {
+fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed_tag_profile: HashMap<String, f64>) -> DiscoveryResponse {
     let top_genres = aggregate_genres(&artists);
 
-    // taste_alignment: fraction of this artist's tags that overlap the user's genre profile
+    // taste_alignment: how well this candidate's tags match the user's actual seed artists.
+    // Uses the seed tag profile (built from what the user listens to), not the output distribution.
+    for artist in &mut artists {
+        let alignment: f64 = artist.top_tags.iter()
+            .map(|t| seed_tag_profile.get(&t.to_lowercase()).copied().unwrap_or(0.0))
+            .sum();
+        artist.taste_alignment = alignment.min(1.0);
+    }
+
+    // Diversity uses the output genre distribution so results spread across genres.
     let genre_weight_map: HashMap<String, f64> = top_genres.iter()
         .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
         .collect();
-    for artist in &mut artists {
-        let alignment: f64 = artist.top_tags.iter()
-            .map(|t| genre_weight_map.get(&t.to_lowercase()).copied().unwrap_or(0.0))
-            .sum();
-        artist.taste_alignment = (alignment / 5.0).min(1.0);
-    }
-
     let diverse_artists = enforce_diversity(artists, &genre_weight_map);
     let depth_score = compute_depth_score(&diverse_artists);
 

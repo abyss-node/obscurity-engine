@@ -27,9 +27,8 @@ const TOP_TRACKS_PER_ARTIST: u32 = 10;
 const MAX_SEED_ARTISTS: usize = 50;
 const MAX_SIMILAR_TO_EXPAND: usize = 100;
 
-/// Maps candidate_key → (artist, track_name, seed_artist_count, 0u32)
-/// The 4th field is unused; kept as u32 to match the scoring layer's type.
-pub type TrackCandidateMap = HashMap<String, (String, String, usize, u32)>;
+/// Maps candidate_key → (artist, track_name, seed_artist_count, artist_tags)
+pub type TrackCandidateMap = HashMap<String, (String, String, usize, Vec<String>)>;
 
 pub async fn build(
     client: &Arc<LastfmClient>,
@@ -99,20 +98,21 @@ pub async fn build(
             let sem = Arc::clone(&sem2);
             tokio::spawn(async move {
                 let _permit = sem.acquire().await;
-                let result = client.fetch_artist_top_tracks(&display_name, TOP_TRACKS_PER_ARTIST).await;
-                (display_name, conviction_count, result)
+                let tracks = client.fetch_artist_top_tracks(&display_name, TOP_TRACKS_PER_ARTIST).await;
+                let tags = client.fetch_artist_tags(&display_name).await;
+                (display_name, conviction_count, tracks, tags)
             })
         })
         .collect();
 
     let mut candidate_map: TrackCandidateMap = HashMap::new();
     while let Some(task) = track_futs.next().await {
-        if let Ok((artist, conviction_count, Ok(resp))) = task {
+        if let Ok((artist, conviction_count, Ok(resp), tags)) = task {
             for track in resp.toptracks.track {
                 let key = seed_key(&artist, &track.name);
                 candidate_map
                     .entry(key)
-                    .or_insert_with(|| (artist.clone(), track.name.clone(), conviction_count, 0u32));
+                    .or_insert_with(|| (artist.clone(), track.name.clone(), conviction_count, tags.clone()));
             }
         }
     }

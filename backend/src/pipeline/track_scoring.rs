@@ -26,6 +26,50 @@ const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
 const MAX_RESULTS: usize = 30;
 
+async fn build_seed_tag_profile(
+    client: &Arc<LastfmClient>,
+    seeds: &TrackSeeds,
+) -> HashMap<String, f64> {
+    use super::track_seeds::seed_key;
+    const TOP_SEEDS: usize = 20;
+
+    // Aggregate per-artist weight from track seed weights
+    let mut artist_weights: HashMap<String, f64> = HashMap::new();
+    for (artist, track) in &seeds.entries {
+        let key = seed_key(artist, track);
+        let w = seeds.weights.get(&key).copied().unwrap_or(1.0);
+        *artist_weights.entry(artist.clone()).or_insert(0.0) += w;
+    }
+
+    let mut sorted: Vec<_> = artist_weights.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.truncate(TOP_SEEDS);
+    let total: f64 = sorted.iter().map(|(_, w)| w).sum::<f64>().max(1.0);
+
+    let sem = Arc::new(Semaphore::new(8));
+    let mut futs: FuturesUnordered<_> = sorted.into_iter().map(|(artist, weight)| {
+        let client = Arc::clone(client);
+        let sem = Arc::clone(&sem);
+        tokio::spawn(async move {
+            let _permit = sem.acquire().await;
+            let tags = client.fetch_artist_tags(&artist).await;
+            (tags, weight)
+        })
+    }).collect();
+
+    let mut profile: HashMap<String, f64> = HashMap::new();
+    while let Some(task) = futs.next().await {
+        if let Ok((tags, weight)) = task {
+            let share = weight / total;
+            for tag in tags.iter().take(3) {
+                *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
+            }
+        }
+    }
+    println!("TRACK_SEED_TAGS: profile with {} unique tags", profile.len());
+    profile
+}
+
 pub async fn score_and_rank(
     client: &Arc<LastfmClient>,
     username: &str,
@@ -46,27 +90,28 @@ pub async fn score_and_rank(
     let semaphore = Arc::new(Semaphore::new(INFO_CONCURRENCY));
     let mut futures: FuturesUnordered<_> = candidate_map
         .into_iter()
-        .map(|(_key, (artist, track, seed_artist_count, _))| {
+        .map(|(_key, (artist, track, seed_artist_count, artist_tags))| {
             let client = Arc::clone(client);
             let username = username.to_string();
             let sem = Arc::clone(&semaphore);
             tokio::spawn(async move {
                 let _permit = sem.acquire().await;
                 let info = client.fetch_track_info(&artist, &track, &username).await;
-                (artist, track, seed_artist_count, info)
+                (artist, track, seed_artist_count, artist_tags, info)
             })
         })
         .collect();
 
     let mut scored: Vec<TrackDiscoveryItem> = Vec::new();
     while let Some(result) = futures.next().await {
-        if let Ok((artist, track_name, seed_artist_count, Ok(info_resp))) = result {
+        if let Ok((artist, track_name, seed_artist_count, artist_tags, Ok(info_resp))) = result {
             if let Some(item) = score_candidate(
                 info_resp.track,
                 artist,
                 track_name,
                 seed_artist_count,
                 total_seed_artists,
+                artist_tags,
             ) {
                 scored.push(item);
             }
@@ -78,7 +123,8 @@ pub async fn score_and_rank(
             .partial_cmp(&a.composite_score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    Ok(post_process(scored, seeds.entries.len()))
+    let seed_tag_profile = build_seed_tag_profile(client, seeds).await;
+    Ok(post_process(scored, seeds.entries.len(), seed_tag_profile))
 }
 
 fn score_candidate(
@@ -87,6 +133,7 @@ fn score_candidate(
     track_name: String,
     seed_artist_count: usize,
     total_seed_artists: usize,
+    artist_tags: Vec<String>,
 ) -> Option<TrackDiscoveryItem> {
     if info.user_plays() > 0 {
         return None;
@@ -104,18 +151,14 @@ fn score_candidate(
     let composite = conviction * stickiness * 10_000.0;
     let conv_score = (conviction * 100.0) as usize;
 
-    let mut top_tags: Vec<String> = info
-        .toptags
-        .map(|mut t| {
-            t.tag.truncate(5);
-            t.tag.into_iter().map(|tag| tag.name).collect()
-        })
-        .unwrap_or_default();
-    // Last.fm rarely tags individual tracks; fall back to artist name so the
-    // diversity enforcer doesn't bucket all untagged tracks into one slot.
-    if top_tags.is_empty() {
-        top_tags.push(artist.to_lowercase());
-    }
+    // Prefer track-level tags; fall back to the artist's tags.
+    let top_tags: Vec<String> = {
+        let track_tags: Vec<String> = info
+            .toptags
+            .map(|mut t| { t.tag.truncate(6); t.tag.into_iter().map(|tag| tag.name).collect() })
+            .unwrap_or_default();
+        if !track_tags.is_empty() { track_tags } else { artist_tags }
+    };
 
     Some(TrackDiscoveryItem {
         name: track_name,
@@ -130,22 +173,22 @@ fn score_candidate(
     })
 }
 
-fn post_process(mut tracks: Vec<TrackDiscoveryItem>, seed_count: usize) -> TrackDiscoveryResponse {
+fn post_process(mut tracks: Vec<TrackDiscoveryItem>, seed_count: usize, seed_tag_profile: HashMap<String, f64>) -> TrackDiscoveryResponse {
     let top_genres = aggregate_genres(&tracks);
-    let genre_weight_map: HashMap<String, f64> = top_genres
-        .iter()
-        .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
-        .collect();
 
     for t in &mut tracks {
         let alignment: f64 = t
             .top_tags
             .iter()
-            .map(|tag| genre_weight_map.get(&tag.to_lowercase()).copied().unwrap_or(0.0))
+            .map(|tag| seed_tag_profile.get(&tag.to_lowercase()).copied().unwrap_or(0.0))
             .sum();
-        t.taste_alignment = (alignment / 5.0).min(1.0);
+        t.taste_alignment = alignment.min(1.0);
     }
 
+    let genre_weight_map: HashMap<String, f64> = top_genres
+        .iter()
+        .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
+        .collect();
     let mut diverse = enforce_diversity(tracks, &genre_weight_map);
     diverse.truncate(MAX_RESULTS);
     let depth_score = compute_depth_score(&diverse);
@@ -209,7 +252,7 @@ fn enforce_diversity(
                     wa.partial_cmp(&wb).unwrap_or(std::cmp::Ordering::Equal)
                 })
                 .map(|t| t.to_lowercase())
-                .unwrap_or_else(|| "untagged".to_string());
+                .unwrap_or_else(|| t.artist.to_lowercase());
             let count = slot_count.entry(primary).or_insert(0);
             if *count < DIVERSITY_SLOTS_PER_GENRE {
                 *count += 1;
