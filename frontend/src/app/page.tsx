@@ -472,18 +472,23 @@ export default function Home() {
                       className="w-full flex flex-col gap-3"
                     >
                       <div className="border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
-                        <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
-                          Use your own Last.fm API key to avoid shared rate limits.{" "}
-                          <a
-                            href="https://www.last.fm/api/account/create"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="transition-opacity hover:opacity-60"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            get a free key →
-                          </a>
+                        <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--muted)" }}>
+                          your own key avoids shared rate limits — saved to this browser permanently
                         </p>
+                        <ol className="flex flex-col gap-1.5">
+                          {[
+                            <>go to <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-60" style={{ color: "var(--accent)" }}>last.fm/api/account/create</a></>,
+                            <>application name: anything (e.g. <span style={{ color: "var(--muted)" }}>my music tool</span>)</>,
+                            <>description: anything (e.g. <span style={{ color: "var(--muted)" }}>personal use</span>)</>,
+                            <>callback url: <span style={{ color: "var(--muted)" }}>leave blank</span></>,
+                            <>submit → copy the 32-character api key</>,
+                          ].map((step, i) => (
+                            <li key={i} className="flex gap-2 font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
+                              <span style={{ color: "var(--border)" }}>{i + 1}.</span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
                         <div className="flex gap-2">
                           <input
                             type="password"
