@@ -59,13 +59,13 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
       layout
       variants={itemVariants}
       onClick={() => setIsExpanded(!isExpanded)}
-      className={`relative cursor-pointer border transition-colors duration-150 flex flex-col
+      className={`relative cursor-pointer border transition-colors duration-150 flex flex-col h-full
         ${isHero ? "p-10 md:p-14" : "p-6"}`}
       style={{ background: "var(--surface)", borderColor: isFocused ? "var(--accent)" : "var(--border)" }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)")}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = isFocused ? "var(--accent)" : "var(--border)")}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 flex-1">
         {/* Header row */}
         <div className="flex justify-between items-start gap-3">
           <div className="flex flex-col gap-1.5 min-w-0 flex-1">
@@ -182,20 +182,29 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
                 </div>
               </div>
             )}
-
-            <a
-              href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            >
-              view on last.fm →
-            </a>
           </div>
         </motion.div>
       </div>
+
+      {/* Always anchored to the bottom of the card */}
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.a
+            href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="mt-auto pt-5 w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70 shrink-0"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            view on last.fm →
+          </motion.a>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
