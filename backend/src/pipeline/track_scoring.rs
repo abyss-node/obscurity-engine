@@ -21,8 +21,9 @@ use super::track_candidates::TrackCandidateMap;
 use super::track_seeds::TrackSeeds;
 
 const INFO_CONCURRENCY: usize = 10;
-const MAX_LISTENER_CEILING: u64 = 500_000;
+const MAX_LISTENER_CEILING: u64 = 50_000;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
+const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
 
 pub async fn score_and_rank(
     client: &Arc<LastfmClient>,
@@ -31,6 +32,16 @@ pub async fn score_and_rank(
     total_seed_artists: usize,
     seeds: &TrackSeeds,
 ) -> Result<TrackDiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
+    let candidate_map = if candidate_map.len() > MAX_CANDIDATES_FOR_INFO_FETCH {
+        let mut ranked: Vec<_> = candidate_map.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.2.cmp(&a.1.2));
+        ranked.truncate(MAX_CANDIDATES_FOR_INFO_FETCH);
+        println!("TRACK_SCORING: capped to {} candidates (was more)", MAX_CANDIDATES_FOR_INFO_FETCH);
+        ranked.into_iter().collect()
+    } else {
+        candidate_map
+    };
+
     let semaphore = Arc::new(Semaphore::new(INFO_CONCURRENCY));
     let mut futures: FuturesUnordered<_> = candidate_map
         .into_iter()

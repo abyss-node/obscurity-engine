@@ -669,7 +669,7 @@ export default function Home() {
                             className="font-mono text-[10px] tracking-wider"
                             style={{ color: "var(--dim)" }}
                           >
-                            {activeSeedCount} seeds · {artists.length} candidates
+                            {activeSeedCount} seeds · {mode === "tracks" ? tracks.length : artists.length} candidates
                           </p>
                         </Tooltip>
                       </motion.div>

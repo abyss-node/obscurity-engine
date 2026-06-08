@@ -20,12 +20,12 @@ use crate::lastfm::LastfmClient;
 use crate::utils::normalize_artist_name;
 use super::track_seeds::{seed_key, TrackSeeds};
 
-const SIMILAR_CONCURRENCY: usize = 5;
-const TRACKS_CONCURRENCY: usize = 5;
-const SIMILAR_LIMIT: u32 = 30;
+const SIMILAR_CONCURRENCY: usize = 8;
+const TRACKS_CONCURRENCY: usize = 8;
+const SIMILAR_LIMIT: u32 = 50;
 const TOP_TRACKS_PER_ARTIST: u32 = 10;
-const MAX_SEED_ARTISTS: usize = 20;
-const MAX_SIMILAR_TO_EXPAND: usize = 50;
+const MAX_SEED_ARTISTS: usize = 50;
+const MAX_SIMILAR_TO_EXPAND: usize = 100;
 
 /// Maps candidate_key → (artist, track_name, seed_artist_count, 0u32)
 /// The 4th field is unused; kept as u32 to match the scoring layer's type.
