@@ -22,7 +22,7 @@ use super::track_seeds::TrackSeeds;
 
 const INFO_CONCURRENCY: usize = 10;
 const MAX_LISTENER_CEILING: u64 = 50_000;
-const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
+const DIVERSITY_SLOTS_PER_GENRE: usize = 10;
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
 
 pub async fn score_and_rank(
