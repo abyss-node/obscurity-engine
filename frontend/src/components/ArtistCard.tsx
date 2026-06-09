@@ -80,7 +80,7 @@ export default function ArtistCard({
       variants={itemVariants}
       onClick={toggle}
       className={`group relative cursor-pointer border transition-colors duration-150 flex flex-col h-full
-        ${isHero ? "p-10 md:p-14" : "p-5"}`}
+        ${isHero ? "p-7 md:p-10" : "p-5"}`}
       style={{ background: "var(--surface)", borderColor: isFocused ? "var(--accent)" : "var(--border)" }}
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)")}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = isFocused ? "var(--accent)" : "var(--border)")}
@@ -108,7 +108,7 @@ export default function ArtistCard({
             </div>
 
             {/* Row 2: genre + geo + DUAL — fixed height = 1 line */}
-            <div className={isHero ? "mt-3" : "h-[20px] mt-2 flex items-center gap-2 overflow-hidden"}>
+            <div className={isHero ? "mt-3 flex items-center gap-3" : "h-[20px] mt-2 flex items-center gap-2 overflow-hidden"}>
               {artist.cross_validated && (
                 <Tooltip text="Confirmed by both your similar-artists graph and the genre tag graph.">
                   <svg
