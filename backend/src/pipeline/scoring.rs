@@ -321,21 +321,22 @@ fn enforce_diversity(
     }).collect()
 }
 
-/// Depth score (0–100): listener-weighted average obscurity across the result set.
-/// Ceiling is log10(MAX_LISTENER_CEILING + 1). An artist with 1 listener scores
-/// near 100; one with 25,000 scores near 0.
+/// Depth score (0–100): conviction-weighted average obscurity across the result set.
+/// Uses sqrt(1 - listeners/ceiling) so the scale is perceptually linear:
+///   0 listeners → 100, 5K → 89, 10K → 78, 20K → 45, 25K → 0.
 fn compute_depth_score(artists: &[DiscoveryResponseItem]) -> f64 {
     if artists.is_empty() {
         return 0.0;
     }
-    let ceiling = (MAX_LISTENER_CEILING as f64 + 1.0).log10();
+    let ceiling = MAX_LISTENER_CEILING as f64;
     let total_weight: f64 = artists.iter().map(|a| a.composite_score).sum();
     if total_weight <= 0.0 {
         return 0.0;
     }
     let weighted_sum: f64 = artists.iter().map(|a| {
-        let obscurity = ceiling - (a.total_listeners as f64 + 1.0).log10();
-        obscurity.max(0.0) * a.composite_score
+        let fraction = (a.total_listeners as f64 / ceiling).min(1.0);
+        let obscurity = (1.0 - fraction).sqrt();
+        obscurity * a.composite_score
     }).sum();
-    ((weighted_sum / total_weight) / ceiling * 100.0).min(100.0)
+    ((weighted_sum / total_weight) * 100.0).min(100.0)
 }

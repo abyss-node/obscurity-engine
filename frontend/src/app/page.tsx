@@ -8,7 +8,7 @@ import IcebergVisual from "../components/IcebergVisual";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
 import Tooltip from "../components/Tooltip";
-import { isGeoTag } from "../lib/geoTags";
+import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
 import * as Spotify from "../lib/spotify";
 import { loadCache, saveCache } from "../lib/cache";
@@ -180,8 +180,8 @@ export default function Home() {
     for (const a of sortedArtists) {
       for (const t of a.top_tags) {
         if (isGeoTag(t)) {
-          const key = t.toLowerCase();
-          counts[key] = (counts[key] ?? 0) + 1;
+          const canonical = GEO_CANONICAL.get(t.toLowerCase()) ?? t.toLowerCase();
+          counts[canonical] = (counts[canonical] ?? 0) + 1;
         }
       }
     }
@@ -193,7 +193,9 @@ export default function Home() {
   const filteredArtists = useMemo(() => {
     if (selectedGeoTags.length === 0) return sortedArtists;
     return sortedArtists.filter(a =>
-      selectedGeoTags.every(sel => a.top_tags.some(t => t.toLowerCase() === sel))
+      selectedGeoTags.some(sel =>
+        a.top_tags.some(t => (GEO_CANONICAL.get(t.toLowerCase()) ?? t.toLowerCase()) === sel)
+      )
     );
   }, [sortedArtists, selectedGeoTags]);
 
@@ -433,7 +435,7 @@ export default function Home() {
                   </a>
                   <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
                   <button
-                    onClick={() => setShowSetup((s) => !s)}
+                    onClick={() => { setShowSetup((s) => !s); setShowApiKey(false); }}
                     className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                     style={{ color: "var(--dim)" }}
                   >
@@ -441,7 +443,7 @@ export default function Home() {
                   </button>
                   <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
                   <button
-                    onClick={() => setShowApiKey((s) => !s)}
+                    onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
                     className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                     style={{ color: apiKey ? "var(--accent)" : "var(--dim)" }}
                   >
@@ -587,15 +589,19 @@ export default function Home() {
                     {label}
                   </button>
                 ))}
-                {isRefreshing && (
-                  <span
-                    className="font-mono text-[9px] tracking-widest animate-pulse self-center ml-1"
-                    style={{ color: "var(--dim)" }}
-                  >
-                    ...
-                  </span>
-                )}
               </div>
+
+              {/* Refresh */}
+              <button
+                onClick={handleRetry}
+                disabled={loading}
+                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-30"
+                style={{ color: "var(--dim)" }}
+              >
+                {isRefreshing ? "..." : "↺ refresh"}
+              </button>
+
+              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>|</span>
 
               {/* Share */}
               <button

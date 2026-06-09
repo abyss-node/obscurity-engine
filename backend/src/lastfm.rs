@@ -94,22 +94,6 @@ pub struct TopTrack {
     pub artist: TrackArtistRef,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SimilarTracksResponse {
-    pub similartracks: SimilarTracks,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SimilarTracks {
-    #[serde(default)]
-    pub track: Vec<SimilarTrackItem>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct SimilarTrackItem {
-    pub name: String,
-    pub artist: TrackArtistRef,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TrackArtistRef {
@@ -250,30 +234,6 @@ impl LastfmClient {
             return Err(format!("Last.fm Error {}: {}", err.error, err.message).into());
         }
         Ok(serde_json::from_str(&resp_text)?)
-    }
-
-    pub async fn fetch_similar_tracks(
-        &self,
-        artist: &str,
-        track: &str,
-        limit: u32,
-    ) -> Result<SimilarTracksResponse, BoxError> {
-        let url = format!(
-            "{}?method=track.getsimilar&artist={}&track={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL,
-            urlencoding::encode(artist),
-            urlencoding::encode(track),
-            self.api_key,
-            limit
-        );
-        let resp_text = self.get_with_retry(&url).await?;
-        let json: serde_json::Value = serde_json::from_str(&resp_text)?;
-        if json.get("error").is_some() {
-            return Ok(SimilarTracksResponse { similartracks: SimilarTracks { track: vec![] } });
-        }
-        Ok(serde_json::from_str(&resp_text).unwrap_or(SimilarTracksResponse {
-            similartracks: SimilarTracks { track: vec![] },
-        }))
     }
 
     pub async fn fetch_track_info(

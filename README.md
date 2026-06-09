@@ -2,7 +2,7 @@
 
 A music discovery tool that maps your Last.fm listening history to find artists you haven't heard yet — surfacing hidden connections between what you already love and what you're likely to love next.
 
-Built around a three-phase signal pipeline: seeds (your most-played artists) → candidates (similar artists you haven't heard) → scoring (conviction × stickiness × genre fit). A "MIX" mode blends all six Last.fm time periods, weighted by recency, to give you a live picture of your current taste.
+Built around a dual-graph pipeline: seeds (your most-played artists) → candidates (similar-artist graph + genre tag graph) → scoring (conviction × stickiness × genre fit). A "MIX" mode blends all six Last.fm time periods, weighted by recency, to give you a live picture of your current taste.
 
 ---
 
@@ -10,9 +10,9 @@ Built around a three-phase signal pipeline: seeds (your most-played artists) →
 
 1. Enter a Last.fm username
 2. The engine fetches your top artists across 6 time windows (7d, 1mo, 3mo, 6mo, 1yr, all-time) and blends them with recency weighting
-3. For each of your top artists, it fetches their similar artists on Last.fm
-4. Candidates that appear from multiple of your seeds get a higher conviction score; the stickiness score measures fanbase loyalty via monthly/total listener ratio
-5. Artists you already listen to are filtered out; results are ranked by composite score (conviction × stickiness)
+3. Two pipelines run in parallel: similar-artist expansion (collaborative filtering) and genre tag graph (folksonomy-based)
+4. Candidates confirmed by both pipelines get a DUAL SIGNAL badge and a conviction bonus
+5. Artists you already listen to are filtered out; results above 25K listeners are excluded; remaining candidates are ranked by composite score (conviction × stickiness) with genre diversity enforcement
 
 ---
 
@@ -40,8 +40,6 @@ The script will:
 - Start both servers and open the app at `http://localhost:3000`
 
 ### Manual setup
-
-If you prefer to run the two services yourself:
 
 **Backend**
 ```bash
@@ -112,27 +110,45 @@ The recommended stack is [Railway](https://railway.app) for the backend and [Ver
 obscurity-engine/
 ├── backend/
 │   ├── src/
-│   │   ├── main.rs       # Axum server setup, CORS, routing
-│   │   └── service.rs    # Core pipeline: seeds → candidates → scoring
-│   ├── .env.example      # Copy to .env and fill in your API key
+│   │   ├── main.rs              # Axum server setup, CORS, routing, cache
+│   │   ├── lastfm.rs            # Last.fm API client with retry logic
+│   │   ├── models.rs            # Shared data types
+│   │   ├── spotify.rs           # Spotify client (track lookup for preview)
+│   │   ├── utils.rs             # Artist name normalization, period parsing
+│   │   └── pipeline/
+│   │       ├── seeds.rs         # Phase 1: collect seed artists from scrobble history
+│   │       ├── candidates.rs    # Phase 2: similar-artist expansion
+│   │       ├── tag_graph.rs     # Phase 2b: genre tag graph (cross-validation)
+│   │       ├── scoring.rs       # Phase 3: score, rank, diversity pass, depth score
+│   │       ├── track_seeds.rs   # Track mode: seed tracks from listening history
+│   │       ├── track_candidates.rs  # Track mode: candidate expansion
+│   │       └── track_scoring.rs     # Track mode: scoring and ranking
+│   ├── .env.example             # Copy to .env and fill in your API key
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── page.tsx        # Main page: input, results, period controls
-│   │   │   ├── layout.tsx      # Font setup, global metadata
-│   │   │   └── globals.css     # CSS custom property token system
+│   │   │   ├── page.tsx         # Main page: landing, results, period controls, share
+│   │   │   ├── layout.tsx       # Font setup, global metadata
+│   │   │   └── globals.css      # CSS custom property token system
 │   │   ├── components/
-│   │   │   ├── ArtistCard.tsx  # Expandable artist card with scores
-│   │   │   ├── ArtistList.tsx  # Sort controls, geo filter, artist grid
-│   │   │   ├── IcebergVisual.tsx # Sonar map (obscurity iceberg)
-│   │   │   └── Tooltip.tsx     # Hover tooltip with 300ms delay
+│   │   │   ├── ArtistCard.tsx   # Expandable artist card with scores and via overlay
+│   │   │   ├── ArtistList.tsx   # Sort controls, geo/via filters, artist grid
+│   │   │   ├── TrackCard.tsx    # Track card with Spotify lookup
+│   │   │   ├── IcebergVisual.tsx # Sonar depth map
+│   │   │   ├── ErrorState.tsx   # [ERR] SONAR_FAILURE with retry
+│   │   │   ├── LoadingState.tsx # Scan bar animation
+│   │   │   ├── OnboardingGuide.tsx # Last.fm setup instructions
+│   │   │   └── Tooltip.tsx      # Hover tooltip with delay
 │   │   └── lib/
-│   │       └── geoTags.ts      # Geographic tag detection and filtering
+│   │       ├── geoTags.ts       # Geographic tag detection, canonical map, formatting
+│   │       ├── scoring.ts       # Depth score → prose tier labels
+│   │       ├── cache.ts         # localStorage result cache
+│   │       └── spotify.ts       # Spotify OAuth + playlist creation
 │   └── Dockerfile
 ├── docker-compose.yml
-├── start.sh              # One-command local start script
-└── DESIGN.md             # Design system reference (tokens, fonts, rules)
+├── start.sh                     # One-command local start script
+└── DESIGN.md                    # Design system reference (tokens, fonts, rules)
 ```
 
 ---
@@ -144,13 +160,14 @@ obscurity-engine/
 | **conviction** | How many of your seed artists point to this candidate. Multiple independent signals = higher confidence. |
 | **stickiness** | Monthly listeners ÷ total listeners. High ratio = dedicated, returning fanbase. |
 | **composite** | Conviction × stickiness. The default sort. |
-| **DUAL SIGNAL** | Artist was confirmed by both the similar-artist graph AND the genre tag graph. |
+| **DUAL** | Artist was confirmed by both the similar-artist graph AND the genre tag graph. |
 | **genre fit** | How much this artist's tags overlap with your overall taste profile. |
+| **obscurity index** | Conviction-weighted average of `sqrt(1 − listeners/25000)` across all results. 0 = ceiling (25K listeners), 100 = completely unknown. |
 
 ---
 
 ## Contributing
 
-The backend pipeline lives in `backend/src/service.rs` — it's a single file that handles all three phases. The scoring weights and constants are at the top of that file. Pull requests welcome.
+The backend pipeline is split across `backend/src/pipeline/`. Scoring weights and constants live at the top of `scoring.rs` and `track_scoring.rs`. The 25K listener ceiling is `MAX_LISTENER_CEILING` in both files.
 
 Get a Last.fm API key (free): https://www.last.fm/api/account/create

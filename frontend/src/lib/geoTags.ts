@@ -24,6 +24,44 @@ export const GEO_TAGS = new Set([
   'london', 'birmingham',
 ]);
 
+// Maps both adjective and country-name forms to one canonical key for deduplication
+export const GEO_CANONICAL = new Map<string, string>([
+  ['american', 'usa'], ['usa', 'usa'],
+  ['british', 'uk'], ['uk', 'uk'], ['england', 'uk'],
+  ['german', 'germany'], ['germany', 'germany'],
+  ['norwegian', 'norway'], ['norway', 'norway'],
+  ['swedish', 'sweden'], ['sweden', 'sweden'],
+  ['finnish', 'finland'], ['finland', 'finland'],
+  ['french', 'france'], ['france', 'france'],
+  ['japanese', 'japan'], ['japan', 'japan'],
+  ['australian', 'australia'], ['australia', 'australia'],
+  ['canadian', 'canada'], ['canada', 'canada'],
+  ['danish', 'denmark'], ['denmark', 'denmark'],
+  ['dutch', 'netherlands'], ['netherlands', 'netherlands'],
+  ['irish', 'ireland'], ['ireland', 'ireland'],
+  ['scottish', 'scotland'], ['scotland', 'scotland'],
+  ['polish', 'poland'], ['poland', 'poland'],
+  ['italian', 'italy'], ['italy', 'italy'],
+  ['russian', 'russia'], ['russia', 'russia'],
+  ['icelandic', 'iceland'], ['iceland', 'iceland'],
+  ['ukrainian', 'ukraine'], ['ukraine', 'ukraine'],
+  ['argentinian', 'argentina'], ['argentina', 'argentina'],
+  ['brazilian', 'brazil'], ['brazil', 'brazil'],
+  ['mexican', 'mexico'], ['mexico', 'mexico'],
+  ['spanish', 'spain'], ['spain', 'spain'],
+  ['portuguese', 'portugal'], ['portugal', 'portugal'],
+  ['greek', 'greece'], ['greece', 'greece'],
+  ['belgian', 'belgium'], ['belgium', 'belgium'],
+  ['swiss', 'switzerland'], ['switzerland', 'switzerland'],
+  ['austrian', 'austria'], ['austria', 'austria'],
+  ['hungarian', 'hungary'], ['hungary', 'hungary'],
+  ['czech', 'czechia'], ['czechia', 'czechia'],
+  ['romanian', 'romania'], ['romanian', 'romania'],
+  ['chinese', 'china'], ['korean', 'korea'], ['thai', 'thailand'],
+  ['turkish', 'turkey'], ['israeli', 'israel'], ['indian', 'india'],
+  ['indonesian', 'indonesia'],
+]);
+
 const ACRONYMS = new Set(['usa', 'uk', 'nwobhm', 'nyhc', 'us']);
 
 export function formatGeoTag(tag: string): string {

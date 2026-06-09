@@ -21,8 +21,8 @@ use super::track_candidates::TrackCandidateMap;
 use super::track_seeds::TrackSeeds;
 
 const INFO_CONCURRENCY: usize = 10;
-const MAX_LISTENER_CEILING: u64 = 50_000;
-const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
+const MAX_LISTENER_CEILING: u64 = 25_000;
+const DIVERSITY_SLOTS_PER_GENRE: usize = 6;
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
 const MAX_RESULTS: usize = 30;
 
@@ -268,7 +268,7 @@ fn compute_depth_score(tracks: &[TrackDiscoveryItem]) -> f64 {
     if tracks.is_empty() {
         return 0.0;
     }
-    let ceiling = (MAX_LISTENER_CEILING as f64 + 1.0).log10();
+    let ceiling = MAX_LISTENER_CEILING as f64;
     let total_weight: f64 = tracks.iter().map(|t| t.composite_score).sum();
     if total_weight <= 0.0 {
         return 0.0;
@@ -276,9 +276,10 @@ fn compute_depth_score(tracks: &[TrackDiscoveryItem]) -> f64 {
     let weighted_sum: f64 = tracks
         .iter()
         .map(|t| {
-            let obscurity = ceiling - (t.total_listeners as f64 + 1.0).log10();
-            obscurity.max(0.0) * t.composite_score
+            let fraction = (t.total_listeners as f64 / ceiling).min(1.0);
+            let obscurity = (1.0 - fraction).sqrt();
+            obscurity * t.composite_score
         })
         .sum();
-    ((weighted_sum / total_weight) / ceiling * 100.0).min(100.0)
+    ((weighted_sum / total_weight) * 100.0).min(100.0)
 }

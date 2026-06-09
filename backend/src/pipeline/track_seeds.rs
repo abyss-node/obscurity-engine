@@ -5,7 +5,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use crate::lastfm::{LastfmClient, TimePeriod};
 use crate::utils::parse_period;
 
-const MAX_SEEDS: usize = 50;
+const MAX_SEEDS: usize = 200;
 
 pub struct TrackSeeds {
     /// "artist::track" → blended weight
@@ -54,7 +54,7 @@ async fn collect_blend(
     let mut merged: HashMap<String, (String, String, f64)> = HashMap::new();
     while let Some(task_result) = futures.next().await {
         if let Ok((Ok(response), factor)) = task_result {
-            for track in response.toptracks.track.into_iter().take(MAX_SEEDS) {
+            for track in response.toptracks.track.into_iter() {
                 let plays = track.playcount.as_ref()
                     .and_then(|p| p.parse::<f64>().ok())
                     .unwrap_or(1.0)
@@ -85,7 +85,7 @@ async fn collect_single(
     }
 
     let mut merged: HashMap<String, (String, String, f64)> = HashMap::new();
-    for track in response.toptracks.track.into_iter().take(MAX_SEEDS) {
+    for track in response.toptracks.track.into_iter() {
         let plays = track.playcount.as_ref()
             .and_then(|p| p.parse::<f64>().ok())
             .unwrap_or(1.0)
