@@ -171,7 +171,7 @@ export default function ArtistCard({
 
           {/* Via — overlays stats on hover, hidden when grid card is expanded */}
           {hasSeeds && (isHero || !isExpanded) && (
-            <div className="absolute inset-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <div className="absolute top-4 left-0 right-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
               <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
               <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                 {artist.source_seeds.slice(0, 5).map(s => (
