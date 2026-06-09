@@ -202,9 +202,10 @@ export default function ArtistCard({
         {/* ── Grid card: stats + via overlay on hover ──────────────────────── */}
         {!isHero && (
           <div className="relative pt-4 border-t" style={{ borderColor: "var(--border)" }}>
-            <div className={`grid grid-cols-2 gap-x-6 gap-y-3 transition-opacity duration-200 ${
-              hasSeeds && !isExpanded ? "group-hover:opacity-0" : ""
-            }`}>
+            <div className={`grid gap-x-6 gap-y-3 transition-opacity duration-200 ${
+              genreFit > 0 ? "grid-cols-3" : "grid-cols-2"
+            } ${hasSeeds && !isExpanded ? "group-hover:opacity-0" : ""}`}>
+              {genreFit > 0 && <StatCell label="genre fit" value={`${genreFit}%`} />}
               <StatCell label="conviction" value={conviction} unit="/10" />
               <StatCell label="stickiness" value={stickiness} unit="/10" />
             </div>
@@ -233,14 +234,6 @@ export default function ArtistCard({
             className="overflow-hidden"
           >
             <div className="pt-4 border-t flex flex-col gap-4" style={{ borderColor: "var(--border)" }}>
-              <div className="flex flex-col gap-0.5 min-h-[40px]">
-                {genreFit > 0 && (
-                  <>
-                    <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre fit</span>
-                    <span className="font-mono text-base" style={{ color: "var(--text)" }}>{genreFit}%</span>
-                  </>
-                )}
-              </div>
               <div className="flex flex-wrap gap-2 h-[52px] overflow-hidden">
                 {extraTags.map(tag => (
                   <span
