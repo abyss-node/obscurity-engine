@@ -61,12 +61,18 @@ async fn build_seed_tag_profile(
     while let Some(task) = futs.next().await {
         if let Ok((tags, weight)) = task {
             let share = weight / total;
-            for tag in tags.iter().take(3) {
+            for tag in tags.iter().take(5) {
                 *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
             }
         }
     }
-    println!("TRACK_SEED_TAGS: profile with {} unique tags", profile.len());
+    let max_w = profile.values().cloned().fold(0.0_f64, f64::max);
+    if max_w > 0.0 {
+        for v in profile.values_mut() {
+            *v /= max_w;
+        }
+    }
+    println!("TRACK_SEED_TAGS: profile with {} unique tags (max_w={:.3})", profile.len(), max_w);
     profile
 }
 

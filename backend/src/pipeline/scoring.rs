@@ -55,7 +55,8 @@ async fn build_seed_tag_profile(
     client: &Arc<LastfmClient>,
     seeds: &Seeds,
 ) -> HashMap<String, f64> {
-    const TOP_SEEDS: usize = 25;
+    const TOP_SEEDS: usize = 40;
+    const TAGS_PER_SEED: usize = 5;
     let mut sorted: Vec<_> = seeds.weights.iter().collect();
     sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
     let top: Vec<(String, f64)> = sorted.into_iter()
@@ -79,12 +80,23 @@ async fn build_seed_tag_profile(
     while let Some(task) = futs.next().await {
         if let Ok((tags, weight)) = task {
             let share = weight / total;
-            for tag in tags.iter().take(3) {
+            for tag in tags.iter().take(TAGS_PER_SEED) {
                 *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
             }
         }
     }
-    println!("SEED_TAGS: profile with {} unique tags", profile.len());
+
+    // Normalize so the highest-weight tag = 1.0.
+    // Without this, every entry is tiny (each seed contributes 1/N of total),
+    // making alignment scores cluster near 0 even for perfect genre matches.
+    let max_w = profile.values().cloned().fold(0.0_f64, f64::max);
+    if max_w > 0.0 {
+        for v in profile.values_mut() {
+            *v /= max_w;
+        }
+    }
+
+    println!("SEED_TAGS: profile with {} unique tags (max_w={:.3})", profile.len(), max_w);
     profile
 }
 

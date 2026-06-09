@@ -95,17 +95,27 @@ export async function createPlaylist(
   if (!playlistRes.ok) return null;
   const playlist = await playlistRes.json();
 
+  // Search tracks in parallel batches to avoid rate limiting
+  const BATCH = 5;
+  const candidates = tracks.slice(0, 50);
   const uris: string[] = [];
-  for (const track of tracks.slice(0, 50)) {
-    const q = encodeURIComponent(`track:${track.name} artist:${track.artist}`);
-    const searchRes = await fetch(
-      `https://api.spotify.com/v1/search?q=${q}&type=track&limit=1`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (!searchRes.ok) continue;
-    const searchData = await searchRes.json();
-    const uri = searchData.tracks?.items?.[0]?.uri;
-    if (uri) uris.push(uri);
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const batch = candidates.slice(i, i + BATCH);
+    const results = await Promise.all(batch.map(async (track) => {
+      const q = encodeURIComponent(`track:${track.name} artist:${track.artist}`);
+      try {
+        const res = await fetch(
+          `https://api.spotify.com/v1/search?q=${q}&type=track&limit=1`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.tracks?.items?.[0]?.uri ?? null;
+      } catch {
+        return null;
+      }
+    }));
+    uris.push(...results.filter((u): u is string => u !== null));
   }
 
   if (uris.length === 0) return null;

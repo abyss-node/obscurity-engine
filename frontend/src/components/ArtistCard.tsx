@@ -175,12 +175,11 @@ export default function ArtistCard({
                 ))}
               </div>
             )}
-            {/* Via — always in DOM inside expandable, revealed on hover (no layout shift) */}
             {artist.source_seeds && artist.source_seeds.length > 0 && (
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
+              <div className="flex flex-col gap-0.5">
                 <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {artist.source_seeds.slice(0, 4).map(s => (
+                  {artist.source_seeds.slice(0, 5).map(s => (
                     <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
                       {s.name}
                     </span>
@@ -192,24 +191,6 @@ export default function ArtistCard({
         </motion.div>
 
       </div>
-
-      {/* Via — fades in on hover when collapsed */}
-      {!isHero && artist.source_seeds && artist.source_seeds.length > 0 && (
-        <div
-          className={`absolute inset-x-0 bottom-0 flex flex-col gap-1 px-5 pb-5 pt-12 pointer-events-none transition-opacity duration-200
-            ${isExpanded ? "opacity-0" : "opacity-0 group-hover:opacity-100"}`}
-          style={{ background: "linear-gradient(to top, var(--surface) 60%, transparent)" }}
-        >
-          <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            {artist.source_seeds.slice(0, 4).map(s => (
-              <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
-                {s.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Last.fm — pinned to card bottom */}
       <AnimatePresence>

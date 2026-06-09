@@ -27,10 +27,10 @@ const listVariants = {
 };
 
 const SORT_OPTIONS = [
-  { id: "composite",  label: "composite",  tip: "Conviction × stickiness. Balances how strongly your taste recommends an artist with how dedicated their fanbase is." },
-  { id: "conviction", label: "conviction", tip: "How many artists you already love point toward this one. Multiple independent signals from your listening history." },
-  { id: "stickiness", label: "stickiness", tip: "Ratio of monthly to total listeners. High stickiness = people who find this artist keep coming back." },
-  { id: "listeners",  label: "listeners",  tip: "Raw Last.fm listener count. Sort to find the deepest cuts." },
+  { id: "composite",  label: "composite",  tip: "Conviction × stickiness. Default rank — balances how strongly your history points to an artist with how dedicated their fanbase is." },
+  { id: "conviction", label: "conviction", tip: "How many of your seed artists independently point to this one. Multiple signals from different parts of your taste carry more weight." },
+  { id: "stickiness", label: "stickiness", tip: "Monthly listeners ÷ total listeners. A high ratio means people who discover this artist keep coming back — the fanbase is active, not passive." },
+  { id: "listeners",  label: "listeners",  tip: "Raw Last.fm listener count. Sort ascending to find the deepest cuts — artists few people have heard of yet." },
 ];
 
 const COLS = 3;
@@ -145,8 +145,11 @@ export default function ArtistList({
       {/* Controls */}
       <div className="flex flex-col gap-6">
 
-        {/* Sort */}
-        <div className="flex flex-col gap-3">
+        {/* Sort — sticky so you can re-sort without scrolling back */}
+        <div
+          className="sticky top-12 z-30 flex flex-col gap-3 py-4 -mx-4 px-4 sm:-mx-8 sm:px-8"
+          style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}
+        >
           <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
             sort by
           </span>

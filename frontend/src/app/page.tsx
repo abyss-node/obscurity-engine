@@ -121,14 +121,18 @@ export default function Home() {
         setMode("tracks");
         setTracks(storedTracks);
         setSpotifyStatus("loading");
-        Spotify.exchangeCode(code, state).then((token) => {
-          if (!token) { setSpotifyStatus("error"); return; }
-          return Spotify.createPlaylist(token, storedTracks, meta.username, meta.period);
-        }).then((url) => {
-          Spotify.clearSpotifySession();
-          if (url) { setPlaylistUrl(url); setSpotifyStatus("success"); }
-          else setSpotifyStatus("error");
-        }).catch(() => setSpotifyStatus("error"));
+        (async () => {
+          try {
+            const token = await Spotify.exchangeCode(code, state);
+            if (!token) { setSpotifyStatus("error"); return; }
+            const url = await Spotify.createPlaylist(token, storedTracks, meta.username, meta.period);
+            Spotify.clearSpotifySession();
+            if (url) { setPlaylistUrl(url); setSpotifyStatus("success"); }
+            else setSpotifyStatus("error");
+          } catch {
+            setSpotifyStatus("error");
+          }
+        })();
       }
       return;
     }
@@ -358,7 +362,7 @@ export default function Home() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -16 }}
             transition={{ duration: 0.35 }}
-            className="min-h-screen flex items-center justify-center px-6"
+            className="min-h-screen flex items-start justify-center px-6 py-[15vh]"
           >
             <div className="w-full max-w-md flex flex-col items-center gap-8">
               {/* Headline */}
@@ -649,7 +653,7 @@ export default function Home() {
                         className="flex flex-col gap-3 pb-8 border-b"
                         style={{ borderColor: "var(--border)" }}
                       >
-                        <Tooltip text="A score from 0–100. Higher means your taste skews toward artists with small but dedicated fanbases — the deeper the cut, the higher the score.">
+                        <Tooltip text="0–100. Measures how far below the mainstream your results sit. Weighted by how strongly each artist was recommended — not just a simple average.">
                           <span
                             className="font-mono text-[10px] tracking-widest uppercase"
                             style={{ color: "var(--dim)" }}
@@ -676,7 +680,7 @@ export default function Home() {
                             {depthProse}
                           </p>
                         )}
-                        <Tooltip text="Seeds are artists from your listening history used to find recommendations. Candidates are all similar artists evaluated before filtering.">
+                        <Tooltip text="Seeds: artists pulled from your listening history to drive the search. Candidates: the final count after scoring, filtering, and diversity enforcement.">
                           <p
                             className="font-mono text-[10px] tracking-wider"
                             style={{ color: "var(--dim)" }}
@@ -695,7 +699,7 @@ export default function Home() {
                         transition={{ delay: 0.2, duration: 0.6 }}
                         className="flex flex-col gap-3"
                       >
-                        <Tooltip text="Artists grouped by listener depth: SURFACE (10K+), MID (3K–10K), DEEP (500–3K), ABYSS (<500). Lower tier = more underground.">
+                        <Tooltip text="Artists placed by listener count. SURFACE (10K+), MID (3K–10K), DEEP (500–3K), ABYSS (under 500). All results are under 25K — this shows the distribution within that range.">
                           <button
                             onClick={() => setIcebergOpen((o) => !o)}
                             className="self-start font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
@@ -761,10 +765,10 @@ export default function Home() {
                           [SONAR] no signal
                         </span>
                         <p className="font-body text-lg font-light" style={{ color: "var(--muted)" }}>
-                          No obscure tracks found for this period.
+                          No tracks surfaced for this period.
                         </p>
                         <p className="font-mono text-[10px] tracking-wider max-w-xs" style={{ color: "var(--dim)" }}>
-                          Try a longer time window — MIX or ALL give the most seeds to work from.
+                          Try a longer window — MIX or ALL have the most listening history to work from.
                         </p>
                       </motion.div>
                     )}
@@ -806,7 +810,14 @@ export default function Home() {
                           )}
                           {spotifyStatus === "error" && (
                             <span className="font-mono text-[10px] tracking-widest" style={{ color: "var(--muted)" }}>
-                              spotify export failed — try again
+                              spotify export failed —{" "}
+                              <button
+                                onClick={() => setSpotifyStatus("idle")}
+                                className="transition-opacity hover:opacity-60"
+                                style={{ color: "var(--accent)" }}
+                              >
+                                try again
+                              </button>
                             </span>
                           )}
                         </div>

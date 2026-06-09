@@ -128,10 +128,10 @@ Score + prose computed client-side from `depth_score` and `top_genres[0]`:
 
 ```
 depth_score >= 85  →  "collector-grade"
-depth_score >= 70  →  "serious listener"
+depth_score >= 70  →  "devoted listener"
 depth_score >= 55  →  "adventurous"
 depth_score >= 40  →  "eclectic"
-depth_score <  40  →  "chart-adjacent"
+depth_score <  40  →  "wide listener"
 ```
 
 Genre modifier appended based on `top_genres[0].name` (if it exists and weight > 10%):
