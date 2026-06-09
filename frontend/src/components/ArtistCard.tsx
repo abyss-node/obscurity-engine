@@ -127,15 +127,19 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
                   {primaryTag}
                 </span>
               )}
-              {!isHero && extraTags.map(tag => (
-                <span
-                  key={tag}
-                  className="font-mono text-[10px] tracking-widest uppercase shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                  style={{ color: "var(--dim)" }}
-                >
-                  {tag}
+              {!isHero && extraTags.length > 0 && (
+                <span className="flex items-center gap-2 max-w-0 overflow-hidden opacity-0 group-hover:max-w-[600px] group-hover:opacity-100 transition-all duration-200">
+                  {extraTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="font-mono text-[10px] tracking-widest uppercase shrink-0"
+                      style={{ color: "var(--dim)" }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </span>
-              ))}
+              )}
               {geoTags.map(tag => (
                 <span key={tag} className="font-mono text-[9px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
                   {formatGeoTag(tag.toLowerCase())}
