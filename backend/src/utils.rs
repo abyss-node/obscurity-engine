@@ -5,6 +5,9 @@ use crate::lastfm::TimePeriod;
 /// and collapses whitespace — so "The Cure" and "cure" map to the same key.
 pub fn normalize_artist_name(name: &str) -> String {
     let lower = name.trim().to_lowercase();
+    // Normalize "&" → "and" before stripping punctuation so "Zeal & Ardor"
+    // and "Zeal and Ardor" collapse to the same key.
+    let lower = lower.replace('&', "and");
     let s = lower.strip_prefix("the ").unwrap_or(&lower);
     s.chars()
         .filter(|c| c.is_alphanumeric() || c.is_whitespace())
