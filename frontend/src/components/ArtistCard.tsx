@@ -62,7 +62,7 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
     }
     return result;
   })();
-  const extraTags = artist.top_tags.filter(t => !isGeoTag(t) && t.length <= 25).slice(1, 5);
+  const extraTags = artist.top_tags.filter(t => !isGeoTag(t) && t.length <= 25).slice(1, 4);
 
   const conviction = Math.min(artist.conviction_score / 100, 10).toFixed(1);
   const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);

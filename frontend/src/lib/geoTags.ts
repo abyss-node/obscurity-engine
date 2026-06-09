@@ -7,6 +7,7 @@ export const GEO_TAGS = new Set([
   'portuguese', 'greek', 'belgian', 'swiss', 'austrian', 'hungarian',
   'czech', 'romanian', 'bulgarian', 'serbian', 'croatian', 'turkish',
   'israeli', 'chinese', 'korean', 'thai', 'indonesian', 'indian',
+  'slovenian', 'slovak', 'latvian', 'lithuanian', 'estonian',
   'south african', 'chilean', 'colombian', 'peruvian', 'venezuelan',
   // Country names
   'usa', 'uk', 'england', 'germany', 'norway', 'sweden', 'finland',
@@ -14,6 +15,7 @@ export const GEO_TAGS = new Set([
   'ireland', 'scotland', 'poland', 'italy', 'russia', 'iceland',
   'ukraine', 'argentina', 'brazil', 'mexico', 'spain', 'portugal',
   'greece', 'belgium', 'switzerland', 'austria', 'hungary', 'czechia',
+  'slovenia', 'slovakia', 'serbia', 'croatia', 'latvia', 'lithuania', 'estonia',
   'new zealand', 'singapore', 'taiwan',
   // Regions
   'scandinavian', 'nordic', 'european', 'latin american', 'north american',
@@ -60,6 +62,13 @@ export const GEO_CANONICAL = new Map<string, string>([
   ['chinese', 'china'], ['korean', 'korea'], ['thai', 'thailand'],
   ['turkish', 'turkey'], ['israeli', 'israel'], ['indian', 'india'],
   ['indonesian', 'indonesia'],
+  ['slovenian', 'slovenia'], ['slovenia', 'slovenia'],
+  ['slovak', 'slovakia'], ['slovakia', 'slovakia'],
+  ['serbian', 'serbia'], ['serbia', 'serbia'],
+  ['croatian', 'croatia'], ['croatia', 'croatia'],
+  ['latvian', 'latvia'], ['latvia', 'latvia'],
+  ['lithuanian', 'lithuania'], ['lithuania', 'lithuania'],
+  ['estonian', 'estonia'], ['estonia', 'estonia'],
 ]);
 
 const ACRONYMS = new Set(['usa', 'uk', 'nwobhm', 'nyhc', 'us']);
