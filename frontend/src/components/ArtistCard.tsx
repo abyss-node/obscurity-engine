@@ -71,7 +71,6 @@ export default function ArtistCard({
   const conviction = Math.min(artist.conviction_score / 100, 10).toFixed(1);
   const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
-
   const hasSeeds = artist.source_seeds && artist.source_seeds.length > 0;
 
   return (
@@ -88,51 +87,66 @@ export default function ArtistCard({
     >
       <div className="flex flex-col gap-4 flex-1">
 
-        {/* Header — fixed height so conviction row aligns across all cards in a row */}
-        <div className={`flex justify-between items-start gap-3 ${isHero ? "" : "min-h-[128px]"}`}>
-          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-            <div className="flex items-start gap-2 flex-wrap">
+        {/* ── Header ──────────────────────────────────────────────────────────
+            Each sub-row has a fixed height so every card in a row shows genre
+            and listeners at exactly the same vertical position regardless of
+            how long the artist name is.
+        */}
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex flex-col min-w-0 flex-1">
+
+            {/* Row 1: name — fixed height = exactly 2 lines at text-2xl/leading-tight */}
+            <div className={isHero ? "" : "h-[56px] md:h-[68px] overflow-hidden"}>
               <h3
                 className={`font-serif font-semibold leading-tight ${
-                  isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl line-clamp-2"
+                  isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl"
                 }`}
                 style={{ color: "var(--text)" }}
               >
                 {artist.name}
               </h3>
+            </div>
+
+            {/* Row 2: genre + geo + DUAL — fixed height = 1 line */}
+            <div className={isHero ? "mt-3" : "h-[20px] mt-2 flex items-center gap-2 overflow-hidden"}>
               {artist.cross_validated && (
                 <Tooltip text="Confirmed by both your similar-artists graph and the genre tag graph.">
                   <span
-                    className="font-mono text-[9px] tracking-widest px-1.5 py-0.5 border shrink-0 mt-1"
+                    className="font-mono text-[9px] tracking-widest px-1.5 py-0.5 border shrink-0"
                     style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
                   >
                     DUAL
                   </span>
                 </Tooltip>
               )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
               {primaryTag && (
-                <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
+                <span className="font-mono text-[10px] tracking-widest uppercase truncate" style={{ color: "var(--muted)" }}>
                   {primaryTag}
                 </span>
               )}
               {geoTags.map(tag => (
-                <span key={tag} className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                <span key={tag} className="font-mono text-[9px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
                   {formatGeoTag(tag.toLowerCase())}
                 </span>
               ))}
             </div>
-            <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
-              {formatListeners(artist.total_listeners)} listeners
-            </span>
+
+            {/* Row 3: listener count — fixed height = 1 line */}
+            <div className={isHero ? "mt-1" : "h-[18px] mt-1.5"}>
+              <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+                {formatListeners(artist.total_listeners)} listeners
+              </span>
+            </div>
+
           </div>
-          <span className="font-mono text-[9px] tracking-widest shrink-0 mt-1" style={{ color: "var(--dim)" }}>
+
+          {/* Rank — top-right, aligned to name row */}
+          <span className="font-mono text-[9px] tracking-widest shrink-0" style={{ color: "var(--dim)", marginTop: isHero ? 0 : "4px" }}>
             /{rank.toString().padStart(2, "0")}
           </span>
         </div>
 
-        {/* Stats row — always visible */}
+        {/* ── Stats row — always visible ───────────────────────────────────── */}
         <div className="pt-4 border-t grid grid-cols-2 gap-x-6 gap-y-3" style={{ borderColor: "var(--border)" }}>
           <div className="flex flex-col gap-0.5">
             <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
@@ -148,7 +162,7 @@ export default function ArtistCard({
           </div>
         </div>
 
-        {/* Via — always in layout (keeps card heights consistent), fades in on hover when collapsed */}
+        {/* ── Via hover-reveal — always in layout, fades in on hover ──────── */}
         {!isHero && hasSeeds && (
           <div
             className={`flex flex-col gap-0.5 transition-opacity duration-200 ${
@@ -166,7 +180,7 @@ export default function ArtistCard({
           </div>
         )}
 
-        {/* Expandable: genre fit + extra tags + via (always-visible when expanded) */}
+        {/* ── Expandable section ───────────────────────────────────────────── */}
         <motion.div
           layout
           initial={false}
@@ -174,25 +188,32 @@ export default function ArtistCard({
           className="overflow-hidden"
         >
           <div className="pt-4 border-t flex flex-col gap-4" style={{ borderColor: "var(--border)" }}>
-            {genreFit > 0 && (
-              <div className="flex flex-col gap-0.5">
-                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre fit</span>
-                <span className="font-mono text-base" style={{ color: "var(--text)" }}>{genreFit}%</span>
-              </div>
-            )}
-            {extraTags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {extraTags.map(tag => (
-                  <span
-                    key={tag}
-                    className="font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 border"
-                    style={{ color: "var(--dim)", borderColor: "var(--border)" }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
+
+            {/* Genre fit — min-height so via always starts at consistent position
+                even when some cards have no genre fit data */}
+            <div className="flex flex-col gap-0.5 min-h-[40px]">
+              {genreFit > 0 && (
+                <>
+                  <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre fit</span>
+                  <span className="font-mono text-base" style={{ color: "var(--text)" }}>{genreFit}%</span>
+                </>
+              )}
+            </div>
+
+            {/* Extra tags — min-height anchors via even when fewer tags */}
+            <div className="flex flex-wrap gap-2 min-h-[26px]">
+              {extraTags.map(tag => (
+                <span
+                  key={tag}
+                  className="font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 border"
+                  style={{ color: "var(--dim)", borderColor: "var(--border)" }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            {/* Via — always visible when expanded */}
             {hasSeeds && (
               <div className="flex flex-col gap-0.5">
                 <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
@@ -205,6 +226,7 @@ export default function ArtistCard({
                 </div>
               </div>
             )}
+
           </div>
         </motion.div>
 
