@@ -111,12 +111,15 @@ export default function ArtistCard({
             <div className={isHero ? "mt-3" : "h-[20px] mt-2 flex items-center gap-2 overflow-hidden"}>
               {artist.cross_validated && (
                 <Tooltip text="Confirmed by both your similar-artists graph and the genre tag graph.">
-                  <span
-                    className="font-mono text-[9px] tracking-widest px-1.5 py-0.5 border shrink-0"
-                    style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    className="shrink-0 transition-opacity duration-150 hover:opacity-70"
+                    style={{ width: 13, height: 13, fill: "var(--accent)" }}
+                    aria-label="Dual-confirmed"
                   >
-                    DUAL
-                  </span>
+                    <path d="M8 1l1.854 3.756 4.146.603-3 2.924.708 4.126L8 10.25l-3.708 1.159.708-4.126-3-2.924 4.146-.603z" />
+                  </svg>
                 </Tooltip>
               )}
               {primaryTag && (
