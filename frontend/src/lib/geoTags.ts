@@ -79,7 +79,7 @@ export function formatGeoTag(tag: string): string {
 }
 
 export function isGeoTag(tag: string): boolean {
-  return GEO_TAGS.has(tag.toLowerCase());
+  return GEO_TAGS.has(tag.toLowerCase().trim());
 }
 
 export function firstGenreTag(tags: string[]): string {

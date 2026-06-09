@@ -62,7 +62,7 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
     }
     return result;
   })();
-  const extraTags = artist.top_tags.filter(t => !isGeoTag(t) && t.length <= 25).slice(1, 3);
+  const extraTags = artist.top_tags.filter(t => !isGeoTag(t) && t.length <= 25).slice(1, 8);
 
   const conviction = Math.min(artist.conviction_score / 100, 10).toFixed(1);
   const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);
@@ -143,20 +143,20 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
               ))}
             </div>
 
-            {/* Listeners / extra genre tags — cross-fade on hover (same zone, no clipping) */}
-            <div className={isHero ? "mt-1" : "relative h-[18px] mt-1.5"}>
-              {/* Listeners: visible by default, fades out on hover */}
+            {/* Listeners / extra genre tags — cross-fade on hover */}
+            <div className={isHero ? "mt-1" : "relative h-[44px] mt-1.5"}>
+              {/* Listeners: vertically centered, fades out on hover */}
               <span
-                className={`font-mono text-[10px] tracking-wider ${!isHero ? "absolute inset-0 transition-opacity duration-150 group-hover:opacity-0" : ""}`}
+                className={`font-mono text-[10px] tracking-wider ${!isHero ? "absolute inset-0 flex items-center transition-opacity duration-150 group-hover:opacity-0" : ""}`}
                 style={{ color: "var(--dim)" }}
               >
                 {formatListeners(artist.total_listeners)} listeners
               </span>
-              {/* Extra genre tags: hidden by default, fade in on hover */}
+              {/* Extra genre tags: 3 rows, smaller font, fade in on hover */}
               {!isHero && extraTags.length > 0 && (
-                <div className="absolute inset-0 flex items-center gap-x-3 overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                <div className="absolute inset-0 flex flex-wrap gap-x-3 gap-y-1 content-start overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                   {extraTags.map(tag => (
-                    <span key={tag} className="font-mono text-[10px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
+                    <span key={tag} className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
                       {tag}
                     </span>
                   ))}
