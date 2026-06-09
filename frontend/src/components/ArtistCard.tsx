@@ -113,10 +113,10 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
               )}
             </div>
 
-            {/* Genre row: star + primary + extra tags expand on hover */}
+            {/* Genre row: star + primary tag */}
             <div className={isHero
               ? "mt-3 flex items-center gap-3"
-              : "mt-2 flex items-center gap-2 flex-nowrap overflow-hidden min-h-[20px]"
+              : "mt-2 flex items-center gap-2 min-h-[20px]"
             }>
               {artist.cross_validated && (
                 <Tooltip text="Confirmed by both your similar-artists graph and the genre tag graph.">
@@ -132,21 +132,10 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
                 </Tooltip>
               )}
               {primaryTag && (
-                <span className="font-mono text-[10px] tracking-widest uppercase shrink-0" style={{ color: "var(--muted)" }}>
+                <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
                   {primaryTag}
                 </span>
               )}
-              {/* Extra genre tags — collapse to zero width when hidden so they never clip the primary tag */}
-              {!isHero && extraTags.length > 0 && (
-                <span className="min-w-0 flex items-center gap-2 max-w-0 overflow-hidden opacity-0 group-hover:max-w-[600px] group-hover:opacity-100 transition-all duration-200">
-                  {extraTags.map(tag => (
-                    <span key={tag} className="font-mono text-[10px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
-                      {tag}
-                    </span>
-                  ))}
-                </span>
-              )}
-              {/* Geo tags on hero only (grid cards show geo below artist name) */}
               {isHero && geoTags.map(tag => (
                 <span key={tag} className="font-mono text-[9px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
                   {formatGeoTag(tag.toLowerCase())}
@@ -154,14 +143,25 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
               ))}
             </div>
 
-            {/* Listeners — fades on hover for grid cards */}
-            <div className={isHero ? "mt-1" : "h-[18px] mt-1.5"}>
+            {/* Listeners / extra genre tags — cross-fade on hover (same zone, no clipping) */}
+            <div className={isHero ? "mt-1" : "relative h-[18px] mt-1.5"}>
+              {/* Listeners: visible by default, fades out on hover */}
               <span
-                className={`font-mono text-[10px] tracking-wider ${!isHero ? "transition-opacity duration-150 group-hover:opacity-0" : ""}`}
+                className={`font-mono text-[10px] tracking-wider ${!isHero ? "absolute inset-0 transition-opacity duration-150 group-hover:opacity-0" : ""}`}
                 style={{ color: "var(--dim)" }}
               >
                 {formatListeners(artist.total_listeners)} listeners
               </span>
+              {/* Extra genre tags: hidden by default, fade in on hover */}
+              {!isHero && extraTags.length > 0 && (
+                <div className="absolute inset-0 flex items-center gap-x-3 overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  {extraTags.map(tag => (
+                    <span key={tag} className="font-mono text-[10px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>
