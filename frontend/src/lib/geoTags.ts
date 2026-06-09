@@ -9,6 +9,9 @@ export const GEO_TAGS = new Set([
   'israeli', 'chinese', 'korean', 'thai', 'indonesian', 'indian',
   'slovenian', 'slovak', 'latvian', 'lithuanian', 'estonian',
   'south african', 'chilean', 'colombian', 'peruvian', 'venezuelan',
+  // Non-English country names that appear on Last.fm
+  'brasil', 'deutschland', 'espana', 'sverige', 'suomi', 'norge',
+  'polska', 'magyarorszag',
   // Country names
   'usa', 'uk', 'england', 'germany', 'norway', 'sweden', 'finland',
   'france', 'japan', 'australia', 'canada', 'denmark', 'netherlands',
@@ -62,6 +65,10 @@ export const GEO_CANONICAL = new Map<string, string>([
   ['chinese', 'china'], ['korean', 'korea'], ['thai', 'thailand'],
   ['turkish', 'turkey'], ['israeli', 'israel'], ['indian', 'india'],
   ['indonesian', 'indonesia'],
+  ['brasil', 'brazil'], ['deutschland', 'germany'],
+  ['espana', 'spain'], ['sverige', 'sweden'],
+  ['suomi', 'finland'], ['norge', 'norway'],
+  ['polska', 'poland'],
   ['slovenian', 'slovenia'], ['slovenia', 'slovenia'],
   ['slovak', 'slovakia'], ['slovakia', 'slovakia'],
   ['serbian', 'serbia'], ['serbia', 'serbia'],

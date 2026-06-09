@@ -144,7 +144,7 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
             </div>
 
             {/* Listeners / extra genre tags — cross-fade on hover */}
-            <div className={isHero ? "mt-1" : "relative h-[44px] mt-1.5"}>
+            <div className={isHero ? "mt-1" : "relative h-[56px] mt-1.5"}>
               {/* Listeners: vertically centered, fades out on hover */}
               <span
                 className={`font-mono text-[10px] tracking-wider ${!isHero ? "absolute inset-0 flex items-center transition-opacity duration-150 group-hover:opacity-0" : ""}`}
