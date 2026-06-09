@@ -216,19 +216,6 @@ export default function ArtistCard({
               ))}
             </div>
 
-            {/* Via — always visible when expanded */}
-            {hasSeeds && (
-              <div className="flex flex-col gap-0.5">
-                <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {artist.source_seeds.slice(0, 5).map(s => (
-                    <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
-                      {s.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
           </div>
         </motion.div>
