@@ -53,8 +53,6 @@ export default function ArtistCard({
   }, [isFocused]);
 
   const primaryTag = firstGenreTag(artist.top_tags);
-  // Normalize all geo tags to their canonical country-name form, deduplicated
-  // e.g. "german" → "germany", "swedish" → "sweden", so display is always "Germany" / "Sweden"
   const geoTags = (() => {
     const seen = new Set<string>();
     const result: string[] = [];
@@ -74,6 +72,8 @@ export default function ArtistCard({
   const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
 
+  const hasSeeds = artist.source_seeds && artist.source_seeds.length > 0;
+
   return (
     <motion.div
       ref={cardRef}
@@ -86,15 +86,15 @@ export default function ArtistCard({
       onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)")}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = isFocused ? "var(--accent)" : "var(--border)")}
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 flex-1">
 
-        {/* Header */}
-        <div className={`flex justify-between items-start gap-3 ${isHero ? "" : "min-h-[110px]"}`}>
+        {/* Header — fixed height so conviction row aligns across all cards in a row */}
+        <div className={`flex justify-between items-start gap-3 ${isHero ? "" : "min-h-[128px]"}`}>
           <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-start gap-2 flex-wrap">
               <h3
-                className={`font-serif font-semibold leading-tight break-words ${
-                  isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl"
+                className={`font-serif font-semibold leading-tight ${
+                  isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl line-clamp-2"
                 }`}
                 style={{ color: "var(--text)" }}
               >
@@ -103,7 +103,7 @@ export default function ArtistCard({
               {artist.cross_validated && (
                 <Tooltip text="Confirmed by both your similar-artists graph and the genre tag graph.">
                   <span
-                    className="font-mono text-[9px] tracking-widest px-1.5 py-0.5 border shrink-0"
+                    className="font-mono text-[9px] tracking-widest px-1.5 py-0.5 border shrink-0 mt-1"
                     style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
                   >
                     DUAL
@@ -132,7 +132,7 @@ export default function ArtistCard({
           </span>
         </div>
 
-        {/* Stats — always visible, always 2 items so height is consistent across cards */}
+        {/* Stats row — always visible */}
         <div className="pt-4 border-t grid grid-cols-2 gap-x-6 gap-y-3" style={{ borderColor: "var(--border)" }}>
           <div className="flex flex-col gap-0.5">
             <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
@@ -148,7 +148,25 @@ export default function ArtistCard({
           </div>
         </div>
 
-        {/* Expandable: genre fit + extra tags + via */}
+        {/* Via — always in layout (keeps card heights consistent), fades in on hover when collapsed */}
+        {!isHero && hasSeeds && (
+          <div
+            className={`flex flex-col gap-0.5 transition-opacity duration-200 ${
+              isExpanded ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+              {artist.source_seeds.slice(0, 5).map(s => (
+                <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Expandable: genre fit + extra tags + via (always-visible when expanded) */}
         <motion.div
           layout
           initial={false}
@@ -175,7 +193,7 @@ export default function ArtistCard({
                 ))}
               </div>
             )}
-            {artist.source_seeds && artist.source_seeds.length > 0 && (
+            {hasSeeds && (
               <div className="flex flex-col gap-0.5">
                 <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -204,7 +222,7 @@ export default function ArtistCard({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="mt-auto pt-4 w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70 shrink-0"
+            className="mt-6 w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70 shrink-0"
             style={{ borderColor: "var(--border)", color: "var(--muted)" }}
           >
             view on last.fm →

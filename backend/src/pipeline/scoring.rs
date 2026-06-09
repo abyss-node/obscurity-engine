@@ -254,13 +254,17 @@ fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed
     let top_genres = aggregate_genres(&artists);
 
     // taste_alignment: how well this candidate's tags match the user's actual seed artists.
-    // Uses the seed tag profile (built from what the user listens to), not the output distribution.
+    // Normalized so the dominant genre = 1.0; summed across candidate's top tags.
+    // Also applied as a 0–50% uplift on composite_score so genre fit influences ranking.
     for artist in &mut artists {
         let alignment: f64 = artist.top_tags.iter()
             .map(|t| seed_tag_profile.get(&t.to_lowercase()).copied().unwrap_or(0.0))
             .sum();
         artist.taste_alignment = alignment.min(1.0);
+        artist.composite_score *= 1.0 + 0.5 * artist.taste_alignment;
     }
+    // Re-sort after composite uplift from genre fit
+    artists.sort_by(|a, b| b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal));
 
     // Diversity uses the output genre distribution so results spread across genres.
     let genre_weight_map: HashMap<String, f64> = top_genres.iter()

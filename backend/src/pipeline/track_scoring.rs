@@ -189,7 +189,9 @@ fn post_process(mut tracks: Vec<TrackDiscoveryItem>, seed_count: usize, seed_tag
             .map(|tag| seed_tag_profile.get(&tag.to_lowercase()).copied().unwrap_or(0.0))
             .sum();
         t.taste_alignment = alignment.min(1.0);
+        t.composite_score *= 1.0 + 0.5 * t.taste_alignment;
     }
+    tracks.sort_by(|a, b| b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal));
 
     let genre_weight_map: HashMap<String, f64> = top_genres
         .iter()
