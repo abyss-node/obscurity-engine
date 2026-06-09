@@ -149,39 +149,40 @@ export default function ArtistCard({
           </span>
         </div>
 
-        {/* ── Stats row — always visible ───────────────────────────────────── */}
-        <div className="pt-4 border-t grid grid-cols-2 gap-x-6 gap-y-3" style={{ borderColor: "var(--border)" }}>
-          <div className="flex flex-col gap-0.5">
-            <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
-            <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-              {conviction}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
-            </span>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
-            <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-              {stickiness}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
-            </span>
-          </div>
-        </div>
-
-        {/* ── Via hover-reveal — always in layout, fades in on hover ──────── */}
-        {hasSeeds && (
-          <div
-            className={`flex flex-col gap-0.5 transition-opacity duration-200 ${
-              !isHero && isExpanded ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100"
-            }`}
-          >
-            <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-              {artist.source_seeds.slice(0, 5).map(s => (
-                <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
-                  {s.name}
-                </span>
-              ))}
+        {/* ── Stats + via overlay ──────────────────────────────────────────── */}
+        <div className="relative pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+          {/* Stats — fade out on hover when via is available and card is not expanded */}
+          <div className={`grid grid-cols-2 gap-x-6 gap-y-3 transition-opacity duration-200 ${
+            hasSeeds && (isHero || !isExpanded) ? "group-hover:opacity-0" : ""
+          }`}>
+            <div className="flex flex-col gap-0.5">
+              <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
+              <span className="font-mono text-base" style={{ color: "var(--text)" }}>
+                {conviction}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+              </span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
+              <span className="font-mono text-base" style={{ color: "var(--text)" }}>
+                {stickiness}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+              </span>
             </div>
           </div>
-        )}
+
+          {/* Via — overlays stats on hover, hidden when grid card is expanded */}
+          {hasSeeds && (isHero || !isExpanded) && (
+            <div className="absolute inset-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+              <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                {artist.source_seeds.slice(0, 5).map(s => (
+                  <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
+                    {s.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Expandable section ───────────────────────────────────────────── */}
         <motion.div
