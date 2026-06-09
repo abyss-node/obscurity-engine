@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Artist } from "../app/page";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Tooltip from "./Tooltip";
 import { firstGenreTag, isGeoTag, formatGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 
@@ -19,8 +19,6 @@ interface ArtistCardProps {
   stickinessThreshold: number;
   isHero?: boolean;
   isFocused?: boolean;
-  isExpanded?: boolean;
-  onToggle?: () => void;
 }
 
 const itemVariants = {
@@ -41,18 +39,7 @@ const StatCell = ({ label, value, unit }: { label: string; value: string; unit?:
   </div>
 );
 
-export default function ArtistCard({
-  artist,
-  rank,
-  isHero,
-  isFocused,
-  isExpanded: controlledExpanded,
-  onToggle,
-}: ArtistCardProps) {
-  const [localExpanded, setLocalExpanded] = useState(false);
-  const isExpanded = isHero ? false : (controlledExpanded ?? localExpanded);
-  const toggle = onToggle ?? (() => setLocalExpanded(e => !e));
-
+export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,15 +68,17 @@ export default function ArtistCard({
   const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
   const hasSeeds = artist.source_seeds && artist.source_seeds.length > 0;
+  const hasOverlay = extraTags.length > 0 || hasSeeds;
+
+  const lastfmUrl = `https://www.last.fm/music/${encodeURIComponent(artist.name)}`;
 
   return (
     <motion.div
       ref={cardRef}
       layout
       variants={itemVariants}
-      onClick={!isHero ? toggle : undefined}
-      className={`group relative border transition-colors duration-150 flex flex-col h-full
-        ${isHero ? "p-7 md:p-10 cursor-default" : "p-5 cursor-pointer"}`}
+      className={`group relative border flex flex-col h-full cursor-default
+        ${isHero ? "p-7 md:p-10" : "p-5"}`}
       style={{ background: "var(--surface)", borderColor: isFocused ? "var(--accent)" : "var(--border)" }}
       onMouseEnter={!isHero ? (e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)") : undefined}
       onMouseLeave={!isHero ? (e) => ((e.currentTarget as HTMLElement).style.borderColor = isFocused ? "var(--accent)" : "var(--border)") : undefined}
@@ -100,19 +89,23 @@ export default function ArtistCard({
         <div className="flex justify-between items-start gap-3">
           <div className="flex flex-col min-w-0 flex-1">
 
-            {/* Name — fixed height on grid cards only */}
+            {/* Name — link to Last.fm; fixed height on grid cards */}
             <div className={isHero ? "" : "h-[56px] md:h-[68px] overflow-hidden"}>
-              <h3
-                className={`font-serif font-semibold leading-tight ${
+              <a
+                href={lastfmUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className={`font-serif font-semibold leading-tight hover:opacity-70 transition-opacity duration-150 ${
                   isHero ? "text-3xl md:text-5xl" : "text-xl md:text-2xl"
                 }`}
                 style={{ color: "var(--text)" }}
               >
                 {artist.name}
-              </h3>
+              </a>
             </div>
 
-            {/* Genre + geo + star — fixed height on grid cards */}
+            {/* Genre + geo + star */}
             <div className={isHero
               ? "mt-3 flex items-center gap-3"
               : "h-[20px] mt-2 flex items-center gap-2 overflow-hidden"
@@ -142,7 +135,7 @@ export default function ArtistCard({
               ))}
             </div>
 
-            {/* Listeners — fixed height on grid cards */}
+            {/* Listeners */}
             <div className={isHero ? "mt-1" : "h-[18px] mt-1.5"}>
               <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
                 {formatListeners(artist.total_listeners)} listeners
@@ -156,18 +149,14 @@ export default function ArtistCard({
           </span>
         </div>
 
-        {/* ── Hero body: 3-col stats + extra tags + via (always visible) ────── */}
+        {/* ── Hero body ─────────────────────────────────────────────────────── */}
         {isHero && (
           <div className="pt-5 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
-
-            {/* Single stats row: genre fit · conviction · stickiness */}
             <div className={`grid gap-6 ${genreFit > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
               {genreFit > 0 && <StatCell label="genre fit" value={`${genreFit}%`} />}
               <StatCell label="conviction" value={conviction} unit="/10" />
               <StatCell label="stickiness" value={stickiness} unit="/10" />
             </div>
-
-            {/* Extra genre tags */}
             {extraTags.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {extraTags.map(tag => (
@@ -181,8 +170,6 @@ export default function ArtistCard({
                 ))}
               </div>
             )}
-
-            {/* Via — always visible on hero */}
             {hasSeeds && (
               <div className="flex flex-col gap-1">
                 <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
@@ -195,66 +182,60 @@ export default function ArtistCard({
                 </div>
               </div>
             )}
-
           </div>
         )}
 
-        {/* ── Grid card: stats + via overlay on hover ──────────────────────── */}
+        {/* ── Grid card: stats + hover overlay (tags + via) ─────────────────── */}
         {!isHero && (
-          <div className="relative pt-4 border-t" style={{ borderColor: "var(--border)" }}>
+          <div className="relative pt-4 border-t min-h-[76px]" style={{ borderColor: "var(--border)" }}>
+            {/* Stats — fade out on hover when overlay has content */}
             <div className={`grid gap-x-6 gap-y-3 transition-opacity duration-200 ${
               genreFit > 0 ? "grid-cols-3" : "grid-cols-2"
-            } ${hasSeeds && !isExpanded ? "group-hover:opacity-0" : ""}`}>
+            } ${hasOverlay ? "group-hover:opacity-0" : ""}`}>
               {genreFit > 0 && <StatCell label="genre fit" value={`${genreFit}%`} />}
               <StatCell label="conviction" value={conviction} unit="/10" />
               <StatCell label="stickiness" value={stickiness} unit="/10" />
             </div>
 
-            {hasSeeds && !isExpanded && (
-              <div className="absolute top-4 left-0 right-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {artist.source_seeds.slice(0, 5).map(s => (
-                    <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
-                      {s.name}
-                    </span>
-                  ))}
-                </div>
+            {/* Overlay — extra tags + via, fades in on hover */}
+            {hasOverlay && (
+              <div className="absolute top-4 left-0 right-0 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                {extraTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {extraTags.map(tag => (
+                      <span
+                        key={tag}
+                        className="font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 border"
+                        style={{ color: "var(--dim)", borderColor: "var(--border)" }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {hasSeeds && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                      {artist.source_seeds.slice(0, 5).map(s => (
+                        <span key={s.name} className="font-mono text-[10px] leading-tight" style={{ color: "var(--muted)" }}>
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Grid card expandable: genre fit + extra tags ─────────────────── */}
-        {!isHero && (
-          <motion.div
-            layout
-            initial={false}
-            animate={{ height: isExpanded ? "auto" : 0, opacity: isExpanded ? 1 : 0 }}
-            className="overflow-hidden"
-          >
-            <div className="pt-4 border-t flex flex-col gap-4" style={{ borderColor: "var(--border)" }}>
-              <div className="flex flex-wrap gap-2 h-[52px] overflow-hidden">
-                {extraTags.map(tag => (
-                  <span
-                    key={tag}
-                    className="font-mono text-[9px] tracking-widest uppercase px-2 py-0.5 border"
-                    style={{ color: "var(--dim)", borderColor: "var(--border)" }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
       </div>
 
-      {/* Last.fm */}
-      {isHero ? (
+      {/* Last.fm — hero only (grid cards use name link) */}
+      {isHero && (
         <a
-          href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
+          href={lastfmUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-6 w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70 shrink-0"
@@ -262,25 +243,6 @@ export default function ArtistCard({
         >
           view on last.fm →
         </a>
-      ) : (
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.a
-              href={`https://www.last.fm/music/${encodeURIComponent(artist.name)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="mt-6 w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70 shrink-0"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            >
-              view on last.fm →
-            </motion.a>
-          )}
-        </AnimatePresence>
       )}
     </motion.div>
   );

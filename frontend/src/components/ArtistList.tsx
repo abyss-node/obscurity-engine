@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Artist } from "../app/page";
 import ArtistCard from "./ArtistCard";
 import Tooltip from "./Tooltip";
@@ -32,8 +32,6 @@ const SORT_OPTIONS = [
   { id: "stickiness", label: "stickiness", tip: "Monthly listeners ÷ total listeners. A high ratio means people who discover this artist keep coming back — the fanbase is active, not passive." },
   { id: "listeners",  label: "listeners",  tip: "Raw Last.fm listener count. Sort ascending to find the deepest cuts — artists few people have heard of yet." },
 ];
-
-const COLS = 3;
 
 function tagMatchScore(query: string, tags: string[]): number {
   const q = query.toLowerCase().trim();
@@ -67,26 +65,8 @@ export default function ArtistList({
   setSelectedGeoTags,
   focusedArtist,
 }: ArtistListProps) {
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [genreQuery, setGenreQuery] = useState("");
   const [selectedVia, setSelectedVia] = useState<string[]>([]);
-
-  const toggleRow = (rowIndex: number) => {
-    setExpandedRows(prev => {
-      const next = new Set(prev);
-      if (next.has(rowIndex)) next.delete(rowIndex);
-      else next.add(rowIndex);
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    if (!focusedArtist) return;
-    const idx = artists.slice(1).findIndex(a => a.name === focusedArtist);
-    if (idx >= 0) {
-      setExpandedRows(prev => new Set(prev).add(Math.floor(idx / COLS)));
-    }
-  }, [focusedArtist, artists]);
 
   // Build via seed list from all artists, sorted by frequency
   const availableVia = useMemo(() => {
@@ -311,20 +291,15 @@ export default function ArtistList({
               isFocused={focusedArtist === displayArtists[0].name}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {displayArtists.slice(1).map((artist, idx) => {
-                const rowIndex = Math.floor(idx / COLS);
-                return (
-                  <ArtistCard
-                    key={`${artist.name}-${idx + 1}`}
-                    artist={artist}
-                    rank={idx + 2}
-                    stickinessThreshold={stickinessThreshold}
-                    isFocused={focusedArtist === artist.name}
-                    isExpanded={expandedRows.has(rowIndex)}
-                    onToggle={() => toggleRow(rowIndex)}
-                  />
-                );
-              })}
+              {displayArtists.slice(1).map((artist, idx) => (
+                <ArtistCard
+                  key={`${artist.name}-${idx + 1}`}
+                  artist={artist}
+                  rank={idx + 2}
+                  stickinessThreshold={stickinessThreshold}
+                  isFocused={focusedArtist === artist.name}
+                />
+              ))}
             </div>
           </motion.div>
         )}
