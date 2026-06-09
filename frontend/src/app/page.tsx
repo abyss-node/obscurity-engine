@@ -176,7 +176,13 @@ export default function Home() {
     else if (sortBy === "conviction") arr.sort((a, b) => b.conviction_score - a.conviction_score);
     else if (sortBy === "stickiness") arr.sort((a, b) => b.stickiness_score - a.stickiness_score);
     else if (sortBy === "listeners") arr.sort((a, b) => b.total_listeners - a.total_listeners);
-    return arr;
+    // Untagged artists always sink to the end regardless of sort order
+    return arr.sort((a, b) => {
+      const aUntagged = a.top_tags.length === 0;
+      const bUntagged = b.top_tags.length === 0;
+      if (aUntagged === bUntagged) return 0;
+      return aUntagged ? 1 : -1;
+    });
   }, [artists, sortBy]);
 
   const availableGeoTags = useMemo(() => {
