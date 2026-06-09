@@ -88,7 +88,7 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
         <div className="flex justify-between items-start gap-3">
           <div className="flex flex-col min-w-0 flex-1">
 
-            {/* Name — link to Last.fm; fixed height on grid cards */}
+            {/* Name + geo tag — fixed height on grid cards */}
             <div className={isHero ? "" : "h-[56px] md:h-[68px] overflow-hidden"}>
               <a
                 href={lastfmUrl}
@@ -102,9 +102,18 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
               >
                 {artist.name}
               </a>
+              {!isHero && geoTags.length > 0 && (
+                <div className="flex gap-2 mt-0.5">
+                  {geoTags.map(tag => (
+                    <span key={tag} className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                      {formatGeoTag(tag.toLowerCase())}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Genre + extra tags on hover + geo + star */}
+            {/* Genre row: star + primary + extra tags expand on hover */}
             <div className={isHero
               ? "mt-3 flex items-center gap-3"
               : "mt-2 flex items-center gap-2 flex-nowrap overflow-hidden min-h-[20px]"
@@ -127,20 +136,18 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
                   {primaryTag}
                 </span>
               )}
+              {/* Extra genre tags — collapse to zero width when hidden so they never clip the primary tag */}
               {!isHero && extraTags.length > 0 && (
-                <span className="flex items-center gap-2 max-w-0 overflow-hidden opacity-0 group-hover:max-w-[600px] group-hover:opacity-100 transition-all duration-200">
+                <span className="min-w-0 flex items-center gap-2 max-w-0 overflow-hidden opacity-0 group-hover:max-w-[600px] group-hover:opacity-100 transition-all duration-200">
                   {extraTags.map(tag => (
-                    <span
-                      key={tag}
-                      className="font-mono text-[10px] tracking-widest uppercase shrink-0"
-                      style={{ color: "var(--dim)" }}
-                    >
+                    <span key={tag} className="font-mono text-[10px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
                       {tag}
                     </span>
                   ))}
                 </span>
               )}
-              {geoTags.map(tag => (
+              {/* Geo tags on hero only (grid cards show geo below artist name) */}
+              {isHero && geoTags.map(tag => (
                 <span key={tag} className="font-mono text-[9px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
                   {formatGeoTag(tag.toLowerCase())}
                 </span>
