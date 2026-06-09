@@ -174,9 +174,9 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
         {/* ── Hero body ─────────────────────────────────────────────────────── */}
         {isHero && (
           <div className="pt-5 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
-            <div className={`grid gap-6 ${genreFit > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
+            <div className="grid gap-6 grid-cols-3">
               <StatCell label="conviction" value={conviction} unit="/10" />
-              {genreFit > 0 && <StatCell label="genre fit" value={`${genreFit}%`} />}
+              <StatCell label="genre fit" value={genreFit > 0 ? `${genreFit}%` : "—"} />
               <StatCell label="stickiness" value={stickiness} unit="/10" />
             </div>
             {extraTags.length > 0 && (
@@ -211,11 +211,9 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
         {!isHero && (
           <div className="relative pt-4 border-t min-h-[56px]" style={{ borderColor: "var(--border)" }}>
             {/* Stats — fade out on hover when overlay has content */}
-            <div className={`grid gap-x-6 gap-y-3 transition-opacity duration-200 ${
-              genreFit > 0 ? "grid-cols-3" : "grid-cols-2"
-            } ${hasSeeds ? "group-hover:opacity-0" : ""}`}>
+            <div className={`grid grid-cols-3 gap-x-6 gap-y-3 transition-opacity duration-200 ${hasSeeds ? "group-hover:opacity-0" : ""}`}>
               <StatCell label="conviction" value={conviction} unit="/10" />
-              {genreFit > 0 && <StatCell label="genre fit" value={`${genreFit}%`} />}
+              <StatCell label="genre fit" value={genreFit > 0 ? `${genreFit}%` : "—"} />
               <StatCell label="stickiness" value={stickiness} unit="/10" />
             </div>
 
