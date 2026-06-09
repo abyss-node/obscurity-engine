@@ -203,8 +203,8 @@ export default function ArtistCard({
               )}
             </div>
 
-            {/* Extra tags — min-height anchors via even when fewer tags */}
-            <div className="flex flex-wrap gap-2 min-h-[26px]">
+            {/* Extra tags — fixed height = 2 rows max, clamps via to a consistent position */}
+            <div className="flex flex-wrap gap-2 h-[52px] overflow-hidden">
               {extraTags.map(tag => (
                 <span
                   key={tag}
