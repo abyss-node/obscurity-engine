@@ -166,10 +166,10 @@ export default function ArtistCard({
         </div>
 
         {/* ── Via hover-reveal — always in layout, fades in on hover ──────── */}
-        {!isHero && hasSeeds && (
+        {hasSeeds && (
           <div
             className={`flex flex-col gap-0.5 transition-opacity duration-200 ${
-              isExpanded ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100"
+              !isHero && isExpanded ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100"
             }`}
           >
             <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>via</span>
