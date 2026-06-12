@@ -50,6 +50,8 @@ async def main_async(args) -> None:
         backstop_cap=args.backstop_cap,
         appetite_max=args.appetite_max,
         global_appetite=args.global_appetite,
+        novelty_model=args.novelty_model,
+        underexplored_mult=args.underexplored_mult,
         concurrency=args.concurrency,
     )
     anchor = anchor_ts(args.anchor)
@@ -57,7 +59,8 @@ async def main_async(args) -> None:
     cache = Cache(CACHE_PATH, enabled=not args.no_cache)
 
     print(f"\n  cohort: {len(cohort)} users | k={cfg.k} | threshold={cfg.threshold_model} | "
-          f"match_weight={cfg.use_match_weight} | two_hop={cfg.two_hop} | cache={'off' if args.no_cache else 'on'}")
+          f"novelty={cfg.novelty_model} | match_weight={cfg.use_match_weight} | "
+          f"two_hop={cfg.two_hop} | cache={'off' if args.no_cache else 'on'}")
     print(f"  split: seeds=[-{cfg.past_days}d] holdout=[{cfg.future_days}d] anchored at {args.anchor}\n")
 
     per_user_metrics = []
@@ -143,6 +146,12 @@ def main() -> None:
                    help="discovery: obscurity bias for fully-obscure taste (tilt strength upper bound)")
     p.add_argument("--global-appetite", type=float, default=_d.global_appetite,
                    help="discovery: tilt strength when personalize-appetite is off / shrinkage prior")
+    p.add_argument("--novelty-model", choices=["strict", "underexplored"], default=_d.novelty_model,
+                   help="strict: exclude all past-known artists | underexplored: artists with fewer "
+                        "plays than the user's mean plays-per-artist stay recommendable, and "
+                        "re-engaging with them counts as adoption")
+    p.add_argument("--underexplored-mult", type=float, default=_d.underexplored_mult,
+                   help="underexplored threshold = mean plays-per-artist × this multiplier")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()

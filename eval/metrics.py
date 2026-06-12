@@ -47,6 +47,11 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
     hit_listeners = [topk[i]["listeners"] for i in hit_idx]
     obscure_hits = sum(1 for l in hit_listeners if l <= CEILING)
 
+    # re-engagement (lightly-known artist the user dug into) vs pure discovery
+    # (never heard before) — only meaningful when novelty_model=underexplored.
+    gt_reengage = result.get("gt_reengage", set())
+    reengage_hits = sum(1 for i in hit_idx if topk[i]["norm"] in gt_reengage)
+
     return {
         "hits": hits,
         "adopted": len(ground_truth),
@@ -61,6 +66,10 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
         "mean_listeners": mean_listeners,
         "obscure_hits": obscure_hits,                             # hits with ≤CEILING listeners
         "hit_listeners": hit_listeners,                           # raw listener counts of hits
+        "reengage_hits": reengage_hits,                           # hits that were lightly-known
+        "discovery_hits": hits - reengage_hits,                   # hits never heard before
+        "adopted_reengage": len(gt_reengage),                     # GT split: light re-engagement
+        "adopted_discovery": len(result.get("gt_discovery", result["ground_truth"])),
     }
 
 

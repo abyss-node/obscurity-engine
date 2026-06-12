@@ -111,6 +111,15 @@ class Config:
     tier_variety: bool = True
     tier_cuts: tuple = (0.1, 0.3, 0.6)  # pos cutoffs → ABYSS / DEEP / EMERGING / CUSP
 
+    # ── novelty model: "strict" (exclude ALL past-known) | "underexplored" ──────
+    # In "underexplored" mode, an artist the user played FEWER times than their
+    # mean plays-per-artist (total past plays ÷ distinct past artists, × mult) is
+    # "light" — heard in passing, never dug into — and becomes recommendable, and
+    # re-engagement with it counts as a hit. "deep" artists (plays ≥ threshold)
+    # stay excluded as before. "strict" reproduces the legacy past_known behavior.
+    novelty_model: str = "strict"
+    underexplored_mult: float = 1.0  # threshold = mean_plays_per_artist × mult
+
     # ── eval ──────────────────────────────────────────────────────────────────
     k: int = 20                   # evaluate top-K recommendations
     concurrency: int = 5          # parallel Last.fm requests

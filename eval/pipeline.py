@@ -237,13 +237,17 @@ async def fetch_infos(client: LastfmClient, norms: list[str], cmap: dict) -> dic
     return {n: info for n, info in zip(norms, infos) if info}
 
 
-def score(cmap, info_map, weights, cross, past_known, profile, cfg: Config, th: dict) -> list[dict]:
+def score(cmap, info_map, weights, cross, exclude_known, profile, cfg: Config, th: dict) -> list[dict]:
+    """exclude_known: the set of past artists barred from being recommended.
+    In strict mode this is ALL past artists; in underexplored mode it is the
+    "deep" past artists plus the user's own seeds (light non-seed artists are
+    eligible). Computed in run_user(); score() just honors the set."""
     listener_map = {n: info["listeners"] for n, info in info_map.items()}
     # collab-component ceiling: flat 25K live, but the per-user backstop in discovery
     comp_ceiling = th["backstop"] if cfg.threshold_model == "discovery" else cfg.ceiling
     items = []
     for norm, info in info_map.items():
-        if norm in past_known:                       # already listens (past window)
+        if norm in exclude_known:                     # deep/seed (strict: all past)
             continue
         if not passes_threshold(info, th, cfg):       # past the sustainability line
             continue
@@ -425,14 +429,44 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
 
     plays_after = await collect_plays(client, user, cutoff, anchor, cfg)
     past_known = set(plays_before.keys())
+
+    weights, names = build_seeds(plays_before, cfg)
+    seed_norms = {normalize_artist_name(n) for n in names}
+
+    # ── novelty split: which past artists are "deep" vs "underexplored/light" ──
+    # threshold = mean plays-per-artist over the reconstructed past window × mult.
+    if cfg.novelty_model == "underexplored":
+        total_past_plays = sum(c for _d, c in plays_before.values())
+        n_distinct_past = len(plays_before) or 1
+        under_threshold = (total_past_plays / n_distinct_past) * cfg.underexplored_mult
+        deep_known = {
+            norm for norm, (_d, count) in plays_before.items()
+            if count >= under_threshold
+        }
+        light_known = past_known - deep_known
+        # recommendation exclusion: deep artists AND any of the user's own seeds
+        exclude_known = deep_known | seed_norms
+    else:
+        under_threshold = None
+        deep_known = past_known
+        light_known = set()
+        exclude_known = past_known
+
+    # ground truth: adopted if holdout plays ≥ min_future_plays AND not deep in
+    # the past (unknown OR light). Seeds are also excluded — they are barred from
+    # recommendation, so counting them in GT would pad the denominator with
+    # unwinnable targets. In strict mode seeds ⊂ past_known, so no behavior change.
     ground_truth = {
         norm for norm, (_d, count) in plays_after.items()
-        if norm not in past_known and count >= cfg.min_future_plays
+        if norm not in deep_known and norm not in seed_norms
+        and count >= cfg.min_future_plays
     }
     if not ground_truth:
         return {"user": user, "skipped": "no new adopted artists in holdout"}
 
-    weights, names = build_seeds(plays_before, cfg)
+    # re-engagement (light, heard before) vs pure-discovery (never heard) GT split
+    gt_reengage = ground_truth & light_known
+    gt_discovery = ground_truth - light_known
     cmap = await build_candidates(client, names, cfg)
     cross, profile = await build_tag_signals(client, weights, names, cfg)
     cand_norms = _cap_candidates(cmap, cfg)
@@ -442,7 +476,7 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
     seed_infos = await asyncio.gather(*(client.artist_info(n) for n in names[: cfg.profile_top_seeds]))
     th = build_threshold(info_map, [i for i in seed_infos if i], cfg)
 
-    ranked = score(cmap, info_map, weights, cross, past_known, profile, cfg, th)
+    ranked = score(cmap, info_map, weights, cross, exclude_known, profile, cfg, th)
 
     # reach funnel: adopted → eligible (passes threshold) → generated as candidate
     gt_infos = await asyncio.gather(
@@ -457,6 +491,8 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
     return {
         "user": user,
         "ground_truth": ground_truth,
+        "gt_reengage": gt_reengage,
+        "gt_discovery": gt_discovery,
         "eligible": eligible,
         "in_pool": in_pool,
         "ranked": ranked,
@@ -464,4 +500,7 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
         "n_candidates": len(cmap),
         "T_user": round(th["T_user"]),
         "user_median_listeners": round(th["user_median_listeners"]),
+        "under_threshold": round(under_threshold, 2) if under_threshold else None,
+        "n_past_deep": len(deep_known),
+        "n_past_light": len(light_known),
     }
