@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ArtistList from "../components/ArtistList";
 import TrackCard from "../components/TrackCard";
-import IcebergVisual from "../components/IcebergVisual";
+import DepthTierList from "../components/DepthTierList";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
 import Tooltip from "../components/Tooltip";
@@ -723,7 +723,7 @@ export default function Home() {
                               transition={{ duration: 0.35 }}
                               className="overflow-hidden"
                             >
-                              <IcebergVisual
+                              <DepthTierList
                                 artists={sortedArtists}
                                 onArtistClick={(name) => {
                                   setFocusedArtist(null);
