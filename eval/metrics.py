@@ -1,0 +1,65 @@
+"""Ranking metrics for the temporal holdout.
+
+A recommendation is a HIT if the artist is in the user's ground-truth set
+(adopted, recurring, in the holdout window, not known before). Absolute recall
+is low by nature — users discover music from many sources, not just an algorithm
+— so read these as RELATIVE numbers for comparing scoring variants, not as a
+quality score. The obscurity-weighted hit rate is the one that tracks the actual
+product goal: surfacing *obscure* artists that land.
+"""
+from __future__ import annotations
+
+CEILING = 25_000
+
+
+def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
+    """result is run_user's dict: ground_truth / eligible / in_pool sets.
+
+    Recall is measured against ELIGIBLE (under-ceiling) ground truth, since the
+    engine is structurally barred from recommending anything above the ceiling —
+    counting those in the denominator would penalise it for the filter by design.
+    The funnel (adopted → eligible → in_pool → hit) localises where users are
+    lost: a low in_pool/eligible ratio is a REACH problem, a low hit/in_pool
+    ratio is a RANKING problem.
+    """
+    ground_truth = result["ground_truth"]
+    eligible = result["eligible"]
+    in_pool = result["in_pool"]
+
+    topk = ranked[:k]
+    hit_idx = [i for i, r in enumerate(topk) if r["norm"] in ground_truth]
+    hits = len(hit_idx)
+
+    n_elig = len(eligible)
+    precision = hits / k if k else 0.0
+    recall = hits / n_elig if n_elig else 0.0
+    mrr = 1.0 / (hit_idx[0] + 1) if hit_idx else 0.0
+    hit_at_k = 1.0 if hits else 0.0
+
+    ow = sum(
+        max(0.0, 1.0 - min(topk[i]["listeners"], CEILING) / CEILING) for i in hit_idx
+    )
+    ow_per_k = ow / k if k else 0.0
+    mean_listeners = sum(r["listeners"] for r in topk) / len(topk) if topk else 0.0
+
+    return {
+        "hits": hits,
+        "adopted": len(ground_truth),
+        "eligible": n_elig,
+        "in_pool": len(in_pool),
+        "reach": len(in_pool) / n_elig if n_elig else 0.0,        # eligible → in_pool
+        "precision@k": precision,
+        "recall@k": recall,                                       # hits / eligible
+        "mrr": mrr,
+        "hit_rate@k": hit_at_k,
+        "obscurity_weighted@k": ow_per_k,
+        "mean_listeners": mean_listeners,
+    }
+
+
+def aggregate(per_user: list[dict]) -> dict:
+    """Mean of each metric across evaluated users."""
+    if not per_user:
+        return {}
+    keys = per_user[0].keys()
+    return {k: sum(u[k] for u in per_user) / len(per_user) for k in keys}

@@ -1,0 +1,96 @@
+{
+  "config": {
+    "past_days": 365,
+    "future_days": 180,
+    "min_future_plays": 3,
+    "min_seeds": 15,
+    "max_recent_pages": 40,
+    "max_seeds": 60,
+    "similar_per_seed": 20,
+    "max_candidates": 300,
+    "top_seeds_for_tags": 15,
+    "tags_to_derive": 3,
+    "tag_artists_limit": 100,
+    "profile_top_seeds": 40,
+    "profile_tags_per_seed": 5,
+    "ceiling": 25000,
+    "conviction_cap": 3.0,
+    "cross_validation_bonus": 0.5,
+    "diversity_slots": 3,
+    "alignment_uplift": 0.5,
+    "use_match_weight": false,
+    "genre_relative_ceiling": false,
+    "two_hop": true,
+    "two_hop_expand": 60,
+    "two_hop_discount": 0.5,
+    "k": 20,
+    "concurrency": 5
+  },
+  "anchor": "2026-06-10",
+  "per_user": [
+    {
+      "user": "Arnuv_J",
+      "metrics": {
+        "hits": 1,
+        "adopted": 278,
+        "eligible": 136,
+        "in_pool": 10,
+        "reach": 0.07352941176470588,
+        "precision@k": 0.05,
+        "recall@k": 0.007352941176470588,
+        "mrr": 0.16666666666666666,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.022052,
+        "mean_listeners": 12531.55
+      },
+      "skipped": null
+    },
+    {
+      "user": "hirenrevolver",
+      "metrics": {
+        "hits": 0,
+        "adopted": 160,
+        "eligible": 36,
+        "in_pool": 1,
+        "reach": 0.027777777777777776,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 14731.9
+      },
+      "skipped": null
+    },
+    {
+      "user": "stationinmyroom",
+      "metrics": {
+        "hits": 3,
+        "adopted": 416,
+        "eligible": 299,
+        "in_pool": 8,
+        "reach": 0.026755852842809364,
+        "precision@k": 0.15,
+        "recall@k": 0.010033444816053512,
+        "mrr": 0.09090909090909091,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.050741999999999995,
+        "mean_listeners": 11206.85
+      },
+      "skipped": null
+    }
+  ],
+  "aggregate": {
+    "hits": 1.3333333333333333,
+    "adopted": 284.6666666666667,
+    "eligible": 157.0,
+    "in_pool": 6.333333333333333,
+    "reach": 0.04268768079509768,
+    "precision@k": 0.06666666666666667,
+    "recall@k": 0.005795461997508034,
+    "mrr": 0.08585858585858586,
+    "hit_rate@k": 0.6666666666666666,
+    "obscurity_weighted@k": 0.024264666666666667,
+    "mean_listeners": 12823.433333333334
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "past_days": 365,
+    "future_days": 180,
+    "min_future_plays": 3,
+    "min_seeds": 15,
+    "max_recent_pages": 40,
+    "max_seeds": 60,
+    "similar_per_seed": 20,
+    "max_candidates": 300,
+    "top_seeds_for_tags": 15,
+    "tags_to_derive": 3,
+    "tag_artists_limit": 100,
+    "profile_top_seeds": 40,
+    "profile_tags_per_seed": 5,
+    "ceiling": 25000,
+    "conviction_cap": 3.0,
+    "cross_validation_bonus": 0.5,
+    "diversity_slots": 3,
+    "alignment_uplift": 0.5,
+    "use_match_weight": false,
+    "genre_relative_ceiling": false,
+    "k": 20,
+    "concurrency": 5
+  },
+  "anchor": "2026-06-10",
+  "per_user": [
+    {
+      "user": "Arnuv_J",
+      "metrics": {
+        "hits": 0,
+        "n_ground_truth": 278,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 11491.9
+      },
+      "skipped": null
+    },
+    {
+      "user": "hirenrevolver",
+      "metrics": {
+        "hits": 0,
+        "n_ground_truth": 160,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 15309.0
+      },
+      "skipped": null
+    },
+    {
+      "user": "stationinmyroom",
+      "metrics": {
+        "hits": 3,
+        "n_ground_truth": 416,
+        "precision@k": 0.15,
+        "recall@k": 0.007211538461538462,
+        "mrr": 0.1111111111111111,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.050741999999999995,
+        "mean_listeners": 10148.545454545454
+      },
+      "skipped": null
+    }
+  ],
+  "aggregate": {
+    "hits": 1.0,
+    "n_ground_truth": 284.6666666666667,
+    "precision@k": 0.049999999999999996,
+    "recall@k": 0.002403846153846154,
+    "mrr": 0.037037037037037035,
+    "hit_rate@k": 0.3333333333333333,
+    "obscurity_weighted@k": 0.016914,
+    "mean_listeners": 12316.481818181817
+  }
+}

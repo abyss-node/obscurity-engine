@@ -1,0 +1,33 @@
+# Eval cohort — one Last.fm username per line. Lines starting with # are ignored.
+#
+# Pick users with deep, active history (≥1 year, scrobbling through the holdout
+# window). Your own account + friends are the best signal. Public scrobblers work
+# too. Thin accounts are auto-skipped.
+#
+# Vetted via build_cohort.py (friend-graph snowball + activity/depth check).
+Arnuv_J
+hirenrevolver
+stationinmyroom
+The_Fallen_666
+Albert_Pinto
+har-g
+HarshitG01
+Manansethi
+subastral9
+headphone-users
+Kennureeves
+hoehenhiem
+reddayready
+Wheggy
+Satyam2014
+Deepika_
+lazy_ayu
+gnomeashlee
+wridip
+CallmeAnimal
+goofy_45
+Samiksh22
+sanjana11
+RajatP26
+zeus1821
+Dansandoa
