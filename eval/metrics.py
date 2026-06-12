@@ -42,6 +42,11 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
     ow_per_k = ow / k if k else 0.0
     mean_listeners = sum(r["listeners"] for r in topk) / len(topk) if topk else 0.0
 
+    # listener counts of the hit artists, so "obscure hits" (≤CEILING) can be
+    # counted per run without re-fetching anything downstream.
+    hit_listeners = [topk[i]["listeners"] for i in hit_idx]
+    obscure_hits = sum(1 for l in hit_listeners if l <= CEILING)
+
     return {
         "hits": hits,
         "adopted": len(ground_truth),
@@ -54,12 +59,18 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
         "hit_rate@k": hit_at_k,
         "obscurity_weighted@k": ow_per_k,
         "mean_listeners": mean_listeners,
+        "obscure_hits": obscure_hits,                             # hits with ≤CEILING listeners
+        "hit_listeners": hit_listeners,                           # raw listener counts of hits
     }
 
 
 def aggregate(per_user: list[dict]) -> dict:
-    """Mean of each metric across evaluated users."""
+    """Mean of each numeric metric across evaluated users.
+
+    Per-user list-valued fields (e.g. hit_listeners) are skipped — they are
+    kept in per_user output for post-hoc analysis, not meaningfully averaged.
+    """
     if not per_user:
         return {}
-    keys = per_user[0].keys()
+    keys = [k for k, v in per_user[0].items() if isinstance(v, (int, float))]
     return {k: sum(u[k] for u in per_user) / len(per_user) for k in keys}

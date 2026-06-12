@@ -1,0 +1,620 @@
+{
+  "config": {
+    "past_days": 365,
+    "future_days": 180,
+    "min_future_plays": 3,
+    "min_seeds": 15,
+    "max_recent_pages": 40,
+    "max_seeds": 60,
+    "similar_per_seed": 20,
+    "max_candidates": 300,
+    "top_seeds_for_tags": 15,
+    "tags_to_derive": 3,
+    "tag_artists_limit": 100,
+    "profile_top_seeds": 40,
+    "profile_tags_per_seed": 5,
+    "ceiling": 25000,
+    "conviction_cap": 3.0,
+    "cross_validation_bonus": 0.5,
+    "diversity_slots": 3,
+    "alignment_uplift": 0.5,
+    "use_match_weight": false,
+    "genre_relative_ceiling": false,
+    "two_hop": false,
+    "two_hop_expand": 60,
+    "two_hop_discount": 0.5,
+    "threshold_model": "discovery",
+    "tf_target": 1000.0,
+    "tf_base_conv": 0.03,
+    "tf_conv_min": 0.005,
+    "tf_conv_max": 0.15,
+    "tf_min_genre_n": 5,
+    "tf_global_ref_listeners": 50000.0,
+    "tf_user_alpha": 0.5,
+    "tf_user_clamp_lo": 0.5,
+    "tf_user_clamp_hi": 2.0,
+    "tf_listener_backstop": 300000,
+    "backstop_pctl": 0.5,
+    "backstop_mult": 1.0,
+    "backstop_floor": 30000,
+    "backstop_cap": 0,
+    "bias_obscure_ref": 100000,
+    "appetite_min": 0.3,
+    "appetite_max": 1.8,
+    "global_appetite": 1.0,
+    "personalize_appetite": true,
+    "appetite_shrink_k": 20.0,
+    "tier_variety": true,
+    "tier_cuts": [
+      0.1,
+      0.3,
+      0.6
+    ],
+    "k": 20,
+    "concurrency": 5
+  },
+  "anchor": "2026-06-10",
+  "per_user": [
+    {
+      "user": "Arnuv_J",
+      "metrics": {
+        "hits": 0,
+        "adopted": 278,
+        "eligible": 193,
+        "in_pool": 12,
+        "reach": 0.06217616580310881,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 88834.1,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "hirenrevolver",
+      "metrics": {
+        "hits": 4,
+        "adopted": 160,
+        "eligible": 159,
+        "in_pool": 29,
+        "reach": 0.18238993710691823,
+        "precision@k": 0.2,
+        "recall@k": 0.025157232704402517,
+        "mrr": 1.0,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 374973.05,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          190131,
+          131856,
+          349376,
+          510198
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "stationinmyroom",
+      "metrics": {
+        "hits": 2,
+        "adopted": 416,
+        "eligible": 308,
+        "in_pool": 10,
+        "reach": 0.032467532467532464,
+        "precision@k": 0.1,
+        "recall@k": 0.006493506493506494,
+        "mrr": 0.1111111111111111,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.046464,
+        "mean_listeners": 7183.454545454545,
+        "obscure_hits": 2,
+        "hit_listeners": [
+          11570,
+          15198
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "The_Fallen_666",
+      "metrics": {
+        "hits": 0,
+        "adopted": 120,
+        "eligible": 95,
+        "in_pool": 7,
+        "reach": 0.07368421052631578,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 4899.8,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "Albert_Pinto",
+      "metrics": {
+        "hits": 2,
+        "adopted": 57,
+        "eligible": 50,
+        "in_pool": 14,
+        "reach": 0.28,
+        "precision@k": 0.1,
+        "recall@k": 0.04,
+        "mrr": 0.09090909090909091,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.027278000000000004,
+        "mean_listeners": 662853.75,
+        "obscure_hits": 1,
+        "hit_listeners": [
+          2146648,
+          11361
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "har-g",
+      "metrics": {
+        "hits": 0,
+        "adopted": 113,
+        "eligible": 65,
+        "in_pool": 11,
+        "reach": 0.16923076923076924,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 134799.35,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "HarshitG01",
+      "metrics": {
+        "hits": 2,
+        "adopted": 16,
+        "eligible": 15,
+        "in_pool": 2,
+        "reach": 0.13333333333333333,
+        "precision@k": 0.1,
+        "recall@k": 0.13333333333333333,
+        "mrr": 1.0,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1651590.75,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          3978928,
+          400321
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "Manansethi",
+      "metrics": {
+        "hits": 1,
+        "adopted": 64,
+        "eligible": 59,
+        "in_pool": 11,
+        "reach": 0.1864406779661017,
+        "precision@k": 0.05,
+        "recall@k": 0.01694915254237288,
+        "mrr": 0.08333333333333333,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 531926.55,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          912907
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "subastral9",
+      "metrics": {
+        "hits": 1,
+        "adopted": 129,
+        "eligible": 121,
+        "in_pool": 29,
+        "reach": 0.2396694214876033,
+        "precision@k": 0.05,
+        "recall@k": 0.008264462809917356,
+        "mrr": 0.16666666666666666,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1031265.6,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          2160809
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "headphone-users",
+      "metrics": {
+        "hits": 1,
+        "adopted": 57,
+        "eligible": 50,
+        "in_pool": 7,
+        "reach": 0.14,
+        "precision@k": 0.05,
+        "recall@k": 0.02,
+        "mrr": 0.07142857142857142,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 203686.2,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          50834
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "Kennureeves",
+      "metrics": {
+        "hits": 1,
+        "adopted": 112,
+        "eligible": 73,
+        "in_pool": 15,
+        "reach": 0.2054794520547945,
+        "precision@k": 0.05,
+        "recall@k": 0.0136986301369863,
+        "mrr": 0.08333333333333333,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 106176.75,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          960476
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "hoehenhiem",
+      "metrics": {
+        "hits": 2,
+        "adopted": 52,
+        "eligible": 46,
+        "in_pool": 11,
+        "reach": 0.2391304347826087,
+        "precision@k": 0.1,
+        "recall@k": 0.043478260869565216,
+        "mrr": 0.1111111111111111,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.007050000000000001,
+        "mean_listeners": 939227.35,
+        "obscure_hits": 1,
+        "hit_listeners": [
+          30959,
+          21475
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "reddayready",
+      "metrics": {
+        "hits": 2,
+        "adopted": 77,
+        "eligible": 63,
+        "in_pool": 14,
+        "reach": 0.2222222222222222,
+        "precision@k": 0.1,
+        "recall@k": 0.031746031746031744,
+        "mrr": 0.14285714285714285,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1561338.4,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          2691338,
+          400321
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "Wheggy",
+      "metrics": {
+        "hits": 1,
+        "adopted": 59,
+        "eligible": 48,
+        "in_pool": 13,
+        "reach": 0.2708333333333333,
+        "precision@k": 0.05,
+        "recall@k": 0.020833333333333332,
+        "mrr": 0.14285714285714285,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 614270.05,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          960476
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "Satyam2014",
+      "metrics": {
+        "hits": 0,
+        "adopted": 25,
+        "eligible": 7,
+        "in_pool": 0,
+        "reach": 0.0,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 54138.35,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "Deepika_",
+      "metrics": {
+        "hits": 0,
+        "adopted": 8,
+        "eligible": 7,
+        "in_pool": 1,
+        "reach": 0.14285714285714285,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 38220.3,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "lazy_ayu",
+      "metrics": {
+        "hits": 2,
+        "adopted": 54,
+        "eligible": 38,
+        "in_pool": 4,
+        "reach": 0.10526315789473684,
+        "precision@k": 0.1,
+        "recall@k": 0.05263157894736842,
+        "mrr": 0.1,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.042128,
+        "mean_listeners": 584655.85,
+        "obscure_hits": 1,
+        "hit_listeners": [
+          71223,
+          3936
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "gnomeashlee",
+      "metrics": {
+        "hits": 1,
+        "adopted": 147,
+        "eligible": 128,
+        "in_pool": 28,
+        "reach": 0.21875,
+        "precision@k": 0.05,
+        "recall@k": 0.0078125,
+        "mrr": 0.05,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1155546.4,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          820804
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "wridip",
+      "metrics": {
+        "hits": 2,
+        "adopted": 63,
+        "eligible": 56,
+        "in_pool": 11,
+        "reach": 0.19642857142857142,
+        "precision@k": 0.1,
+        "recall@k": 0.03571428571428571,
+        "mrr": 0.25,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 107700.2,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          90395,
+          80051
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "CallmeAnimal",
+      "metrics": {
+        "hits": 2,
+        "adopted": 80,
+        "eligible": 71,
+        "in_pool": 9,
+        "reach": 0.1267605633802817,
+        "precision@k": 0.1,
+        "recall@k": 0.028169014084507043,
+        "mrr": 0.125,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 686163.5,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          1437521,
+          1748302
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "goofy_45",
+      "metrics": {
+        "hits": 4,
+        "adopted": 79,
+        "eligible": 66,
+        "in_pool": 15,
+        "reach": 0.22727272727272727,
+        "precision@k": 0.2,
+        "recall@k": 0.06060606060606061,
+        "mrr": 0.5,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.007716000000000001,
+        "mean_listeners": 593332.25,
+        "obscure_hits": 2,
+        "hit_listeners": [
+          1215747,
+          24667,
+          35724,
+          21475
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "Samiksh22",
+      "metrics": {
+        "hits": 0,
+        "adopted": 11,
+        "eligible": 8,
+        "in_pool": 3,
+        "reach": 0.375,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 132475.3,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "sanjana11",
+      "metrics": {
+        "hits": 1,
+        "adopted": 17,
+        "eligible": 16,
+        "in_pool": 4,
+        "reach": 0.25,
+        "precision@k": 0.05,
+        "recall@k": 0.0625,
+        "mrr": 0.5,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1675410.75,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          1386204
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "RajatP26",
+      "metrics": {
+        "hits": 1,
+        "adopted": 39,
+        "eligible": 36,
+        "in_pool": 3,
+        "reach": 0.08333333333333333,
+        "precision@k": 0.05,
+        "recall@k": 0.027777777777777776,
+        "mrr": 0.3333333333333333,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 1333534.8,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          2600792
+        ]
+      },
+      "skipped": null
+    },
+    {
+      "user": "zeus1821",
+      "metrics": {
+        "hits": 0,
+        "adopted": 6,
+        "eligible": 6,
+        "in_pool": 1,
+        "reach": 0.16666666666666666,
+        "precision@k": 0.0,
+        "recall@k": 0.0,
+        "mrr": 0.0,
+        "hit_rate@k": 0.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 898652.85,
+        "obscure_hits": 0,
+        "hit_listeners": []
+      },
+      "skipped": null
+    },
+    {
+      "user": "Dansandoa",
+      "metrics": {
+        "hits": 2,
+        "adopted": 271,
+        "eligible": 224,
+        "in_pool": 14,
+        "reach": 0.0625,
+        "precision@k": 0.1,
+        "recall@k": 0.008928571428571428,
+        "mrr": 1.0,
+        "hit_rate@k": 1.0,
+        "obscurity_weighted@k": 0.0,
+        "mean_listeners": 320989.25,
+        "obscure_hits": 0,
+        "hit_listeners": [
+          681404,
+          267432
+        ]
+      },
+      "skipped": null
+    }
+  ],
+  "aggregate": {
+    "hits": 1.3076923076923077,
+    "adopted": 96.53846153846153,
+    "eligible": 77.23076923076923,
+    "in_pool": 10.692307692307692,
+    "reach": 0.16891883281338854,
+    "precision@k": 0.06538461538461539,
+    "recall@k": 0.024772835866462315,
+    "mrr": 0.22545926295926297,
+    "hit_rate@k": 0.7307692307692307,
+    "obscurity_weighted@k": 0.005024461538461538,
+    "mean_listeners": 595917.1136363636,
+    "obscure_hits": 0.2692307692307692
+  }
+}

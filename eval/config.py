@@ -98,6 +98,7 @@ class Config:
     backstop_pctl: float = 0.9         # exclude artists above this pctl of user's seed listeners
     backstop_mult: float = 1.0
     backstop_floor: int = 30_000       # generous minimum even for very obscure users
+    backstop_cap: int = 0              # absolute ceiling on the per-user backstop (0 = off)
     # Obscurity bias (soft ranking tilt): composite *= 1 + appetite*(1 - pos)
     bias_obscure_ref: float = 100_000  # a seed artist under this = "obscure taste" (drives appetite)
     appetite_min: float = 0.3          # obscurity bias for fully-mainstream taste

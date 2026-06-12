@@ -44,6 +44,12 @@ async def main_async(args) -> None:
         two_hop_expand=args.two_hop_expand,
         threshold_model=args.threshold,
         personalize_appetite=not args.no_personalize_appetite,
+        backstop_pctl=args.backstop_pctl,
+        backstop_mult=args.backstop_mult,
+        backstop_floor=args.backstop_floor,
+        backstop_cap=args.backstop_cap,
+        appetite_max=args.appetite_max,
+        global_appetite=args.global_appetite,
         concurrency=args.concurrency,
     )
     anchor = anchor_ts(args.anchor)
@@ -123,6 +129,20 @@ def main() -> None:
                    help="obscurity threshold model (flat 25K | per-user true-fans | discovery)")
     p.add_argument("--no-personalize-appetite", action="store_true",
                    help="discovery A/B: use global_appetite instead of per-user inferred appetite")
+    # discovery backstop / appetite levers (defaults mirror Config)
+    _d = Config()
+    p.add_argument("--backstop-pctl", type=float, default=_d.backstop_pctl,
+                   help="discovery: seed-listener percentile for the per-user backstop")
+    p.add_argument("--backstop-mult", type=float, default=_d.backstop_mult,
+                   help="discovery: multiplier on the seed-percentile backstop")
+    p.add_argument("--backstop-floor", type=int, default=_d.backstop_floor,
+                   help="discovery: minimum backstop even for very obscure users")
+    p.add_argument("--backstop-cap", type=int, default=_d.backstop_cap,
+                   help="discovery: absolute ceiling on the per-user backstop (0 = off)")
+    p.add_argument("--appetite-max", type=float, default=_d.appetite_max,
+                   help="discovery: obscurity bias for fully-obscure taste (tilt strength upper bound)")
+    p.add_argument("--global-appetite", type=float, default=_d.global_appetite,
+                   help="discovery: tilt strength when personalize-appetite is off / shrinkage prior")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()

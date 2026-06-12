@@ -83,6 +83,8 @@ def build_threshold(info_map: dict, seed_infos: list[dict], cfg: Config) -> dict
         seeds_sorted = sorted(seed_listeners)
         seed_pctl = _percentile(seeds_sorted, cfg.backstop_pctl)
         backstop = max(cfg.backstop_floor, seed_pctl * cfg.backstop_mult)
+        if cfg.backstop_cap > 0:                     # absolute ceiling on the backstop
+            backstop = min(backstop, cfg.backstop_cap)
 
         # appetite: fraction of seeds below the "obscure taste" reference, mapped
         # onto [appetite_min, appetite_max], shrunk toward the cohort prior.
