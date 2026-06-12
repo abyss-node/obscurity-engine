@@ -43,6 +43,7 @@ async def main_async(args) -> None:
         two_hop=args.two_hop,
         two_hop_expand=args.two_hop_expand,
         threshold_model=args.threshold,
+        personalize_appetite=not args.no_personalize_appetite,
         concurrency=args.concurrency,
     )
     anchor = anchor_ts(args.anchor)
@@ -117,8 +118,11 @@ def main() -> None:
                    help="backlog #3: expand candidates one extra hop (similar-of-similar)")
     p.add_argument("--two-hop-expand", type=int, default=60,
                    help="how many top 1-hop candidates to expand a 2nd hop")
-    p.add_argument("--threshold", choices=["flat", "true_fans"], default="flat",
-                   help="obscurity threshold model (flat 25K vs per-user true-fans)")
+    p.add_argument("--threshold", "--threshold-model", dest="threshold",
+                   choices=["flat", "true_fans", "discovery"], default="flat",
+                   help="obscurity threshold model (flat 25K | per-user true-fans | discovery)")
+    p.add_argument("--no-personalize-appetite", action="store_true",
+                   help="discovery A/B: use global_appetite instead of per-user inferred appetite")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()

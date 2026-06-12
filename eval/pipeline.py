@@ -33,9 +33,28 @@ def _stickiness(info: dict) -> float:
     return info["playcount"] / info["listeners"] if info["listeners"] else 0.0
 
 
+def _percentile(sorted_vals: list[float], pctl: float) -> float:
+    """Linear-interpolated percentile on a pre-sorted list. pctl in [0,1]."""
+    if not sorted_vals:
+        return 0.0
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    idx = pctl * (len(sorted_vals) - 1)
+    lo = int(math.floor(idx))
+    hi = int(math.ceil(idx))
+    if lo == hi:
+        return sorted_vals[lo]
+    frac = idx - lo
+    return sorted_vals[lo] * (1 - frac) + sorted_vals[hi] * frac
+
+
 def build_threshold(info_map: dict, seed_infos: list[dict], cfg: Config) -> dict:
     """Precompute genre-relative devotion refs (from the candidate pool) and the
-    per-user sustainability target T (from seed-artist altitude)."""
+    per-user sustainability target T (from seed-artist altitude).
+
+    For the "discovery" model also compute a per-user backstop (the only hard
+    exclusion) and a per-user obscurity appetite (the soft ranking tilt strength).
+    """
     pool_sticks, genre_sticks = [], {}
     for info in info_map.values():
         s = _stickiness(info)
@@ -56,8 +75,30 @@ def build_threshold(info_map: dict, seed_infos: list[dict], cfg: Config) -> dict
     factor = (user_med / cfg.tf_global_ref_listeners) ** cfg.tf_user_alpha
     factor = max(cfg.tf_user_clamp_lo, min(cfg.tf_user_clamp_hi, factor))
 
-    return {"genre_ref": genre_ref, "pool_ref": pool_ref or 1.0,
-            "T_user": cfg.tf_target * factor, "user_median_listeners": user_med}
+    th = {"genre_ref": genre_ref, "pool_ref": pool_ref or 1.0,
+          "T_user": cfg.tf_target * factor, "user_median_listeners": user_med}
+
+    # ── discovery model: per-user backstop + per-user obscurity appetite ──────
+    if cfg.threshold_model == "discovery":
+        seeds_sorted = sorted(seed_listeners)
+        seed_pctl = _percentile(seeds_sorted, cfg.backstop_pctl)
+        backstop = max(cfg.backstop_floor, seed_pctl * cfg.backstop_mult)
+
+        # appetite: fraction of seeds below the "obscure taste" reference, mapped
+        # onto [appetite_min, appetite_max], shrunk toward the cohort prior.
+        if cfg.personalize_appetite and seed_listeners:
+            n = len(seed_listeners)
+            frac_obscure = sum(1 for l in seed_listeners if l < cfg.bias_obscure_ref) / n
+            raw = cfg.appetite_min + frac_obscure * (cfg.appetite_max - cfg.appetite_min)
+            k = cfg.appetite_shrink_k
+            appetite = (n * raw + k * cfg.global_appetite) / (n + k)
+        else:
+            appetite = cfg.global_appetite
+
+        th["backstop"] = backstop
+        th["appetite"] = appetite
+
+    return th
 
 
 def estimate_true_fans(info: dict, th: dict, cfg: Config) -> float:
@@ -70,6 +111,9 @@ def estimate_true_fans(info: dict, th: dict, cfg: Config) -> float:
 def passes_threshold(info: dict, th: dict, cfg: Config) -> bool:
     if cfg.threshold_model == "flat":
         return info["listeners"] <= cfg.ceiling
+    if cfg.threshold_model == "discovery":
+        # the per-user backstop is the ONLY hard exclusion in discovery mode
+        return info["listeners"] <= th["backstop"]
     if info["listeners"] > cfg.tf_listener_backstop:
         return False
     return estimate_true_fans(info, th, cfg) < th["T_user"]
@@ -193,6 +237,8 @@ async def fetch_infos(client: LastfmClient, norms: list[str], cmap: dict) -> dic
 
 def score(cmap, info_map, weights, cross, past_known, profile, cfg: Config, th: dict) -> list[dict]:
     listener_map = {n: info["listeners"] for n, info in info_map.items()}
+    # collab-component ceiling: flat 25K live, but the per-user backstop in discovery
+    comp_ceiling = th["backstop"] if cfg.threshold_model == "discovery" else cfg.ceiling
     items = []
     for norm, info in info_map.items():
         if norm in past_known:                       # already listens (past window)
@@ -201,7 +247,7 @@ def score(cmap, info_map, weights, cross, past_known, profile, cfg: Config, th: 
             continue
         comps = collab_components(info["name"])       # collab component ceiling check
         if comps and any(
-            listener_map.get(normalize_artist_name(c), 0) > cfg.ceiling for c in comps
+            listener_map.get(normalize_artist_name(c), 0) > comp_ceiling for c in comps
         ):
             continue
 
@@ -238,8 +284,25 @@ def score(cmap, info_map, weights, cross, past_known, profile, cfg: Config, th: 
         it["alignment"] = align
         it["composite"] *= 1.0 + cfg.alignment_uplift * align
 
+    # ── discovery: obscurity bias (soft) + tier tagging on the eligible pool ──
+    if cfg.threshold_model == "discovery" and items:
+        # pos = percentile position by listener count within the eligible pool
+        # (0.0 = most obscure, 1.0 = most popular). Ties share a rank fraction.
+        order = sorted(range(len(items)), key=lambda i: items[i]["listeners"])
+        denom = max(len(items) - 1, 1)
+        for rank, i in enumerate(order):
+            items[i]["pos"] = rank / denom
+        appetite = th["appetite"]
+        for it in items:
+            it["composite"] *= 1.0 + appetite * (1.0 - it["pos"])
+            it["tier"] = _tier(it["pos"], cfg)
+
     items.sort(key=lambda x: x["composite"], reverse=True)
-    return _enforce_diversity(items, profile, cfg)
+    ranked = _enforce_diversity(items, profile, cfg)
+
+    if cfg.threshold_model == "discovery" and cfg.tier_variety:
+        ranked = _enforce_tier_variety(ranked, items, cfg)
+    return ranked
 
 
 def _enforce_diversity(items: list[dict], profile: dict, cfg: Config) -> list[dict]:
@@ -254,6 +317,71 @@ def _enforce_diversity(items: list[dict], profile: dict, cfg: Config) -> list[di
             counts[primary] = counts.get(primary, 0) + 1
             out.append(it)
     return out
+
+
+# ── discovery: tier variety ──────────────────────────────────────────────────
+
+_TIER_NAMES = ("ABYSS", "DEEP", "EMERGING", "CUSP")
+
+
+def _tier(pos: float, cfg: Config) -> str:
+    c0, c1, c2 = cfg.tier_cuts
+    if pos < c0:
+        return "ABYSS"
+    if pos < c1:
+        return "DEEP"
+    if pos < c2:
+        return "EMERGING"
+    return "CUSP"
+
+
+def _enforce_tier_variety(ranked: list[dict], all_items: list[dict], cfg: Config) -> list[dict]:
+    """Guarantee the top-K spans all obscurity tiers. After composite ranking +
+    genre diversity, for each tier with zero representation in the top-K, promote
+    that tier's best-scoring candidate (from the full eligible pool, not already
+    in the top-K) by replacing the lowest-scoring artist from the most-represented
+    tier. Deterministic: process tiers in fixed order, recompute counts each step.
+    """
+    k = cfg.k
+    if len(ranked) < k:
+        return ranked
+
+    topk = ranked[:k]
+    tail = ranked[k:]
+    topk_norms = {it["norm"] for it in topk}
+
+    # best candidate per tier from the full eligible pool (highest composite first)
+    by_tier_pool: dict[str, list[dict]] = {t: [] for t in _TIER_NAMES}
+    for it in sorted(all_items, key=lambda x: x["composite"], reverse=True):
+        by_tier_pool[it.get("tier", "CUSP")].append(it)
+
+    for tier in _TIER_NAMES:
+        if not by_tier_pool[tier]:
+            continue  # no candidates of this tier exist at all — can't represent it
+        counts: dict[str, int] = {}
+        for it in topk:
+            counts[it["tier"]] = counts.get(it["tier"], 0) + 1
+        if counts.get(tier, 0) > 0:
+            continue  # already represented
+
+        # promote this tier's best candidate not already in the top-K
+        promote = next((c for c in by_tier_pool[tier] if c["norm"] not in topk_norms), None)
+        if promote is None:
+            continue
+
+        # evict the lowest-scoring member of the most-represented tier
+        most_tier = max(counts, key=lambda t: counts[t])
+        evict_idx = max(
+            (i for i, it in enumerate(topk) if it["tier"] == most_tier),
+            key=lambda i: -topk[i]["composite"],  # lowest composite within that tier
+        )
+        evicted = topk[evict_idx]
+        topk[evict_idx] = promote
+        topk_norms.discard(evicted["norm"])
+        topk_norms.add(promote["norm"])
+        tail.insert(0, evicted)
+
+    return topk + tail
 
 
 # ── orchestrator for a single user ────────────────────────────────────────────
