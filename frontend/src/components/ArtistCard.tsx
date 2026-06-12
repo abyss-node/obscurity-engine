@@ -64,8 +64,8 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
   })();
   const extraTags = artist.top_tags.filter(t => !isGeoTag(t) && t.length <= 25).slice(1, 8);
 
-  const conviction = Math.min(artist.conviction_score / 100, 10).toFixed(1);
-  const stickiness = Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1);
+  const conviction = Math.round(Math.min(artist.conviction_score / 100, 10) * 10);
+  const stickiness = Math.round(Math.min(Math.log10(artist.stickiness_score + 1) / Math.log10(101) * 10, 10) * 10);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
   const hasSeeds = artist.source_seeds && artist.source_seeds.length > 0;
 
@@ -175,9 +175,9 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
         {isHero && (
           <div className="pt-5 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
             <div className="grid gap-6 grid-cols-3">
-              <StatCell label="conviction" value={conviction} unit="/10" />
+              <StatCell label="conviction" value={`${conviction}%`} />
               <StatCell label="genre fit" value={genreFit > 0 ? `${genreFit}%` : "—"} />
-              <StatCell label="stickiness" value={stickiness} unit="/10" />
+              <StatCell label="stickiness" value={`${stickiness}%`} />
             </div>
             {extraTags.length > 0 && (
               <div className="flex flex-wrap gap-2">
@@ -212,9 +212,9 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
           <div className="relative pt-4 border-t min-h-[56px]" style={{ borderColor: "var(--border)" }}>
             {/* Stats — fade out on hover when overlay has content */}
             <div className={`grid grid-cols-3 gap-x-6 gap-y-3 transition-opacity duration-200 ${hasSeeds ? "group-hover:opacity-0" : ""}`}>
-              <StatCell label="conviction" value={conviction} unit="/10" />
+              <StatCell label="conviction" value={`${conviction}%`} />
               <StatCell label="genre fit" value={genreFit > 0 ? `${genreFit}%` : "—"} />
-              <StatCell label="stickiness" value={stickiness} unit="/10" />
+              <StatCell label="stickiness" value={`${stickiness}%`} />
             </div>
 
             {/* Via overlay — fades in on hover */}

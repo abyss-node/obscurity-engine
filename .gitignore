@@ -7,3 +7,9 @@ dist/
 .DS_Store
 *.log
 .vercel
+
+eval/.cache/
+__pycache__/
+*.tsbuildinfo
+.env.production.local
+screenshot_*.png

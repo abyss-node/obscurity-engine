@@ -180,13 +180,13 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
               <div className="flex flex-col gap-1">
                 <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {Math.min(track.conviction_score / 100, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+                  {Math.round(Math.min(track.conviction_score / 100, 10) * 10)}%
                 </span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
-                  {Math.min(Math.log10(track.stickiness_score + 1) / Math.log10(101) * 10, 10).toFixed(1)}<span className="text-[10px]" style={{ color: "var(--dim)" }}>/10</span>
+                  {Math.round(Math.min(Math.log10(track.stickiness_score + 1) / Math.log10(101) * 10, 10) * 10)}%
                 </span>
               </div>
               <div className="flex flex-col gap-1">
