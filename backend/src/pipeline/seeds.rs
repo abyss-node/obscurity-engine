@@ -21,6 +21,9 @@ pub struct Seeds {
     pub weights: HashMap<String, f64>,
     /// Ordered by weight, descending — preserves iteration order for Phase 2
     pub names: Vec<String>,
+    /// User's total distinct artist count (from gettopartists @attr.total).
+    /// Used to compute the underexplored-novelty threshold. None if unavailable.
+    pub total_artist_count: Option<u64>,
 }
 
 pub async fn collect(
@@ -65,8 +68,16 @@ async fn collect_blend(
     }
 
     let mut merged: HashMap<String, f64> = HashMap::new();
+    // Track the largest @attr.total across all windows. The Overall window has the
+    // most distinct artists, so its total is the lifetime distinct-artist count.
+    let mut max_total: Option<u64> = None;
     while let Some(task_result) = period_futures.next().await {
         if let Ok((Ok(response), factor)) = task_result {
+            if let Some(attr) = response.topartists.attr.as_ref() {
+                if let Ok(total) = attr.total.parse::<u64>() {
+                    max_total = Some(max_total.map_or(total, |m| m.max(total)));
+                }
+            }
             for artist in response.topartists.artist.into_iter().take(MAX_SEEDS) {
                 let plays = artist.playcount.as_ref()
                     .and_then(|p| p.parse::<f64>().ok())
@@ -95,7 +106,7 @@ async fn collect_blend(
     }
 
     println!("BLEND: {} merged seeds across all periods", names.len());
-    Ok(Seeds { weights, names })
+    Ok(Seeds { weights, names, total_artist_count: max_total })
 }
 
 async fn collect_single(
@@ -108,6 +119,10 @@ async fn collect_single(
         .fetch_user_top_artists(username, 200, period)
         .await
         .map_err(|e| format!("Failed to fetch top artists: {}", e))?;
+
+    // Read the distinct-artist total before consuming the artist vec.
+    let total_artist_count = response.topartists.attr.as_ref()
+        .and_then(|a| a.total.parse::<u64>().ok());
 
     let top_artists = response.topartists.artist;
     if top_artists.is_empty() {
@@ -126,5 +141,5 @@ async fn collect_single(
     }
 
     println!("SEEDS: {} seeds from user.gettopartists ({})", names.len(), period_str);
-    Ok(Seeds { weights, names })
+    Ok(Seeds { weights, names, total_artist_count })
 }

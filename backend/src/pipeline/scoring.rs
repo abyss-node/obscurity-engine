@@ -41,9 +41,10 @@ pub async fn score_and_rank(
     candidate_map: CandidateMap,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    under_threshold: Option<u64>,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
     let seed_tag_profile = build_seed_tag_profile(client, seeds).await;
-    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates).await;
+    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, under_threshold).await;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
 }
 
@@ -106,7 +107,14 @@ async fn fetch_and_score(
     candidate_map: CandidateMap,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    under_threshold: Option<u64>,
 ) -> Vec<DiscoveryResponseItem> {
+    // Normalized set of the user's own seed names — barred from recommendation
+    // (matches the eval's `exclude_known = deep_known | seed_norms`). Built once
+    // here rather than re-normalizing every seed inside the per-candidate loop.
+    let seed_norms: HashSet<String> = seeds.names.iter()
+        .map(|n| normalize_artist_name(n))
+        .collect();
     // Pre-filter: keep only the top candidates by recommender count before the
     // expensive info-fetch pass. Cuts pipeline time from 90s+ to ~40s for large pools.
     let candidate_map = if candidate_map.len() > MAX_CANDIDATES_FOR_INFO_FETCH {
@@ -150,7 +158,7 @@ async fn fetch_and_score(
     let mut scored_artists: Vec<DiscoveryResponseItem> = raw
         .into_iter()
         .filter_map(|(artist, recommenders)| {
-            score_candidate(artist, recommenders, seeds, tag_candidates, &listener_map)
+            score_candidate(artist, recommenders, seeds, tag_candidates, &listener_map, under_threshold, &seed_norms)
         })
         .collect();
 
@@ -177,12 +185,24 @@ fn score_candidate(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
     listener_map: &HashMap<String, u64>,
+    under_threshold: Option<u64>,
+    seed_norms: &HashSet<String>,
 ) -> Option<DiscoveryResponseItem> {
-    // Skip artists the user already listens to
+    // Underexplored-novelty exclusion. With a threshold, only "deep" artists
+    // (played >= threshold) are excluded — lightly-played and never-played artists
+    // are recommendable. Without one (getinfo/count unavailable), fall back to the
+    // strict rule: exclude any artist the user has ever played.
     let user_plays = artist.stats.userplaycount.as_ref()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
-    if user_plays > 0 {
+    match under_threshold {
+        Some(t) => { if user_plays >= t { return None; } }
+        None    => { if user_plays > 0 { return None; } }
+    }
+
+    // Never recommend one of the user's own seeds, regardless of play threshold
+    // (matches the eval's explicit seed exclusion).
+    if seed_norms.contains(&normalize_artist_name(&artist.name)) {
         return None;
     }
 

@@ -31,6 +31,20 @@ pub struct TopArtistsAttr {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserInfoResponse {
+    pub user: UserInfo,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserInfo {
+    pub playcount: Option<String>,
+    /// Lifetime distinct-artist count. Present in current user.getinfo responses;
+    /// Option-guarded in case an API version omits it (we fall back to the
+    /// gettopartists @attr.total in that case).
+    pub artist_count: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SimilarArtistsResponse {
     pub similarartists: SimilarArtists,
 }
@@ -163,6 +177,23 @@ impl LastfmClient {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
             LASTFM_API_URL, urlencoding::encode(username), self.api_key, period, limit
+        );
+        let resp_text = self.get_with_retry(&url).await?;
+        let json: Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            let err_msg: LastfmErrorResponse = serde_json::from_value(json)?;
+            return Err(format!("Last.fm Error {}: {}", err_msg.error, err_msg.message).into());
+        }
+        Ok(serde_json::from_str(&resp_text)?)
+    }
+
+    pub async fn fetch_user_info(
+        &self,
+        username: &str,
+    ) -> Result<UserInfoResponse, BoxError> {
+        let url = format!(
+            "{}?method=user.getinfo&user={}&api_key={}&format=json",
+            LASTFM_API_URL, urlencoding::encode(username), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
