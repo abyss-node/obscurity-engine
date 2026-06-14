@@ -84,6 +84,7 @@ async fn discovery_handler(
         println!("Cache miss: {}", cache_key);
         match discover_obscure_artists(client, query.username, query.period).await {
             Ok(result) => {
+                let result = annotate_sparse_artists(result);
                 // Only cache non-empty results; degraded/empty runs shouldn't stick.
                 if !result.artists.is_empty() {
                     let mut cache = state.cache.write().await;
@@ -104,7 +105,7 @@ async fn discovery_handler(
         }
     } else {
         match discover_obscure_artists(client, query.username, query.period).await {
-            Ok(result) => Ok(Json(result)),
+            Ok(result) => Ok(Json(annotate_sparse_artists(result))),
             Err(e) if e.to_string().contains("No listening history") => {
                 Ok(Json(empty_discovery_response()))
             }
@@ -119,6 +120,23 @@ async fn discovery_handler(
     }
 }
 
+/// When a discovery comes back sparse, attach a message so the UI explains the
+/// near-empty page instead of rendering a blank. The common trigger is the
+/// `overall` period: all-time top artists are too well-known, so their similar
+/// artists get filtered by the obscurity ceiling and little survives. Recent
+/// periods surface far more. Leaves an existing message (e.g. no-history) intact.
+fn annotate_sparse_artists(mut result: models::DiscoveryResponse) -> models::DiscoveryResponse {
+    const SPARSE_THRESHOLD: usize = 8;
+    if result.message.is_none() && result.artists.len() < SPARSE_THRESHOLD {
+        result.message = Some(format!(
+            "Only {} obscure match{} for this period. All-time favourites tend to be too well-known to surface much; try a recent period (1 month or 3 month) for more discoveries.",
+            result.artists.len(),
+            if result.artists.len() == 1 { "" } else { "es" },
+        ));
+    }
+    result
+}
+
 /// A 200-OK empty artist-discovery response for the genuine "no history" case.
 fn empty_discovery_response() -> models::DiscoveryResponse {
     models::DiscoveryResponse {
@@ -127,7 +145,7 @@ fn empty_discovery_response() -> models::DiscoveryResponse {
         deepest_date: None,
         active_seed_count: 0,
         depth_score: 0.0,
-        message: Some("No listening history for this period — try a different time range.".into()),
+        message: Some("No listening history for this period. Try a different time range.".into()),
     }
 }
 
@@ -211,7 +229,7 @@ fn empty_track_discovery_response() -> models::TrackDiscoveryResponse {
         top_genres: vec![],
         active_seed_count: 0,
         depth_score: 0.0,
-        message: Some("No track history for this period — try a different time range.".into()),
+        message: Some("No track history for this period. Try a different time range.".into()),
     }
 }
 
