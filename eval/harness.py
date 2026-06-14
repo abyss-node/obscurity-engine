@@ -40,6 +40,9 @@ async def main_async(args) -> None:
         past_days=args.past_days,
         max_candidates=args.max_candidates,
         use_match_weight=args.use_match_weight,
+        genre_relative_ceiling=args.genre_relative_ceiling,
+        genre_ceiling_pctl=args.genre_ceiling_pctl,
+        genre_ceiling_min_n=args.genre_ceiling_min_n,
         two_hop=args.two_hop,
         two_hop_expand=args.two_hop_expand,
         threshold_model=args.threshold,
@@ -52,6 +55,9 @@ async def main_async(args) -> None:
         global_appetite=args.global_appetite,
         novelty_model=args.novelty_model,
         underexplored_mult=args.underexplored_mult,
+        temporal_seed_weighting=args.temporal_seed_weighting,
+        recency_days=args.recency_days,
+        recency_boost=args.recency_boost,
         concurrency=args.concurrency,
     )
     anchor = anchor_ts(args.anchor)
@@ -134,6 +140,13 @@ def main() -> None:
                    help="discovery A/B: use global_appetite instead of per-user inferred appetite")
     # discovery backstop / appetite levers (defaults mirror Config)
     _d = Config()
+    p.add_argument("--genre-relative-ceiling", action="store_true",
+                   help="backlog #2: flat-mode ceiling = per-genre listener percentile "
+                        "(thin/untagged genres fall back to the absolute ceiling)")
+    p.add_argument("--genre-ceiling-pctl", type=float, default=_d.genre_ceiling_pctl,
+                   help="backlog #2: per-genre listener percentile used as the ceiling")
+    p.add_argument("--genre-ceiling-min-n", type=int, default=_d.genre_ceiling_min_n,
+                   help="backlog #2: min pool artists in a genre to trust its percentile")
     p.add_argument("--backstop-pctl", type=float, default=_d.backstop_pctl,
                    help="discovery: seed-listener percentile for the per-user backstop")
     p.add_argument("--backstop-mult", type=float, default=_d.backstop_mult,
@@ -152,6 +165,13 @@ def main() -> None:
                         "re-engaging with them counts as adoption")
     p.add_argument("--underexplored-mult", type=float, default=_d.underexplored_mult,
                    help="underexplored threshold = mean plays-per-artist × this multiplier")
+    p.add_argument("--temporal-seed-weighting", action="store_true",
+                   help="backlog #4: blend all-time seed weight with a recency multiplier "
+                        "so recent listening tilts both seed selection and conviction weighting")
+    p.add_argument("--recency-days", type=int, default=_d.recency_days,
+                   help="recent sub-window (days back from cutoff) for temporal seed weighting")
+    p.add_argument("--recency-boost", type=float, default=_d.recency_boost,
+                   help="weight *= 1 + recency_boost * (recent_plays / total_plays)")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()

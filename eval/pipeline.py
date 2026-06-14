@@ -78,6 +78,26 @@ def build_threshold(info_map: dict, seed_infos: list[dict], cfg: Config) -> dict
     th = {"genre_ref": genre_ref, "pool_ref": pool_ref or 1.0,
           "T_user": cfg.tf_target * factor, "user_median_listeners": user_med}
 
+    # ── flat model, backlog #2: per-genre listener-percentile ceiling ─────────
+    # Make the obscurity line genre-aware: each genre's own listener percentile
+    # (from the candidate pool) becomes its ceiling, but CLAMPED to never exceed
+    # the absolute cap. The pool is popularity-biased (getSimilar hub bias), so an
+    # unclamped percentile only ever loosens — admitting mainstream artists and
+    # defeating the product. Clamping makes the lever tighten-only: niche genres
+    # whose pool sits below the cap get a stricter ceiling; everything else stays
+    # at the absolute line. Thin/untagged genres fall back to the absolute cap.
+    genre_ceiling: dict[str, float] = {}
+    if cfg.genre_relative_ceiling:
+        genre_listeners: dict[str, list[float]] = {}
+        for info in info_map.values():
+            if not info["tags"] or info["listeners"] <= 0:
+                continue
+            genre_listeners.setdefault(info["tags"][0].lower(), []).append(info["listeners"])
+        for g, ls in genre_listeners.items():
+            if len(ls) >= cfg.genre_ceiling_min_n:
+                genre_ceiling[g] = min(_percentile(sorted(ls), cfg.genre_ceiling_pctl), cfg.ceiling)
+    th["genre_ceiling"] = genre_ceiling
+
     # ── discovery model: per-user backstop + per-user obscurity appetite ──────
     if cfg.threshold_model == "discovery":
         seeds_sorted = sorted(seed_listeners)
@@ -112,6 +132,12 @@ def estimate_true_fans(info: dict, th: dict, cfg: Config) -> float:
 
 def passes_threshold(info: dict, th: dict, cfg: Config) -> bool:
     if cfg.threshold_model == "flat":
+        if cfg.genre_relative_ceiling:
+            g = info["tags"][0].lower() if info["tags"] else None
+            cap = th.get("genre_ceiling", {}).get(g)
+            if cap is not None:
+                return info["listeners"] <= cap
+            return info["listeners"] <= cfg.ceiling   # thin/untagged genre → absolute fallback
         return info["listeners"] <= cfg.ceiling
     if cfg.threshold_model == "discovery":
         # the per-user backstop is the ONLY hard exclusion in discovery mode
@@ -140,13 +166,36 @@ def collab_components(name: str) -> list[str]:
 
 # ── stage 1: seeds (from reconstructed plays) ─────────────────────────────────
 
-def build_seeds(plays: dict[str, list], cfg: Config):
-    """plays: norm -> [display, count]. Returns (weights{display:w}, names[])."""
-    items = sorted(plays.values(), key=lambda dc: dc[1], reverse=True)[: cfg.max_seeds]
+def build_seeds(plays: dict[str, list], cfg: Config, plays_recent=None):
+    """plays: norm -> [display, count]. Returns (weights{display:w}, names[]).
+
+    plays_recent: same shape as plays but over the recent sub-window (norm ->
+    [display, count]), or None. When cfg.temporal_seed_weighting is True and
+    plays_recent is provided, each artist's base log2 weight is boosted by a
+    recency fraction so that artists played heavily in the recent sub-window
+    rank higher in both selection and downstream conviction weighting.
+    """
     weights, names = {}, []
-    for display, count in items:
-        weights[display] = max(math.log2(max(count, 1)), 1.0)
-        names.append(display)
+    if cfg.temporal_seed_weighting and plays_recent is not None:
+        # blended weight: base * (1 + recency_boost * recent_frac), then select
+        # top max_seeds by blended score so selection itself is recency-tilted.
+        scored = []
+        for norm, (display, count) in plays.items():
+            base = max(math.log2(max(count, 1)), 1.0)
+            recent = plays_recent.get(norm, [None, 0])[1]
+            frac = recent / count if count else 0.0
+            blended = base * (1.0 + cfg.recency_boost * frac)
+            scored.append((norm, display, count, blended))
+        scored.sort(key=lambda t: t[3], reverse=True)
+        for norm, display, count, blended in scored[: cfg.max_seeds]:
+            weights[display] = max(blended, 1.0)
+            names.append(display)
+    else:
+        # baseline: sort by raw play count, weight = log2(count)
+        items = sorted(plays.values(), key=lambda dc: dc[1], reverse=True)[: cfg.max_seeds]
+        for display, count in items:
+            weights[display] = max(math.log2(max(count, 1)), 1.0)
+            names.append(display)
     return weights, names
 
 
@@ -430,7 +479,15 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
     plays_after = await collect_plays(client, user, cutoff, anchor, cfg)
     past_known = set(plays_before.keys())
 
-    weights, names = build_seeds(plays_before, cfg)
+    # recent sub-window for temporal seed weighting (extra API call only when on)
+    if cfg.temporal_seed_weighting:
+        plays_recent = await collect_plays(
+            client, user, cutoff - cfg.recency_days * 86400, cutoff, cfg
+        )
+    else:
+        plays_recent = None
+
+    weights, names = build_seeds(plays_before, cfg, plays_recent)
     seed_norms = {normalize_artist_name(n) for n in names}
 
     # ── novelty split: which past artists are "deep" vs "underexplored/light" ──

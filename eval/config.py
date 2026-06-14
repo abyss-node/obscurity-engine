@@ -69,10 +69,15 @@ class Config:
 
     # ── EXPERIMENT LEVERS (off = faithful baseline) ──────────────────────────
     use_match_weight: bool = False  # backlog #1: weight conviction by getSimilar match
-    genre_relative_ceiling: bool = False  # backlog #2 (not yet implemented)
+    genre_relative_ceiling: bool = False  # backlog #2: per-genre listener percentile ceiling
+    genre_ceiling_pctl: float = 0.75   # backlog #2: per-genre listener percentile = the ceiling
+    genre_ceiling_min_n: int = 5       # min pool artists in a genre to trust its percentile (else fall back to absolute ceiling)
     two_hop: bool = False           # backlog #3: similar-of-similar candidate expansion
     two_hop_expand: int = 60        # how many top 1-hop candidates to expand a 2nd hop
     two_hop_discount: float = 0.5   # conviction penalty for 2-hop-only candidates
+    temporal_seed_weighting: bool = False  # backlog #4: blend all-time weight with recency
+    recency_days: int = 30                 # recent sub-window inside the past window
+    recency_boost: float = 1.0             # weight *= 1 + recency_boost * (recent_plays / total_plays)
 
     # ── threshold model: "flat" (legacy 25K) | "true_fans" (per-user, devotion-aware)
     # The "1000 true fans" model: a discovery target is an artist who hasn't yet
