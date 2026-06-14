@@ -4,6 +4,7 @@ use std::fmt;
 use dashmap::DashMap;
 use std::time::{Duration, Instant};
 use serde_json::Value;
+use std::time::SystemTime;
 use crate::models::{SimilarArtist, TrackInfoResponse};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -116,6 +117,24 @@ pub struct TrackArtistRef {
 
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
+/// Max attempts in get_with_retry (1 initial + retries).
+const MAX_REQUEST_ATTEMPTS: u32 = 4;
+
+/// Last.fm signals rate-limit / transient failures as HTTP 200 with an
+/// `{"error":N}` body (not a 5xx). These codes are worth backing off and retrying:
+/// 29 = rate limit, 8 = operation failed, 11 = service offline, 16 = temporarily
+/// unavailable. Other codes (e.g. 6 invalid params) are permanent — fail fast.
+fn is_retryable_lastfm_error(code: u64) -> bool {
+    matches!(code, 8 | 11 | 16 | 29)
+}
+
+/// Peek at a Last.fm JSON body for an `error` code without consuming it.
+fn lastfm_error_code(text: &str) -> Option<u64> {
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .and_then(|v| v.get("error").and_then(|e| e.as_u64()))
+}
+
 pub struct LastfmClient {
     pub client: Client,
     pub api_key: String,
@@ -138,31 +157,59 @@ impl LastfmClient {
         }
     }
 
-    /// GET with 3 attempts and exponential backoff (500ms → 1s → 2s).
-    /// Retries on network errors and 5xx; fails fast on 4xx.
+    /// GET with exponential backoff + jitter (base 1s → 2s → 4s, plus 0–500ms).
+    ///
+    /// Retries on: network errors, 5xx, AND Last.fm's HTTP-200 rate-limit/transient
+    /// error bodies (`{"error":29}` etc.) — which previously slipped through the
+    /// success path and broke deserialization downstream. The pipeline fans out
+    /// hundreds of calls per discovery and *must* burst to finish inside the request
+    /// budget, so we don't cap concurrency (that just serialized everything into a
+    /// timeout); instead, when a burst trips the rate limit, each call backs off
+    /// with independent jitter so the retries spread out instead of re-bursting in
+    /// lockstep. Fails fast on 4xx and on permanent Last.fm error codes (the caller
+    /// parses and surfaces those).
     async fn get_with_retry(&self, url: &str) -> Result<String, BoxError> {
         let mut last_err: BoxError = "request never attempted".into();
-        for attempt in 0u32..3 {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(500 * (1u64 << (attempt - 1)))).await;
-            }
+        for attempt in 0u32..MAX_REQUEST_ATTEMPTS {
             match self.client.get(url).send().await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
-                        return Ok(resp.text().await?);
-                    }
-                    if status.is_client_error() {
+                        let text = resp.text().await?;
+                        match lastfm_error_code(&text) {
+                            // rate-limit / transient app error → back off and retry
+                            Some(code) if is_retryable_lastfm_error(code) => {
+                                last_err = format!("Last.fm Error {} (rate/transient)", code).into();
+                                eprintln!(
+                                    "Last.fm error {} on attempt {} for {} — backing off",
+                                    code, attempt + 1, url
+                                );
+                            }
+                            // permanent app error OR clean success → return body;
+                            // the caller's own error check handles permanent errors.
+                            _ => return Ok(text),
+                        }
+                    } else if status.is_client_error() {
                         return Err(format!("Last.fm HTTP {}", status).into());
+                    } else {
+                        // 5xx — log and retry
+                        last_err = format!("Last.fm HTTP {}", status).into();
+                        eprintln!("Last.fm {} on attempt {} for {}", status, attempt + 1, url);
                     }
-                    // 5xx — log and retry
-                    last_err = format!("Last.fm HTTP {}", status).into();
-                    eprintln!("Last.fm {} on attempt {} for {}", status, attempt + 1, url);
                 }
                 Err(e) => {
                     eprintln!("Last.fm network error on attempt {}: {}", attempt + 1, e);
                     last_err = Box::new(e);
                 }
+            }
+            // exponential backoff + jitter before the next attempt; skip after the last
+            if attempt + 1 < MAX_REQUEST_ATTEMPTS {
+                let base = 1000u64 * (1u64 << attempt); // 1s, 2s, 4s
+                let jitter = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map(|d| (d.subsec_nanos() % 500) as u64)
+                    .unwrap_or(0);
+                tokio::time::sleep(Duration::from_millis(base + jitter)).await;
             }
         }
         Err(last_err)
