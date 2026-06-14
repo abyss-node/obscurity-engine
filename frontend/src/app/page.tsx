@@ -272,11 +272,21 @@ export default function Home() {
           : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}${keyParam}`;
         const response = await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
         if (!response.ok) {
-          let errMsg = `[ERR] SONAR_FAILURE — HTTP ${response.status}`;
+          let detail = `HTTP ${response.status}`;
           try {
             const body = await response.json();
-            if (body?.error) errMsg = `[ERR] SONAR_FAILURE — ${body.error}`;
+            if (body?.error) detail = String(body.error);
           } catch { /* non-JSON */ }
+          // Upstream rate-limit / busy signatures from the backend → actionable hint
+          // instead of a raw "error decoding response body".
+          const busy =
+            response.status >= 500 &&
+            /rate limit|error decoding|failed to fetch|temporarily|unavailable/i.test(detail);
+          const errMsg = busy
+            ? "[ERR] SONAR_FAILURE — Last.fm is rate-limiting us right now. Wait a few seconds and retry."
+            : response.status >= 500
+              ? `[ERR] SONAR_FAILURE — The discovery service hit an error; retry in a moment. (${detail})`
+              : `[ERR] SONAR_FAILURE — ${detail}`;
           setError(errMsg);
           return;
         }
@@ -293,8 +303,8 @@ export default function Home() {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
         setError(
           isTimeout
-            ? "[ERR] SONAR_FAILURE — Request timed out after 90s."
-            : "[ERR] SONAR_FAILURE — Network error. Check your connection."
+            ? "[ERR] SONAR_FAILURE — Request timed out after 90s. The service may be busy; retry."
+            : "[ERR] SONAR_FAILURE — Couldn't reach the discovery service. It may be starting up or blocked; retry in a moment."
         );
       } finally {
         clearTimeout(wakeupTimer);
