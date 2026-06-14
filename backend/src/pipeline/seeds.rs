@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
-use crate::lastfm::{LastfmClient, TimePeriod};
+use crate::lastfm::{LastfmClient, TimePeriod, is_transient_error};
 use crate::utils::parse_period;
 
 const MAX_SEEDS: usize = 100;
@@ -72,26 +72,42 @@ async fn collect_blend(
     // most distinct artists, so its total is the lifetime distinct-artist count.
     let mut max_total: Option<u64> = None;
     while let Some(task_result) = period_futures.next().await {
-        if let Ok((Ok(response), factor)) = task_result {
-            if let Some(attr) = response.topartists.attr.as_ref() {
-                if let Ok(total) = attr.total.parse::<u64>() {
-                    max_total = Some(max_total.map_or(total, |m| m.max(total)));
+        match task_result {
+            Ok((Ok(response), factor)) => {
+                if let Some(attr) = response.topartists.attr.as_ref() {
+                    if let Ok(total) = attr.total.parse::<u64>() {
+                        max_total = Some(max_total.map_or(total, |m| m.max(total)));
+                    }
+                }
+                for artist in response.topartists.artist.into_iter().take(MAX_SEEDS) {
+                    let plays = artist.playcount.as_ref()
+                        .and_then(|p| p.parse::<f64>().ok())
+                        .unwrap_or(1.0)
+                        .max(1.0);
+                    // log2 compresses the range so a 10,000-play artist
+                    // doesn't completely overshadow a 100-play one
+                    *merged.entry(artist.name).or_insert(0.0) += plays.log2().max(1.0) * factor;
                 }
             }
-            for artist in response.topartists.artist.into_iter().take(MAX_SEEDS) {
-                let plays = artist.playcount.as_ref()
-                    .and_then(|p| p.parse::<f64>().ok())
-                    .unwrap_or(1.0)
-                    .max(1.0);
-                // log2 compresses the range so a 10,000-play artist
-                // doesn't completely overshadow a 100-play one
-                *merged.entry(artist.name).or_insert(0.0) += plays.log2().max(1.0) * factor;
+            // A transient failure on any window would silently drop its recency
+            // signal and reshape the whole seed set — fail-closed instead.
+            Ok((Err(e), _factor)) => {
+                if is_transient_error(e.as_ref()) {
+                    return Err(format!("top-artists window fetch failed: {}", e).into());
+                }
+                eprintln!("BLEND: skipping a window (permanent error: {})", e);
             }
+            Err(e) => return Err(format!("top-artists window task failed: {}", e).into()),
         }
     }
 
     let mut sorted: Vec<(String, f64)> = merged.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Tiebreak by name so equal-weight seeds at the truncation boundary are stable.
+    sorted.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     sorted.truncate(MAX_SEEDS);
 
     if sorted.is_empty() {

@@ -9,8 +9,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::Semaphore;
-use crate::lastfm::LastfmClient;
+use crate::lastfm::{LastfmClient, is_transient_error};
 use crate::utils::normalize_artist_name;
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 const SIMILAR_CONCURRENCY: usize = 8;
 const SIMILAR_ARTISTS_PER_SEED: u32 = 20;
@@ -25,7 +27,7 @@ pub type CandidateMap = HashMap<String, (String, Vec<String>)>;
 pub async fn build(
     client: &Arc<LastfmClient>,
     seed_names: &[String],
-) -> CandidateMap {
+) -> Result<CandidateMap, BoxError> {
     let semaphore = Arc::new(Semaphore::new(SIMILAR_CONCURRENCY));
     let mut similar_futures = FuturesUnordered::new();
 
@@ -44,17 +46,30 @@ pub async fn build(
 
     let mut candidate_map: CandidateMap = HashMap::new();
     while let Some(task_result) = similar_futures.next().await {
-        if let Ok((seed_name, Ok(similar_response))) = task_result {
-            for similar_artist in similar_response.similarartists.artist {
-                let norm_key = normalize_artist_name(&similar_artist.name);
-                let entry = candidate_map
-                    .entry(norm_key)
-                    .or_insert_with(|| (similar_artist.name.clone(), Vec::new()));
-                entry.1.push(seed_name.clone());
+        match task_result {
+            Ok((seed_name, Ok(similar_response))) => {
+                for similar_artist in similar_response.similarartists.artist {
+                    let norm_key = normalize_artist_name(&similar_artist.name);
+                    let entry = candidate_map
+                        .entry(norm_key)
+                        .or_insert_with(|| (similar_artist.name.clone(), Vec::new()));
+                    entry.1.push(seed_name.clone());
+                }
             }
+            // A transient failure (rate-limit/5xx/network past retries) means the
+            // candidate pool would be incomplete — fail the whole request so we never
+            // ship or cache a non-deterministic partial result. A permanent failure
+            // (a seed Last.fm can't expand) is deterministic, so skip just that seed.
+            Ok((seed_name, Err(e))) => {
+                if is_transient_error(e.as_ref()) {
+                    return Err(format!("similar-artist fetch failed for seed '{}': {}", seed_name, e).into());
+                }
+                eprintln!("CANDIDATES: skipping seed '{}' (permanent error: {})", seed_name, e);
+            }
+            Err(e) => return Err(format!("similar-artist task failed: {}", e).into()),
         }
     }
 
     println!("CANDIDATES: {} unique artists found", candidate_map.len());
-    candidate_map
+    Ok(candidate_map)
 }

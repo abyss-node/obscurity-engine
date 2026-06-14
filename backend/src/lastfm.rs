@@ -135,6 +135,46 @@ fn lastfm_error_code(text: &str) -> Option<u64> {
         .and_then(|v| v.get("error").and_then(|e| e.as_u64()))
 }
 
+/// Classified fetch failure. The pipeline fans out hundreds of calls and must
+/// distinguish two failure modes to stay deterministic:
+/// - `Transient`: rate-limit (Error 29), 5xx, or a network/body-read failure that
+///   survived every retry. A *complete* result is impossible right now, so callers
+///   fail the whole request rather than silently shipping a partial (and therefore
+///   non-deterministic) candidate pool.
+/// - `Permanent`: a 4xx, bad params, or a malformed/permanent-error body. The item
+///   legitimately yields nothing; skipping it is deterministic and safe.
+#[derive(Debug, Clone)]
+pub enum LastfmError {
+    Transient(String),
+    Permanent(String),
+}
+
+impl LastfmError {
+    pub fn is_transient(&self) -> bool {
+        matches!(self, LastfmError::Transient(_))
+    }
+}
+
+impl fmt::Display for LastfmError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LastfmError::Transient(m) => write!(f, "transient Last.fm failure: {}", m),
+            LastfmError::Permanent(m) => write!(f, "permanent Last.fm failure: {}", m),
+        }
+    }
+}
+
+impl std::error::Error for LastfmError {}
+
+/// Is this (boxed) pipeline error a transient Last.fm failure? Transient means
+/// "retry later, a complete result isn't possible now" — callers fail the request.
+/// Anything else (permanent 4xx, or a serde parse error from a malformed body) is
+/// deterministic and safe to skip; we default to non-transient so a parse error
+/// never wedges the request into a permanent fail-closed state.
+pub fn is_transient_error(err: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
+    err.downcast_ref::<LastfmError>().map_or(false, |e| e.is_transient())
+}
+
 pub struct LastfmClient {
     pub client: Client,
     pub api_key: String,
@@ -168,38 +208,46 @@ impl LastfmClient {
     /// with independent jitter so the retries spread out instead of re-bursting in
     /// lockstep. Fails fast on 4xx and on permanent Last.fm error codes (the caller
     /// parses and surfaces those).
-    async fn get_with_retry(&self, url: &str) -> Result<String, BoxError> {
-        let mut last_err: BoxError = "request never attempted".into();
+    async fn get_with_retry(&self, url: &str) -> Result<String, LastfmError> {
+        let mut last_err = String::from("request never attempted");
         for attempt in 0u32..MAX_REQUEST_ATTEMPTS {
             match self.client.get(url).send().await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
-                        let text = resp.text().await?;
-                        match lastfm_error_code(&text) {
-                            // rate-limit / transient app error → back off and retry
-                            Some(code) if is_retryable_lastfm_error(code) => {
-                                last_err = format!("Last.fm Error {} (rate/transient)", code).into();
-                                eprintln!(
-                                    "Last.fm error {} on attempt {} for {} — backing off",
-                                    code, attempt + 1, url
-                                );
+                        match resp.text().await {
+                            Ok(text) => match lastfm_error_code(&text) {
+                                // rate-limit / transient app error → back off and retry
+                                Some(code) if is_retryable_lastfm_error(code) => {
+                                    last_err = format!("Last.fm Error {} (rate/transient)", code);
+                                    eprintln!(
+                                        "Last.fm error {} on attempt {} for {} — backing off",
+                                        code, attempt + 1, url
+                                    );
+                                }
+                                // permanent app error OR clean success → return body;
+                                // the caller's own error check handles permanent errors.
+                                _ => return Ok(text),
+                            },
+                            // Body read failed mid-stream (e.g. truncated/dropped
+                            // connection) — transient, back off and retry.
+                            Err(e) => {
+                                last_err = format!("response body read error: {}", e);
+                                eprintln!("Last.fm body read error on attempt {} for {}: {}", attempt + 1, url, e);
                             }
-                            // permanent app error OR clean success → return body;
-                            // the caller's own error check handles permanent errors.
-                            _ => return Ok(text),
                         }
                     } else if status.is_client_error() {
-                        return Err(format!("Last.fm HTTP {}", status).into());
+                        // 4xx — permanent, retrying won't help.
+                        return Err(LastfmError::Permanent(format!("Last.fm HTTP {}", status)));
                     } else {
                         // 5xx — log and retry
-                        last_err = format!("Last.fm HTTP {}", status).into();
+                        last_err = format!("Last.fm HTTP {}", status);
                         eprintln!("Last.fm {} on attempt {} for {}", status, attempt + 1, url);
                     }
                 }
                 Err(e) => {
                     eprintln!("Last.fm network error on attempt {}: {}", attempt + 1, e);
-                    last_err = Box::new(e);
+                    last_err = format!("network error: {}", e);
                 }
             }
             // exponential backoff + jitter before the next attempt; skip after the last
@@ -212,7 +260,9 @@ impl LastfmClient {
                 tokio::time::sleep(Duration::from_millis(base + jitter)).await;
             }
         }
-        Err(last_err)
+        // Exhausted every retry on a retryable condition → transient. Callers
+        // fail-closed on this so a rate-limited burst never yields a partial pool.
+        Err(LastfmError::Transient(last_err))
     }
 
     pub async fn fetch_user_top_artists(
@@ -355,7 +405,16 @@ impl LastfmClient {
         }))
     }
 
+    /// Infallible tag fetch — returns `[]` on any failure. Used by the track
+    /// pipeline, where tags are a soft signal and a miss is tolerable.
     pub async fn fetch_artist_tags(&self, artist: &str) -> Vec<String> {
+        self.fetch_artist_tags_checked(artist).await.unwrap_or_default()
+    }
+
+    /// Tag fetch that surfaces transient failures so the artist-discovery pipeline
+    /// can fail-closed (a dropped tag fetch would change taste-alignment ranking
+    /// non-deterministically). A permanent app error → `[]` (deterministically no tags).
+    pub async fn fetch_artist_tags_checked(&self, artist: &str) -> Result<Vec<String>, BoxError> {
         #[derive(serde::Deserialize)]
         struct Resp { toptags: TopTags }
         #[derive(serde::Deserialize)]
@@ -367,18 +426,12 @@ impl LastfmClient {
             "{}?method=artist.gettoptags&artist={}&api_key={}&format=json",
             LASTFM_API_URL, urlencoding::encode(artist), self.api_key
         );
-        let text = match self.get_with_retry(&url).await {
-            Ok(t) => t,
-            Err(_) => return vec![],
-        };
-        let json: serde_json::Value = match serde_json::from_str(&text) {
-            Ok(v) => v,
-            Err(_) => return vec![],
-        };
-        if json.get("error").is_some() { return vec![]; }
-        serde_json::from_str::<Resp>(&text)
+        let text = self.get_with_retry(&url).await?;
+        let json: serde_json::Value = serde_json::from_str(&text)?;
+        if json.get("error").is_some() { return Ok(vec![]); }
+        Ok(serde_json::from_str::<Resp>(&text)
             .map(|r| r.toptags.tag.into_iter().take(6).map(|t| t.name).collect())
-            .unwrap_or_default()
+            .unwrap_or_default())
     }
 
     pub async fn fetch_tag_top_artists(

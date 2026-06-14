@@ -65,8 +65,8 @@ pub async fn discover_obscure_artists(
         under_threshold, total_scrobbles, distinct_artists
     );
 
-    let tag_candidates = tag_graph::fetch(&client, &username, &seeds).await;
-    let candidate_map = candidates::build(&client, &seeds.names).await;
+    let tag_candidates = tag_graph::fetch(&client, &username, &seeds).await?;
+    let candidate_map = candidates::build(&client, &seeds.names).await?;
     scoring::score_and_rank(&client, &username, candidate_map, &seeds, &tag_candidates, under_threshold).await
 }
 

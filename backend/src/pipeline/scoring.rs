@@ -17,11 +17,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::Semaphore;
-use crate::lastfm::LastfmClient;
+use crate::lastfm::{LastfmClient, is_transient_error};
 use crate::models::{Artist, DiscoveryResponse, DiscoveryResponseItem, GenreWeight, SourceSeed};
 use crate::utils::normalize_artist_name;
 use super::seeds::Seeds;
 use super::candidates::CandidateMap;
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 const INFO_CONCURRENCY: usize = 12;
 const MAX_LISTENER_CEILING: u64 = 25_000;
@@ -30,6 +32,9 @@ const MAX_LISTENER_CEILING: u64 = 25_000;
 const CONVICTION_CAP: f64 = 3.0;
 const CROSS_VALIDATION_BONUS: f64 = 0.5;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
+/// Final cap on recommendations returned per run. We'd rather hand the user a
+/// short, high-conviction set they'll actually listen to than fire-hose them.
+const MAX_RECOMMENDATIONS: usize = 10;
 /// Cap candidates sent to the info-fetch pass. 1500+ candidates × 12 concurrent
 /// easily exceeds 90s. Top-by-recommender-count is a safe pre-filter — low-
 /// recommender candidates have near-zero conviction scores anyway.
@@ -43,8 +48,8 @@ pub async fn score_and_rank(
     tag_candidates: &HashSet<String>,
     under_threshold: Option<u64>,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
-    let seed_tag_profile = build_seed_tag_profile(client, seeds).await;
-    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, under_threshold).await;
+    let seed_tag_profile = build_seed_tag_profile(client, seeds).await?;
+    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, under_threshold).await?;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
 }
 
@@ -55,11 +60,16 @@ pub async fn score_and_rank(
 async fn build_seed_tag_profile(
     client: &Arc<LastfmClient>,
     seeds: &Seeds,
-) -> HashMap<String, f64> {
+) -> Result<HashMap<String, f64>, BoxError> {
     const TOP_SEEDS: usize = 40;
     const TAGS_PER_SEED: usize = 5;
     let mut sorted: Vec<_> = seeds.weights.iter().collect();
-    sorted.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    // Tiebreak by name so the top-N seed selection is stable across runs.
+    sorted.sort_by(|a, b| {
+        b.1.partial_cmp(a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(b.0))
+    });
     let top: Vec<(String, f64)> = sorted.into_iter()
         .take(TOP_SEEDS)
         .map(|(n, w)| (n.clone(), *w))
@@ -72,18 +82,28 @@ async fn build_seed_tag_profile(
         let sem = Arc::clone(&sem);
         tokio::spawn(async move {
             let _permit = sem.acquire().await;
-            let tags = client.fetch_artist_tags(&name).await;
+            let tags = client.fetch_artist_tags_checked(&name).await;
             (tags, weight)
         })
     }).collect();
 
     let mut profile: HashMap<String, f64> = HashMap::new();
     while let Some(task) = futs.next().await {
-        if let Ok((tags, weight)) = task {
-            let share = weight / total;
-            for tag in tags.iter().take(TAGS_PER_SEED) {
-                *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
+        match task {
+            Ok((Ok(tags), weight)) => {
+                let share = weight / total;
+                for tag in tags.iter().take(TAGS_PER_SEED) {
+                    *profile.entry(tag.to_lowercase()).or_insert(0.0) += share;
+                }
             }
+            // A dropped seed-tag fetch shifts taste-alignment (which re-ranks and
+            // changes the depth-score weighting) — fail-closed on transient failures.
+            Ok((Err(e), _weight)) => {
+                if is_transient_error(e.as_ref()) {
+                    return Err(format!("seed-tag fetch failed: {}", e).into());
+                }
+            }
+            Err(e) => return Err(format!("seed-tag task failed: {}", e).into()),
         }
     }
 
@@ -98,7 +118,7 @@ async fn build_seed_tag_profile(
     }
 
     println!("SEED_TAGS: profile with {} unique tags (max_w={:.3})", profile.len(), max_w);
-    profile
+    Ok(profile)
 }
 
 async fn fetch_and_score(
@@ -108,7 +128,7 @@ async fn fetch_and_score(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
     under_threshold: Option<u64>,
-) -> Vec<DiscoveryResponseItem> {
+) -> Result<Vec<DiscoveryResponseItem>, BoxError> {
     // Normalized set of the user's own seed names — barred from recommendation
     // (matches the eval's `exclude_known = deep_known | seed_norms`). Built once
     // here rather than re-normalizing every seed inside the per-candidate loop.
@@ -119,7 +139,9 @@ async fn fetch_and_score(
     // expensive info-fetch pass. Cuts pipeline time from 90s+ to ~40s for large pools.
     let candidate_map = if candidate_map.len() > MAX_CANDIDATES_FOR_INFO_FETCH {
         let mut ranked: Vec<_> = candidate_map.into_iter().collect();
-        ranked.sort_by(|a, b| b.1.1.len().cmp(&a.1.1.len()));
+        // Tiebreak by normalized key so equal-recommender candidates at the cap
+        // boundary are kept/dropped deterministically (this sets #candidates).
+        ranked.sort_by(|a, b| b.1.1.len().cmp(&a.1.1.len()).then_with(|| a.0.cmp(&b.0)));
         ranked.truncate(MAX_CANDIDATES_FOR_INFO_FETCH);
         println!("SCORING: capped to {} candidates (was more)", MAX_CANDIDATES_FOR_INFO_FETCH);
         ranked.into_iter().collect()
@@ -144,8 +166,18 @@ async fn fetch_and_score(
     // Collect all raw results first so we can build a listener map for collab checks.
     let mut raw: Vec<(Artist, Vec<String>)> = Vec::new();
     while let Some(task_result) = info_futures.next().await {
-        if let Ok((Ok(info_response), recommenders)) = task_result {
-            raw.push((info_response.artist, recommenders));
+        match task_result {
+            Ok((Ok(info_response), recommenders)) => raw.push((info_response.artist, recommenders)),
+            // A dropped listener-count fetch removes a candidate before the 25K
+            // ceiling and depth-score math — fail-closed on transient failures so
+            // #candidates and the obscurity score are reproducible. A permanent
+            // failure (artist Last.fm has no info for) is deterministic, so skip it.
+            Ok((Err(e), _recommenders)) => {
+                if is_transient_error(e.as_ref()) {
+                    return Err(format!("artist-info fetch failed: {}", e).into());
+                }
+            }
+            Err(e) => return Err(format!("artist-info task failed: {}", e).into()),
         }
     }
 
@@ -163,10 +195,12 @@ async fn fetch_and_score(
         .collect();
 
     scored_artists.sort_by(|a, b| {
-        b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal)
+        b.composite_score.partial_cmp(&a.composite_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
     });
 
-    scored_artists
+    Ok(scored_artists)
 }
 
 fn collab_components(name: &str) -> Vec<String> {
@@ -287,16 +321,23 @@ fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed
         artist.composite_score *= 1.0 + 0.5 * artist.taste_alignment;
     }
     // Re-sort after composite uplift from genre fit
-    artists.sort_by(|a, b| b.composite_score.partial_cmp(&a.composite_score).unwrap_or(std::cmp::Ordering::Equal));
+    artists.sort_by(|a, b| {
+        b.composite_score.partial_cmp(&a.composite_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
 
     // Diversity uses the output genre distribution so results spread across genres.
     let genre_weight_map: HashMap<String, f64> = top_genres.iter()
         .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
         .collect();
-    let diverse_artists = enforce_diversity(artists, &genre_weight_map);
+    let mut diverse_artists = enforce_diversity(artists, &genre_weight_map);
+    // Keep only the strongest N. `diverse_artists` is already ranked best-first, so
+    // this is the top N; the depth score below then reflects exactly what's shown.
+    diverse_artists.truncate(MAX_RECOMMENDATIONS);
     let depth_score = compute_depth_score(&diverse_artists);
 
-    println!("DONE: {} artists after diversity pass ({} seeds)", diverse_artists.len(), seed_count);
+    println!("DONE: {} artists after diversity + cap ({} seeds)", diverse_artists.len(), seed_count);
 
     let low_data_message = if seed_count < 20 {
         Some("Your scrobble history is limited — results may include artists you already know. Deeper listening history improves accuracy.".to_string())
@@ -334,7 +375,11 @@ fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
             },
         })
         .collect();
-    genres.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+    genres.sort_by(|a, b| {
+        b.weight.partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     genres.truncate(5);
     genres
 }
