@@ -84,9 +84,15 @@ async fn discovery_handler(
         println!("Cache miss: {}", cache_key);
         match discover_obscure_artists(client, query.username, query.period).await {
             Ok(result) => {
-                let mut cache = state.cache.write().await;
-                cache.insert(cache_key, (Instant::now(), result.clone()));
+                // Only cache non-empty results; degraded/empty runs shouldn't stick.
+                if !result.artists.is_empty() {
+                    let mut cache = state.cache.write().await;
+                    cache.insert(cache_key, (Instant::now(), result.clone()));
+                }
                 Ok(Json(result))
+            }
+            Err(e) if e.to_string().contains("No listening history") => {
+                Ok(Json(empty_discovery_response()))
             }
             Err(e) => {
                 eprintln!("Discovery error: {}", e);
@@ -99,6 +105,9 @@ async fn discovery_handler(
     } else {
         match discover_obscure_artists(client, query.username, query.period).await {
             Ok(result) => Ok(Json(result)),
+            Err(e) if e.to_string().contains("No listening history") => {
+                Ok(Json(empty_discovery_response()))
+            }
             Err(e) => {
                 eprintln!("Discovery error (custom key): {}", e);
                 Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
@@ -107,6 +116,18 @@ async fn discovery_handler(
                 })))
             }
         }
+    }
+}
+
+/// A 200-OK empty artist-discovery response for the genuine "no history" case.
+fn empty_discovery_response() -> models::DiscoveryResponse {
+    models::DiscoveryResponse {
+        artists: vec![],
+        top_genres: vec![],
+        deepest_date: None,
+        active_seed_count: 0,
+        depth_score: 0.0,
+        message: Some("No listening history for this period — try a different time range.".into()),
     }
 }
 
@@ -144,9 +165,17 @@ async fn track_discovery_handler(
         }
         match discover_obscure_tracks(client, query.username, query.period).await {
             Ok(result) => {
-                let mut cache = state.track_cache.write().await;
-                cache.insert(cache_key, (Instant::now(), result.clone()));
+                // Only cache non-empty results; degraded/empty runs shouldn't stick.
+                if !result.tracks.is_empty() {
+                    let mut cache = state.track_cache.write().await;
+                    cache.insert(cache_key, (Instant::now(), result.clone()));
+                }
                 Ok(Json(result))
+            }
+            Err(e) if e.to_string().contains("No track history")
+                || e.to_string().contains("No listening history") =>
+            {
+                Ok(Json(empty_track_discovery_response()))
             }
             Err(e) => {
                 eprintln!("Track discovery error: {}", e);
@@ -159,6 +188,11 @@ async fn track_discovery_handler(
     } else {
         match discover_obscure_tracks(client, query.username, query.period).await {
             Ok(result) => Ok(Json(result)),
+            Err(e) if e.to_string().contains("No track history")
+                || e.to_string().contains("No listening history") =>
+            {
+                Ok(Json(empty_track_discovery_response()))
+            }
             Err(e) => {
                 eprintln!("Track discovery error (custom key): {}", e);
                 Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
@@ -167,6 +201,17 @@ async fn track_discovery_handler(
                 })))
             }
         }
+    }
+}
+
+/// A 200-OK empty track-discovery response for the genuine "no history" case.
+fn empty_track_discovery_response() -> models::TrackDiscoveryResponse {
+    models::TrackDiscoveryResponse {
+        tracks: vec![],
+        top_genres: vec![],
+        active_seed_count: 0,
+        depth_score: 0.0,
+        message: Some("No track history for this period — try a different time range.".into()),
     }
 }
 

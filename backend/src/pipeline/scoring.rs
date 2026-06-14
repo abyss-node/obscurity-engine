@@ -199,6 +199,7 @@ fn score_candidate(
         Some(t) => { if user_plays >= t { return None; } }
         None    => { if user_plays > 0 { return None; } }
     }
+    let reengagement = under_threshold.is_some() && user_plays > 0;
 
     // Never recommend one of the user's own seeds, regardless of play threshold
     // (matches the eval's explicit seed exclusion).
@@ -267,6 +268,8 @@ fn score_candidate(
         cross_validated,
         taste_alignment: 0.0,
         velocity: None,
+        user_playcount: user_plays,
+        reengagement,
     })
 }
 

@@ -46,6 +46,10 @@ pub struct DiscoveryResponseItem {
     pub taste_alignment: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub velocity: Option<f64>,
+    #[serde(default)]
+    pub user_playcount: u64,
+    #[serde(default)]
+    pub reengagement: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
