@@ -25,6 +25,8 @@ export type Artist = {
   cross_validated?: boolean;
   taste_alignment?: number;
   velocity?: number;
+  reengagement?: boolean;
+  user_playcount?: number;
 };
 
 export type TrackItem = {
