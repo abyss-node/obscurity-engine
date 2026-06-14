@@ -141,20 +141,6 @@ export default function ArtistCard({ artist, rank, isHero, isFocused }: ArtistCa
                   {formatGeoTag(tag.toLowerCase())}
                 </span>
               ))}
-              {(artist.reengagement || (artist.user_playcount ?? 0) > 0) && (
-                <Tooltip text="You've played this artist before, just not much — worth revisiting.">
-                  <span
-                    className="font-mono text-[9px] tracking-widest uppercase px-1.5 py-0.5 border shrink-0"
-                    style={{
-                      color: "var(--discovery)",
-                      borderColor: "color-mix(in srgb, var(--discovery) 35%, transparent)",
-                      background: "color-mix(in srgb, var(--discovery) 8%, transparent)",
-                    }}
-                  >
-                    heard before
-                  </span>
-                </Tooltip>
-              )}
             </div>
 
             {/* Listeners / extra genre tags — cross-fade on hover */}
