@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ArtistList from "../components/ArtistList";
 import TrackCard from "../components/TrackCard";
-import DepthTierList from "../components/DepthTierList";
+import DiscoveryMatrix from "../components/DiscoveryMatrix";
+import TracksComingSoon from "../components/TracksComingSoon";
+import ApiKeyModal from "../components/ApiKeyModal";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
 import Tooltip from "../components/Tooltip";
@@ -27,6 +29,10 @@ export type Artist = {
   velocity?: number;
   reengagement?: boolean;
   user_playcount?: number;
+  // Resolved listen/find links (populated by the backend resolver; gated per-artist).
+  spotify_url?: string;
+  bandcamp_url?: string;
+  this_is_url?: string;
 };
 
 export type TrackItem = {
@@ -312,7 +318,13 @@ export default function Home() {
         setLoading(false);
       }
     };
-    fetchData();
+    // Tracks discovery is gated behind a "Coming soon" overlay for alpha — don't
+    // spend Last.fm rate limit fetching a mode users can't see yet.
+    if (mode === "tracks") {
+      setLoading(false);
+    } else {
+      fetchData();
+    }
   }, [username, period, mode, fetchTrigger, applyData]);
 
   const handleShare = () => {
@@ -327,6 +339,14 @@ export default function Home() {
   const handleRetry = () => {
     forceFreshRef.current = true;
     setFetchTrigger((t) => t + 1);
+  };
+
+  const handleSaveApiKey = (key: string) => {
+    setApiKey(key);
+    setApiKeyInput(key);
+    if (key) localStorage.setItem("obscurity_api_key", key);
+    else localStorage.removeItem("obscurity_api_key");
+    setShowApiKey(false);
   };
 
   const handleReset = () => {
@@ -644,11 +664,12 @@ export default function Home() {
                   <ErrorState
                     error={error}
                     onRetry={handleRetry}
+                    onAddApiKey={() => setShowApiKey(true)}
                   />
                 ) : (
                   /* ── RESULTS ──────────────────────────────────────── */
                   <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
-                    {lowDataMessage && (
+                    {mode === "artists" && lowDataMessage && (
                       <div
                         className="border px-5 py-3"
                         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
@@ -663,7 +684,7 @@ export default function Home() {
                     )}
 
                     {/* Depth Assessment */}
-                    {depthScore > 0 && (
+                    {mode === "artists" && depthScore > 0 && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -703,29 +724,34 @@ export default function Home() {
                             className="font-mono text-[10px] tracking-wider"
                             style={{ color: "var(--dim)" }}
                           >
-                            {activeSeedCount} seeds · {mode === "tracks" ? tracks.length : artists.length} candidates
+                            {activeSeedCount} seeds · {artists.length} candidates
                           </p>
                         </Tooltip>
                       </motion.div>
                     )}
 
-                    {/* Sonar Map */}
-                    {sortedArtists.length > 0 && (
+                    {/* Discovery Matrix */}
+                    {mode === "artists" && sortedArtists.length > 0 && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.2, duration: 0.6 }}
                         className="flex flex-col gap-3"
                       >
-                        <Tooltip text="Artists placed by listener count. SURFACE (10K+), MID (3K–10K), DEEP (500–3K), ABYSS (under 500). All results are under 25K — this shows the distribution within that range.">
-                          <button
-                            onClick={() => setIcebergOpen((o) => !o)}
-                            className="self-start font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
-                            style={{ color: "var(--dim)" }}
-                          >
-                            {icebergOpen ? "▼" : "▶"} depth map
-                          </button>
-                        </Tooltip>
+                        <div className="flex items-baseline gap-3 flex-wrap">
+                          <Tooltip text="Two axes that decide what you actually play: conviction (how strongly your seeds point here) on X, stickiness (how dedicated the fanbase is) on Y. Obscurity rides along as dot size — bigger = deeper cut.">
+                            <button
+                              onClick={() => setIcebergOpen((o) => !o)}
+                              className="font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
+                              style={{ color: "var(--dim)" }}
+                            >
+                              {icebergOpen ? "▼" : "▶"} discovery matrix
+                            </button>
+                          </Tooltip>
+                          <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)", opacity: 0.7 }}>
+                            conviction × stickiness · dot size = obscurity
+                          </span>
+                        </div>
                         <AnimatePresence>
                           {icebergOpen && (
                             <motion.div
@@ -735,7 +761,7 @@ export default function Home() {
                               transition={{ duration: 0.35 }}
                               className="overflow-hidden"
                             >
-                              <DepthTierList
+                              <DiscoveryMatrix
                                 artists={sortedArtists}
                                 onArtistClick={(name) => {
                                   setFocusedArtist(null);
@@ -759,36 +785,14 @@ export default function Home() {
                           artists={filteredArtists}
                           sortBy={sortBy}
                           setSortBy={(val) => setSortBy(val as SortType)}
-                          stickinessThreshold={stickinessThreshold}
-                          availableGeoTags={availableGeoTags}
-                          selectedGeoTags={selectedGeoTags}
-                          setSelectedGeoTags={setSelectedGeoTags}
                           focusedArtist={focusedArtist}
                         />
                       </motion.div>
                     )}
 
-                    {/* Track empty state */}
-                    {mode === "tracks" && tracks.length === 0 && !loading && !error && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5 }}
-                        className="flex flex-col gap-4 py-16 items-center text-center"
-                      >
-                        <span
-                          className="font-mono text-[10px] tracking-widest uppercase"
-                          style={{ color: "var(--dim)" }}
-                        >
-                          [SONAR] no signal
-                        </span>
-                        <p className="font-body text-lg font-light" style={{ color: "var(--muted)" }}>
-                          No tracks surfaced for this period.
-                        </p>
-                        <p className="font-mono text-[10px] tracking-wider max-w-xs" style={{ color: "var(--dim)" }}>
-                          Try a longer window — MIX or ALL have the most listening history to work from.
-                        </p>
-                      </motion.div>
+                    {/* Tracks — gated behind a "Coming soon" overlay for alpha (§6) */}
+                    {mode === "tracks" && (
+                      <TracksComingSoon onBack={() => setMode("artists")} />
                     )}
 
                     {/* Track List */}
@@ -853,6 +857,17 @@ export default function Home() {
                 )}
               </AnimatePresence>
             </div>
+
+            {/* API-key modal — rate-limit escape hatch (§8) */}
+            <AnimatePresence>
+              {showApiKey && (
+                <ApiKeyModal
+                  initialValue={apiKey}
+                  onSave={handleSaveApiKey}
+                  onClose={() => setShowApiKey(false)}
+                />
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

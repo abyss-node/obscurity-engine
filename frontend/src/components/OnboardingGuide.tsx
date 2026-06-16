@@ -10,95 +10,58 @@ interface Platform {
   steps: { text: string; link?: { label: string; href: string } }[];
 }
 
+// Platforms per the redesign spec (§7). iPhone & Mac intentionally removed for
+// the alpha. Spotify connects via Last.fm's OAuth page directly — NOT the old
+// "Spotify Settings → Social" path.
 const PLATFORMS: Platform[] = [
   {
     id: "spotify",
     label: "Spotify",
     os: "All platforms",
     steps: [
-      { text: "Open Spotify → Settings → Social" },
-      { text: "Connect to Last.fm and log in" },
-      { text: "Every play on any Spotify device scrobbles automatically" },
+      {
+        text: "Open your Last.fm application settings",
+        link: {
+          label: "last.fm/settings/applications →",
+          href: "https://www.last.fm/settings/applications",
+        },
+      },
+      { text: "Under “Spotify scrobbling”, click Connect and authorize Last.fm" },
+      { text: "Every play on any Spotify device now scrobbles automatically" },
+      { text: "(You can also reach this from the Last.fm footer → Track My Music → Spotify)" },
     ],
   },
   {
     id: "android",
-    label: "YouTube Music / Android",
-    os: "Android",
+    label: "Android",
+    os: "YouTube Music · Tidal · 40+ apps",
     steps: [
       {
-        text: "Install PanoScrobbler from the Play Store",
+        text: "Install Pano Scrobbler from the Play Store",
         link: {
-          label: "PanoScrobbler →",
+          label: "Pano Scrobbler →",
           href: "https://play.google.com/store/apps/details?id=com.muesil0.panoscrobbler",
         },
       },
-      { text: "Open PanoScrobbler → connect your Last.fm account" },
+      { text: "Open Pano Scrobbler → connect your Last.fm account" },
       { text: "Grant notification access — it reads what any app is playing" },
-      { text: "Works with YouTube Music, Tidal, Deezer, and 40+ other apps" },
+      { text: "Works with YouTube Music, Tidal, Deezer, and most Android players" },
     ],
   },
   {
-    id: "chrome",
-    label: "YouTube Music / Desktop",
+    id: "desktop",
+    label: "Desktop browser",
     os: "Chrome · Firefox · Edge",
     steps: [
       {
-        text: "Install Web Scrobbler from the Chrome Web Store",
+        text: "Install the Web Scrobbler extension",
         link: {
           label: "Web Scrobbler →",
           href: "https://chrome.google.com/webstore/detail/web-scrobbler/hhinaapppaileiechjoiifaancjggfjm",
         },
       },
       { text: "Click the extension icon → connect your Last.fm account" },
-      {
-        text: "Scrobbles YouTube Music, Spotify Web, Tidal, Deezer, SoundCloud, and more in the browser",
-      },
-    ],
-  },
-  {
-    id: "iphone",
-    label: "iPhone",
-    os: "iOS",
-    steps: [
-      {
-        text: "For Spotify: connect in Spotify Settings → Social (no extra app needed)",
-      },
-      {
-        text: "For Apple Music: install the Last.fm app",
-        link: {
-          label: "Last.fm on App Store →",
-          href: "https://apps.apple.com/app/last-fm/id1188681944",
-        },
-      },
-      {
-        text: "For YouTube Music on iPhone: open youtube.com/music in Chrome and use Web Scrobbler",
-        link: {
-          label: "Web Scrobbler →",
-          href: "https://chrome.google.com/webstore/detail/web-scrobbler/hhinaapppaileiechjoiifaancjggfjm",
-        },
-      },
-    ],
-  },
-  {
-    id: "mac",
-    label: "Mac",
-    os: "macOS",
-    steps: [
-      {
-        text: "For Spotify: connect in Spotify Settings → Social",
-      },
-      {
-        text: "For Apple Music: download the Last.fm desktop scrobbler",
-        link: { label: "Last.fm Desktop →", href: "https://www.last.fm/about/download" },
-      },
-      {
-        text: "For browser-based streaming: install Web Scrobbler in Chrome or Firefox",
-        link: {
-          label: "Web Scrobbler →",
-          href: "https://chrome.google.com/webstore/detail/web-scrobbler/hhinaapppaileiechjoiifaancjggfjm",
-        },
-      },
+      { text: "Scrobbles YouTube Music, Spotify Web, Tidal, Deezer, SoundCloud, and more" },
     ],
   },
 ];

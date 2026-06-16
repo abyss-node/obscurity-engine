@@ -1,30 +1,16 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Artist } from "../app/page";
 import ArtistCard from "./ArtistCard";
 import Tooltip from "./Tooltip";
-import { formatGeoTag } from "../lib/geoTags";
-import { motion, AnimatePresence } from "framer-motion";
 
 interface ArtistListProps {
   artists: Artist[];
   sortBy: string;
   setSortBy: (val: string) => void;
-  stickinessThreshold: number;
-  availableGeoTags: { tag: string; count: number }[];
-  selectedGeoTags: string[];
-  setSelectedGeoTags: (tags: string[]) => void;
   focusedArtist?: string | null;
 }
-
-const listVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05, delayChildren: 0 },
-  },
-};
 
 const SORT_OPTIONS = [
   { id: "composite",  label: "composite",  tip: "Conviction × stickiness. Default rank — balances how strongly your history points to an artist with how dedicated their fanbase is." },
@@ -33,277 +19,83 @@ const SORT_OPTIONS = [
   { id: "listeners",  label: "listeners",  tip: "Raw Last.fm listener count. Sort ascending to find the deepest cuts — artists few people have heard of yet." },
 ];
 
-function tagMatchScore(query: string, tags: string[]): number {
-  const q = query.toLowerCase().trim();
-  if (!q) return 0;
-  let best = 0;
-  for (const tag of tags) {
-    const t = tag.toLowerCase();
-    if (t === q) return 1.0;
-    if (t.includes(q)) { best = Math.max(best, 0.9); continue; }
-    if (q.includes(t)) { best = Math.max(best, 0.7); continue; }
-    const qWords = q.split(" ").filter(Boolean);
-    const tWords = t.split(" ").filter(Boolean);
-    let wordMatches = 0;
-    for (const qw of qWords) {
-      if (tWords.some(tw => tw.startsWith(qw) || qw.startsWith(tw))) wordMatches++;
-    }
-    if (wordMatches > 0) {
-      best = Math.max(best, (wordMatches / Math.max(qWords.length, 1)) * 0.5);
-    }
-  }
-  return best;
-}
+// Shared grid template — column header row must line up with each ledger row.
+const ledgerCols =
+  "grid-cols-[22px_minmax(0,1fr)_54px_58px_20px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
-export default function ArtistList({
-  artists,
-  sortBy,
-  setSortBy,
-  stickinessThreshold,
-  availableGeoTags,
-  selectedGeoTags,
-  setSelectedGeoTags,
-  focusedArtist,
-}: ArtistListProps) {
-  const [genreQuery, setGenreQuery] = useState("");
-  const [selectedVia, setSelectedVia] = useState<string[]>([]);
+export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }: ArtistListProps) {
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  // Build via seed list from all artists, sorted by frequency
-  const availableVia = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const artist of artists) {
-      for (const seed of artist.source_seeds ?? []) {
-        counts.set(seed.name, (counts.get(seed.name) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .map(([name, count]) => ({ name, count }));
-  }, [artists]);
-
-  // Apply genre fuzzy filter/sort and via filter on top of the parent-sorted list
-  const displayArtists = useMemo(() => {
-    let result = artists;
-
-    if (selectedVia.length > 0) {
-      result = result.filter(a =>
-        a.source_seeds?.some(s => selectedVia.includes(s.name))
-      );
-    }
-
-    const q = genreQuery.trim();
-    if (q) {
-      const scored = result
-        .map(a => ({ artist: a, score: tagMatchScore(q, a.top_tags) }))
-        .filter(({ score }) => score > 0)
-        .sort((a, b) => b.score - a.score);
-      result = scored.map(({ artist }) => artist);
-    }
-
-    return result;
-  }, [artists, genreQuery, selectedVia]);
-
-  const toggleGeo = (tag: string) => {
-    setSelectedGeoTags(
-      selectedGeoTags.includes(tag)
-        ? selectedGeoTags.filter(t => t !== tag)
-        : [...selectedGeoTags, tag]
-    );
-  };
-
-  const toggleVia = (name: string) => {
-    setSelectedVia(prev =>
-      prev.includes(name) ? prev.filter(v => v !== name) : [...prev, name]
-    );
-  };
-
-  const hasActiveFilters = genreQuery.trim() || selectedVia.length > 0;
+  // A matrix dot click focuses an artist — open and scroll to its row.
+  useEffect(() => {
+    if (focusedArtist) setExpanded(focusedArtist);
+  }, [focusedArtist]);
 
   return (
-    <div className="w-full flex flex-col gap-10">
-      {/* Controls */}
-      <div className="flex flex-col gap-6">
-
-        {/* Sort — sticky so you can re-sort without scrolling back */}
-        <div
-          className="sticky top-12 z-30 flex flex-col gap-3 py-4 -mx-4 px-4 sm:-mx-8 sm:px-8"
-          style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}
-        >
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
-            sort by
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {SORT_OPTIONS.map((opt) => (
+    <div className="w-full flex flex-col gap-5">
+      {/* Sort tabs */}
+      <div
+        className="sticky top-12 z-30 flex items-center gap-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8"
+        style={{ background: "var(--bg)" }}
+      >
+        <span className="font-mono text-[8px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
+          sort by
+        </span>
+        <div className="flex items-center gap-5">
+          {SORT_OPTIONS.map((opt) => {
+            const active = sortBy === opt.id;
+            return (
               <Tooltip key={opt.id} text={opt.tip}>
                 <button
                   onClick={() => setSortBy(opt.id)}
-                  className="font-mono text-[10px] tracking-wider px-3 py-1.5 border transition-colors duration-150"
+                  className="font-mono text-[11px] tracking-wider pb-1 transition-colors duration-150"
                   style={{
-                    borderColor: sortBy === opt.id && !genreQuery.trim() ? "var(--accent)" : "var(--border)",
-                    color: sortBy === opt.id && !genreQuery.trim() ? "var(--accent)" : "var(--dim)",
+                    color: active ? "var(--accent)" : "var(--muted)",
+                    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
                   }}
                 >
                   {opt.label}
                 </button>
               </Tooltip>
-            ))}
-          </div>
+            );
+          })}
         </div>
-
-        {/* Genre fuzzy search */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
-              sort by genre
-            </span>
-            {genreQuery && (
-              <button
-                onClick={() => setGenreQuery("")}
-                className="font-mono text-[9px] tracking-wider transition-opacity hover:opacity-60"
-                style={{ color: "var(--dim)" }}
-              >
-                clear
-              </button>
-            )}
-          </div>
-          <input
-            type="text"
-            value={genreQuery}
-            onChange={e => setGenreQuery(e.target.value)}
-            placeholder="e.g. black metal, doom, shoegaze..."
-            className="w-full max-w-xs bg-transparent border px-3 py-1.5 font-mono text-[10px] tracking-wider outline-none transition-colors duration-150"
-            style={{
-              borderColor: genreQuery ? "var(--accent)" : "var(--border)",
-              color: "var(--text)",
-            }}
-            onFocus={e => (e.currentTarget.style.borderColor = "var(--dim)")}
-            onBlur={e => (e.currentTarget.style.borderColor = genreQuery ? "var(--accent)" : "var(--border)")}
-          />
-        </div>
-
-        {/* Geo filter */}
-        {availableGeoTags.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
-                filter by origin
-              </span>
-              {selectedGeoTags.length > 0 && (
-                <button
-                  onClick={() => setSelectedGeoTags([])}
-                  className="font-mono text-[9px] tracking-wider transition-opacity hover:opacity-60"
-                  style={{ color: "var(--dim)" }}
-                >
-                  clear
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {availableGeoTags.map(({ tag, count }) => {
-                const active = selectedGeoTags.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => toggleGeo(tag)}
-                    className="font-mono text-[10px] tracking-wider px-3 py-1.5 border transition-colors duration-150"
-                    style={{
-                      borderColor: active ? "var(--accent)" : "var(--border)",
-                      color: active ? "var(--accent)" : "var(--dim)",
-                    }}
-                  >
-                    {formatGeoTag(tag)}
-                    <span className="ml-1.5 opacity-40">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Via filter */}
-        {availableVia.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
-                filter by via
-              </span>
-              {selectedVia.length > 0 && (
-                <button
-                  onClick={() => setSelectedVia([])}
-                  className="font-mono text-[9px] tracking-wider transition-opacity hover:opacity-60"
-                  style={{ color: "var(--dim)" }}
-                >
-                  clear
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {availableVia.map(({ name, count }) => {
-                const active = selectedVia.includes(name);
-                return (
-                  <button
-                    key={name}
-                    onClick={() => toggleVia(name)}
-                    className="font-mono text-[10px] tracking-wider px-3 py-1.5 border transition-colors duration-150"
-                    style={{
-                      borderColor: active ? "var(--accent)" : "var(--border)",
-                      color: active ? "var(--accent)" : "var(--dim)",
-                    }}
-                  >
-                    {name}
-                    <span className="ml-1.5 opacity-40">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Artist grid */}
-      <AnimatePresence mode="wait">
-        {displayArtists.length === 0 ? (
-          <motion.p
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="font-mono text-[11px] tracking-wider"
-            style={{ color: "var(--dim)" }}
-          >
-            {hasActiveFilters ? "no artists match the active filters" : "no artists match the selected filter"}
-          </motion.p>
+      {/* Ledger */}
+      <div className="w-full">
+        {/* Column header */}
+        <div
+          className={`grid w-full items-center gap-4 px-3 pb-2.5 border-b ${ledgerCols}`}
+          style={{ borderColor: "var(--border)" }}
+        >
+          <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>#</span>
+          <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>artist</span>
+          <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre</span>
+          <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>country</span>
+          <span className="font-mono text-[8px] tracking-widest uppercase text-center" style={{ color: "var(--dim)" }}>conviction</span>
+          <span className="font-mono text-[8px] tracking-widest uppercase text-center" style={{ color: "var(--dim)" }}>listeners</span>
+          <span />
+        </div>
+
+        {/* Rows */}
+        {artists.length === 0 ? (
+          <p className="font-mono text-[11px] tracking-wider px-3 py-6" style={{ color: "var(--dim)" }}>
+            no artists for this period
+          </p>
         ) : (
-          <motion.div
-            key="grid"
-            variants={listVariants}
-            initial="hidden"
-            animate="visible"
-            className="flex flex-col gap-6 w-full"
-          >
+          artists.map((artist, idx) => (
             <ArtistCard
-              key={`${displayArtists[0].name}-hero`}
-              artist={displayArtists[0]}
-              rank={1}
-              stickinessThreshold={stickinessThreshold}
-              isHero
-              isFocused={focusedArtist === displayArtists[0].name}
+              key={`${artist.name}-${idx}`}
+              artist={artist}
+              rank={idx + 1}
+              expanded={expanded === artist.name}
+              onToggle={() => setExpanded((cur) => (cur === artist.name ? null : artist.name))}
+              isFocused={focusedArtist === artist.name}
             />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {displayArtists.slice(1).map((artist, idx) => (
-                <ArtistCard
-                  key={`${artist.name}-${idx + 1}`}
-                  artist={artist}
-                  rank={idx + 2}
-                  stickinessThreshold={stickinessThreshold}
-                  isFocused={focusedArtist === artist.name}
-                />
-              ))}
-            </div>
-          </motion.div>
+          ))
         )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
