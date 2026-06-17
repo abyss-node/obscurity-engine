@@ -328,7 +328,14 @@ async fn main() {
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::new(api_key)),
         spotify,
-        http: reqwest::Client::new(),
+        // Browser-like UA + a timeout: Bandcamp's public API rejects some
+        // datacenter/no-UA requests, and a timeout stops a slow/blocked lookup
+        // from stalling the whole discovery fan-out.
+        http: reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+            .timeout(std::time::Duration::from_secs(8))
+            .build()
+            .expect("failed to build http client"),
         cache: RwLock::new(HashMap::new()),
         track_cache: RwLock::new(HashMap::new()),
     });

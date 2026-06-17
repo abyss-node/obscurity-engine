@@ -63,9 +63,17 @@ pub async fn bandcamp_lookup(client: &Client, artist: &str) -> Option<String> {
     });
     let resp = client
         .post("https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic")
+        .header("Accept", "application/json")
+        .header("Referer", "https://bandcamp.com/")
         .json(&body)
         .send()
         .await.ok()?;
+    // Surface non-200s (e.g. a datacenter IP block) in logs; they otherwise
+    // vanish into a silent None and look identical to a genuine no-match.
+    if !resp.status().is_success() {
+        eprintln!("BANDCAMP: lookup '{}' -> HTTP {}", artist, resp.status());
+        return None;
+    }
     let data = resp.json::<Resp>().await.ok()?;
     data.auto.results.into_iter()
         .find(|h| {
