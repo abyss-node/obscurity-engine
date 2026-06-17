@@ -9,6 +9,8 @@ import TracksComingSoon from "../components/TracksComingSoon";
 import ApiKeyModal from "../components/ApiKeyModal";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
+import EmptyState from "../components/EmptyState";
+import ShareCard from "../components/ShareCard";
 import Tooltip from "../components/Tooltip";
 import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
@@ -82,6 +84,17 @@ const PERIOD_LABELS: Record<string, string> = {
   overall: "ALL",
 };
 
+// Human-readable window phrase for the short-window empty state.
+const PERIOD_WINDOWS: Record<string, string> = {
+  blend: "your library",
+  "7day": "7-day window",
+  "1month": "1-month window",
+  "3month": "3-month window",
+  "6month": "6-month window",
+  "12month": "1-year window",
+  overall: "all-time",
+};
+
 export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
   const [inputLocal, setInputLocal] = useState("");
@@ -101,7 +114,6 @@ export default function Home() {
   const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
   const [icebergOpen, setIcebergOpen] = useState(true);
   const [isSharedView, setIsSharedView] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
@@ -112,6 +124,8 @@ export default function Home() {
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
   const forceFreshRef = useRef(false);
+  const shareCardRef = useRef<HTMLDivElement>(null);
+  const [shareState, setShareState] = useState<"idle" | "rendering" | "saved" | "copied">("idle");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -327,13 +341,49 @@ export default function Home() {
     }
   }, [username, period, mode, fetchTrigger, applyData]);
 
-  const handleShare = () => {
+  const copyShareUrl = () => {
     if (!username) return;
     const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&m=${mode}`;
     navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 2000);
     });
+  };
+
+  // Export the 660×860 result card as a PNG (§8). Falls back to copying the
+  // share URL when there's no artist result to render (tracks mode / empty).
+  const handleShare = async () => {
+    if (!username) return;
+    const canExport =
+      mode === "artists" && artists.length > 0 && depthScore > 0 && shareCardRef.current;
+    if (!canExport) {
+      copyShareUrl();
+      return;
+    }
+    try {
+      setShareState("rendering");
+      const { toPng } = await import("html-to-image");
+      // Wait for the self-hosted web fonts so Playfair/Plex render in the snapshot.
+      await document.fonts.ready;
+      const node = shareCardRef.current!;
+      const dataUrl = await toPng(node, {
+        pixelRatio: 2,
+        backgroundColor: "#080806",
+        width: node.offsetWidth,
+        height: node.offsetHeight,
+        cacheBust: true,
+      });
+      const link = document.createElement("a");
+      link.download = `obscurity-${username}-${period}.png`;
+      link.href = dataUrl;
+      link.click();
+      setShareState("saved");
+      setTimeout(() => setShareState("idle"), 2000);
+    } catch (e) {
+      console.error("Share card export failed:", e);
+      setShareState("idle");
+      copyShareUrl(); // never leave the button dead — copy the URL instead
+    }
   };
 
   const handleRetry = () => {
@@ -346,6 +396,14 @@ export default function Home() {
     setApiKeyInput(key);
     if (key) localStorage.setItem("obscurity_api_key", key);
     else localStorage.removeItem("obscurity_api_key");
+    setShowApiKey(false);
+  };
+
+  // Fresh-account empty state: drop back to the landing page with the setup
+  // guide already open so a new user can fix scrobbling without hunting for it.
+  const handleCheckSetup = () => {
+    handleReset();
+    setShowSetup(true);
     setShowApiKey(false);
   };
 
@@ -648,10 +706,17 @@ export default function Home() {
               {/* Share */}
               <button
                 onClick={handleShare}
-                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60"
+                disabled={shareState === "rendering"}
+                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-40"
                 style={{ color: "var(--dim)" }}
               >
-                {copied ? "copied" : "↑ share"}
+                {shareState === "rendering"
+                  ? "rendering…"
+                  : shareState === "saved"
+                    ? "saved ✓"
+                    : shareState === "copied"
+                      ? "copied"
+                      : "↑ share"}
               </button>
             </div>
 
@@ -669,7 +734,7 @@ export default function Home() {
                 ) : (
                   /* ── RESULTS ──────────────────────────────────────── */
                   <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
-                    {mode === "artists" && lowDataMessage && (
+                    {mode === "artists" && lowDataMessage && sortedArtists.length > 0 && (
                       <div
                         className="border px-5 py-3"
                         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
@@ -681,6 +746,18 @@ export default function Home() {
                           [WARN] {lowDataMessage}
                         </p>
                       </div>
+                    )}
+
+                    {/* Empty states (§8) — no artists came back. Distinguish a
+                        fresh 0-scrobble account (activeSeedCount === 0) from a
+                        short period window that simply had no signal. */}
+                    {mode === "artists" && !error && sortedArtists.length === 0 && (
+                      <EmptyState
+                        variant={activeSeedCount === 0 ? "fresh" : "short-window"}
+                        windowLabel={PERIOD_WINDOWS[period] ?? "this window"}
+                        onCheckSetup={handleCheckSetup}
+                        onCheckAgain={handleRetry}
+                      />
                     )}
 
                     {/* Depth Assessment */}
@@ -868,6 +945,27 @@ export default function Home() {
                 />
               )}
             </AnimatePresence>
+
+            {/* Off-screen 660×860 result card — the snapshot source for the
+                top-bar "↑ share" PNG export (§8). Kept in the DOM (not display:none)
+                so html-to-image can measure and render it; pushed off-screen and
+                made non-interactive so it never affects layout or focus. */}
+            {mode === "artists" && artists.length > 0 && depthScore > 0 && (
+              <div
+                aria-hidden
+                style={{ position: "fixed", left: -9999, top: 0, pointerEvents: "none", opacity: 0 }}
+              >
+                <ShareCard
+                  ref={shareCardRef}
+                  username={username}
+                  depthScore={depthScore}
+                  verdict={depthProse ?? ""}
+                  artists={sortedArtists}
+                  topGenres={topGenres}
+                  activeSeedCount={activeSeedCount}
+                />
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
