@@ -25,8 +25,14 @@ door; the deeper goal is reach for the long tail.
 
 - **"True 1000 fans" threshold model.** Replace the flat 25K ceiling with a
   per-user, devotion-aware, genre-relative sustainability line
-  (`true_fans` / `discovery` threshold models already exist as eval levers in
-  `eval/config.py`). This is the productization of the north star.
+  (`true_fans` / `discovery` threshold models in `eval/config.py`).
+  **Eval result (2026-06-18): NO on the current cohort.** Both models "win" on
+  reach/precision/MRR only by surfacing non-obscure artists (mean listeners 50K
+  for true_fans, 1.2M for discovery); on the obscurity-weighted metric flat
+  wins. Re-impose an obscurity ceiling and discovery collapses to ≈ flat. The
+  *boundary* isn't the lever. Revisit only with (a) a de-biased multi-account
+  cohort that could expose real per-user effects the current bubbled 26-user
+  cohort masks, or (b) richer reach data (CEGE). Not shipped.
 - **CEGE integration.** The recurring finding: Last.fm's similar-artist graph
   is genre-clustering and popularity-biased, which structurally caps obscure
   discovery. Richer graph data (the CEGE entertainment graph) is the real
