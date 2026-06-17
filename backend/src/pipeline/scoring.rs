@@ -31,6 +31,12 @@ const MAX_LISTENER_CEILING: u64 = 25_000;
 /// doesn't flood the ranking at the expense of multi-seed agreement
 const CONVICTION_CAP: f64 = 3.0;
 const CROSS_VALIDATION_BONUS: f64 = 0.5;
+// Popularity-neutral cross-validation: a candidate also counts as dual-signal
+// when this many of its own tags carry at least this much weight in the user's
+// seed-genre profile. Lets obscure deep cuts earn the badge that the
+// popularity-ranked tag graph alone never gives them. (Eval-tuned, 2026-06.)
+const XVAL_OVERLAP_MIN_TAGS: usize = 3;
+const XVAL_OVERLAP_MIN_WEIGHT: f64 = 0.15;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
 /// Final cap on recommendations returned per run. We'd rather hand the user a
 /// short, high-conviction set they'll actually listen to than fire-hose them.
@@ -49,7 +55,7 @@ pub async fn score_and_rank(
     under_threshold: Option<u64>,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
     let seed_tag_profile = build_seed_tag_profile(client, seeds).await?;
-    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, under_threshold).await?;
+    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, &seed_tag_profile, under_threshold).await?;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
 }
 
@@ -127,6 +133,7 @@ async fn fetch_and_score(
     candidate_map: CandidateMap,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    seed_tag_profile: &HashMap<String, f64>,
     under_threshold: Option<u64>,
 ) -> Result<Vec<DiscoveryResponseItem>, BoxError> {
     // Normalized set of the user's own seed names — barred from recommendation
@@ -190,7 +197,7 @@ async fn fetch_and_score(
     let mut scored_artists: Vec<DiscoveryResponseItem> = raw
         .into_iter()
         .filter_map(|(artist, recommenders)| {
-            score_candidate(artist, recommenders, seeds, tag_candidates, &listener_map, under_threshold, &seed_norms)
+            score_candidate(artist, recommenders, seeds, tag_candidates, seed_tag_profile, &listener_map, under_threshold, &seed_norms)
         })
         .collect();
 
@@ -218,6 +225,7 @@ fn score_candidate(
     recommenders: Vec<String>,
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
+    seed_tag_profile: &HashMap<String, f64>,
     listener_map: &HashMap<String, u64>,
     under_threshold: Option<u64>,
     seed_norms: &HashSet<String>,
@@ -274,8 +282,23 @@ fn score_candidate(
         }
     }
 
-    // Bonus if the artist was independently confirmed by the tag graph
-    let cross_validated = tag_candidates.contains(&normalize_artist_name(&artist.name));
+    // The candidate's own genre tags (taken now so they can feed cross-validation).
+    let top_tags: Vec<String> = artist.tags
+        .take()
+        .map(|tags| tags.tag.into_iter().take(5).map(|t| t.name).collect())
+        .unwrap_or_default();
+
+    // Cross-validation = a second, independent genre signal beyond the
+    // similar-artist graph. Earned two ways:
+    //  1. the artist appears in the tag graph's top artists (popularity-ranked,
+    //     so it mostly catches well-known names), OR
+    //  2. its own tags overlap the user's seed-genre profile — popularity-NEUTRAL,
+    //     so obscure deep cuts can qualify too (the de-biasing win).
+    let in_tag_graph = tag_candidates.contains(&normalize_artist_name(&artist.name));
+    let genre_overlap = top_tags.iter()
+        .filter(|t| seed_tag_profile.get(&t.to_lowercase()).copied().unwrap_or(0.0) >= XVAL_OVERLAP_MIN_WEIGHT)
+        .count();
+    let cross_validated = in_tag_graph || genre_overlap >= XVAL_OVERLAP_MIN_TAGS;
     if cross_validated {
         weighted_conviction += CROSS_VALIDATION_BONUS;
     }
@@ -284,10 +307,6 @@ fn score_candidate(
     artist.calculate_stickiness();
     let stickiness = artist.stickiness_score.unwrap_or(0.0);
     let composite_score = (conv_score as f64) * stickiness;
-
-    let top_tags: Vec<String> = artist.tags
-        .map(|mut tags| tags.tag.drain(..).take(5).map(|t| t.name).collect())
-        .unwrap_or_default();
 
     source_seeds.sort_by(|a, b| b.percentile.partial_cmp(&a.percentile).unwrap_or(std::cmp::Ordering::Equal));
 
