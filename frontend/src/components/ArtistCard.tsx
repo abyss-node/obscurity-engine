@@ -61,7 +61,6 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
   const conviction = normConviction(artist);
   const stickiness = normStickiness(artist);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
-  const seeds = (artist.source_seeds ?? []).slice(0, 3).map((s) => s.name);
   const allSeeds = (artist.source_seeds ?? []).map((s) => s.name);
 
   const lastfmUrl = `https://www.last.fm/music/${encodeURIComponent(artist.name)}`;
@@ -100,23 +99,16 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
           {String(rank).padStart(2, "0")}
         </span>
 
-        {/* artist + via */}
-        <span className="flex flex-col gap-0.5 min-w-0">
-          <span className="flex items-center gap-2 min-w-0">
-            {artist.cross_validated && (
-              <span className="shrink-0 text-[12px] leading-none" style={{ color: "var(--accent)" }} aria-label="dual-signal">
-                ✦
-              </span>
-            )}
-            <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
-              {artist.name}
-            </span>
-          </span>
-          {seeds.length > 0 && (
-            <span className="font-mono text-[9px] tracking-wide truncate" style={{ color: "var(--dim)" }}>
-              via {seeds.join(" · ")}
+        {/* artist name (the full "via" seed list lives in the expanded panel) */}
+        <span className="flex items-center gap-2 min-w-0">
+          {artist.cross_validated && (
+            <span className="shrink-0 text-[12px] leading-none" style={{ color: "var(--accent)" }} aria-label="dual-signal">
+              ✦
             </span>
           )}
+          <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
+            {artist.name}
+          </span>
         </span>
 
         {/* genre (desktop) */}

@@ -290,7 +290,20 @@ export default function Home() {
         const endpoint = mode === "tracks"
           ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}${keyParam}`
           : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}${keyParam}`;
-        const response = await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
+        // One automatic retry on a transient network drop (connection reset,
+        // brief backend restart). New users on flaky mobile connections were
+        // hitting a one-off "couldn't reach" that a manual retry fixed. We do
+        // NOT auto-retry a 90s timeout (that would just double the wait).
+        const fetchDiscovery = async (): Promise<Response> => {
+          try {
+            return await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "TimeoutError") throw err;
+            await new Promise((r) => setTimeout(r, 2000));
+            return await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
+          }
+        };
+        const response = await fetchDiscovery();
         if (!response.ok) {
           let detail = `HTTP ${response.status}`;
           try {
