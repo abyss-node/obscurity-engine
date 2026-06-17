@@ -40,7 +40,8 @@ const XVAL_OVERLAP_MIN_WEIGHT: f64 = 0.15;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 3;
 /// Final cap on recommendations returned per run. We'd rather hand the user a
 /// short, high-conviction set they'll actually listen to than fire-hose them.
-const MAX_RECOMMENDATIONS: usize = 10;
+const MAX_RECOMMENDATIONS: usize = 25;  // default view shows 10; "view more" reveals the rest
+const DEFAULT_SHOWN: usize = 10;        // the obscurity index describes this default top slice
 /// Cap candidates sent to the info-fetch pass. 1500+ candidates × 12 concurrent
 /// easily exceeds 90s. Top-by-recommender-count is a safe pre-filter — low-
 /// recommender candidates have near-zero conviction scores anyway.
@@ -357,7 +358,9 @@ fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed
     // Keep only the strongest N. `diverse_artists` is already ranked best-first, so
     // this is the top N; the depth score below then reflects exactly what's shown.
     diverse_artists.truncate(MAX_RECOMMENDATIONS);
-    let depth_score = compute_depth_score(&diverse_artists);
+    // Obscurity index describes the default top slice (what's shown before
+    // "view more"), so the headline number is stable whether or not the user expands.
+    let depth_score = compute_depth_score(&diverse_artists[..diverse_artists.len().min(DEFAULT_SHOWN)]);
 
     println!("DONE: {} artists after diversity + cap ({} seeds)", diverse_artists.len(), seed_count);
 
