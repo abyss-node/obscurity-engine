@@ -2,6 +2,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use dashmap::DashMap;
+use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use serde_json::Value;
 use std::time::SystemTime;
@@ -175,25 +177,104 @@ pub fn is_transient_error(err: &(dyn std::error::Error + Send + Sync + 'static))
     err.downcast_ref::<LastfmError>().map_or(false, |e| e.is_transient())
 }
 
+/// One key in the rotation pool, with a cooldown clock. When Last.fm rate-limits
+/// a key (Error 29) it's benched for a short window so the rotation skips it.
+struct PooledKey {
+    key: String,
+    benched_until: Mutex<Option<Instant>>,
+}
+
 pub struct LastfmClient {
     pub client: Client,
+    /// The primary key, embedded by every fetch method's URL builder. The pool
+    /// rotation in `get_with_retry` swaps this out for another pooled key per
+    /// attempt, so the methods themselves never need to know about the pool.
     pub api_key: String,
+    keys: RwLock<Vec<Arc<PooledKey>>>,
+    cursor: AtomicUsize,
     pub audit_cache: DashMap<String, (Instant, crate::models::ArtistInfoResponse)>,
 }
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+/// How long a key sits out after tripping Last.fm's rate limit (Error 29).
+const KEY_BENCH_SECS: u64 = 20;
+
 impl LastfmClient {
+    /// Single-key client (used for per-user custom-key requests).
     pub fn new(api_key: String) -> Self {
+        Self::with_keys(vec![api_key])
+    }
+
+    /// Multi-key client. The first key is the primary (used to build URLs); all
+    /// keys join the rotation pool. Empty/blank keys are dropped.
+    pub fn with_keys(keys: Vec<String>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
+        let cleaned: Vec<String> = keys.into_iter()
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+            .collect();
+        let primary = cleaned.first().cloned().unwrap_or_default();
+        let pooled = cleaned.into_iter()
+            .map(|k| Arc::new(PooledKey { key: k, benched_until: Mutex::new(None) }))
+            .collect();
         Self {
             client,
-            api_key,
+            api_key: primary,
+            keys: RwLock::new(pooled),
+            cursor: AtomicUsize::new(0),
             audit_cache: DashMap::new(),
+        }
+    }
+
+    /// Add a key to the rotation pool at runtime (user-shared, opt-in).
+    /// Returns the new pool size, or None if the key was empty or a duplicate.
+    pub fn add_key(&self, key: String) -> Option<usize> {
+        let key = key.trim().to_string();
+        if key.is_empty() {
+            return None;
+        }
+        let mut keys = self.keys.write().ok()?;
+        if keys.iter().any(|k| k.key == key) {
+            return None;
+        }
+        keys.push(Arc::new(PooledKey { key, benched_until: Mutex::new(None) }));
+        Some(keys.len())
+    }
+
+    pub fn key_count(&self) -> usize {
+        self.keys.read().map(|k| k.len()).unwrap_or(0)
+    }
+
+    /// Round-robin pick of a non-benched key. If every key is benched, returns
+    /// the next one anyway (a benched-but-usable key beats failing the request).
+    fn pick_key(&self) -> Option<Arc<PooledKey>> {
+        let keys = self.keys.read().ok()?;
+        let n = keys.len();
+        if n == 0 {
+            return None;
+        }
+        let now = Instant::now();
+        for _ in 0..n {
+            let idx = self.cursor.fetch_add(1, Ordering::Relaxed) % n;
+            let benched = keys[idx].benched_until.lock().ok()
+                .and_then(|g| *g)
+                .map_or(false, |t| t > now);
+            if !benched {
+                return Some(Arc::clone(&keys[idx]));
+            }
+        }
+        let idx = self.cursor.fetch_add(1, Ordering::Relaxed) % n;
+        Some(Arc::clone(&keys[idx]))
+    }
+
+    fn bench(&self, pk: &PooledKey) {
+        if let Ok(mut g) = pk.benched_until.lock() {
+            *g = Some(Instant::now() + Duration::from_secs(KEY_BENCH_SECS));
         }
     }
 
@@ -211,7 +292,21 @@ impl LastfmClient {
     async fn get_with_retry(&self, url: &str) -> Result<String, LastfmError> {
         let mut last_err = String::from("request never attempted");
         for attempt in 0u32..MAX_REQUEST_ATTEMPTS {
-            match self.client.get(url).send().await {
+            // Rotate to a pooled key for this attempt. The caller built the URL
+            // with the primary key; swap in the picked key when they differ.
+            // (URLs carry a key, so they are never logged below.)
+            let pk = match self.pick_key() {
+                Some(p) => p,
+                None => return Err(LastfmError::Transient("no Last.fm API key configured".into())),
+            };
+            let req_url = if pk.key == self.api_key {
+                std::borrow::Cow::Borrowed(url)
+            } else {
+                std::borrow::Cow::Owned(
+                    url.replace(&format!("api_key={}", self.api_key), &format!("api_key={}", pk.key)),
+                )
+            };
+            match self.client.get(req_url.as_ref()).send().await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_success() {
@@ -220,10 +315,9 @@ impl LastfmClient {
                                 // rate-limit / transient app error → back off and retry
                                 Some(code) if is_retryable_lastfm_error(code) => {
                                     last_err = format!("Last.fm Error {} (rate/transient)", code);
-                                    eprintln!(
-                                        "Last.fm error {} on attempt {} for {} — backing off",
-                                        code, attempt + 1, url
-                                    );
+                                    // Bench a rate-limited key so the rotation skips it.
+                                    if code == 29 { self.bench(&pk); }
+                                    eprintln!("Last.fm error {} on attempt {} — backing off", code, attempt + 1);
                                 }
                                 // permanent app error OR clean success → return body;
                                 // the caller's own error check handles permanent errors.
@@ -233,7 +327,7 @@ impl LastfmClient {
                             // connection) — transient, back off and retry.
                             Err(e) => {
                                 last_err = format!("response body read error: {}", e);
-                                eprintln!("Last.fm body read error on attempt {} for {}: {}", attempt + 1, url, e);
+                                eprintln!("Last.fm body read error on attempt {}: {}", attempt + 1, e);
                             }
                         }
                     } else if status.is_client_error() {
@@ -242,7 +336,7 @@ impl LastfmClient {
                     } else {
                         // 5xx — log and retry
                         last_err = format!("Last.fm HTTP {}", status);
-                        eprintln!("Last.fm {} on attempt {} for {}", status, attempt + 1, url);
+                        eprintln!("Last.fm {} on attempt {}", status, attempt + 1);
                     }
                 }
                 Err(e) => {

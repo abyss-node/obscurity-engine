@@ -1,7 +1,7 @@
 use axum::{
     extract::{Query, State},
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -292,11 +292,61 @@ async fn spotify_track_handler(
     }
 }
 
+/// Opt-in: a user shares their Last.fm API key to the rotation pool to speed up
+/// discovery for everyone. POST (not GET) so the key never lands in a URL/log.
+/// The key is validated against Last.fm before being accepted.
+#[derive(Deserialize)]
+struct ContributeBody {
+    api_key: String,
+}
+
+async fn contribute_key_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ContributeBody>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let key = body.api_key.trim().to_string();
+    // Last.fm API keys are 32-char hex; accept a generous alnum range.
+    if key.len() < 16 || key.len() > 64 || !key.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": "invalid key format" })),
+        );
+    }
+    // Validate with a cheap real call before trusting it in the pool.
+    let probe = LastfmClient::new(key.clone());
+    if probe.fetch_similar_artists("Radiohead", 1).await.is_err() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": "key failed Last.fm validation" })),
+        );
+    }
+    match state.client.add_key(key) {
+        Some(n) => {
+            println!("Key pool grew to {} (user-contributed)", n);
+            (StatusCode::OK, Json(serde_json::json!({ "ok": true, "pool_size": n })))
+        }
+        None => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ok": true, "duplicate": true, "pool_size": state.client.key_count() })),
+        ),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let api_key = std::env::var("LASTFM_API_KEY").unwrap_or_else(|_| "DEMO_KEY".to_string());
+    // Key pool: prefer a comma-separated LASTFM_API_KEYS (owner keys), fall back
+    // to the single LASTFM_API_KEY. User-shared keys are added at runtime via
+    // POST /api/keys. More keys = more aggregate Last.fm rate limit = faster
+    // cold computes and fewer Error-29 failures.
+    let api_keys: Vec<String> = std::env::var("LASTFM_API_KEYS")
+        .ok()
+        .map(|s| s.split(',').map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect::<Vec<_>>())
+        .filter(|v: &Vec<String>| !v.is_empty())
+        .or_else(|| std::env::var("LASTFM_API_KEY").ok().map(|k| vec![k]))
+        .unwrap_or_else(|| vec!["DEMO_KEY".to_string()]);
+    println!("Last.fm key pool: {} key(s)", api_keys.len());
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
@@ -315,7 +365,7 @@ async fn main() {
     };
 
     let state = Arc::new(AppState {
-        client: Arc::new(LastfmClient::new(api_key)),
+        client: Arc::new(LastfmClient::with_keys(api_keys)),
         spotify,
         cache: RwLock::new(HashMap::new()),
         track_cache: RwLock::new(HashMap::new()),
@@ -347,6 +397,7 @@ async fn main() {
         .route("/api/discovery", get(discovery_handler))
         .route("/api/discovery/tracks", get(track_discovery_handler))
         .route("/api/spotify/track", get(spotify_track_handler))
+        .route("/api/keys", post(contribute_key_handler))
         .layer(cors)
         .with_state(state);
 
