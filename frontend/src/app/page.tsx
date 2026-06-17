@@ -120,6 +120,7 @@ export default function Home() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [shareKey, setShareKey] = useState(false);  // opt-in: contribute key to the shared pool
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
@@ -404,12 +405,22 @@ export default function Home() {
     setFetchTrigger((t) => t + 1);
   };
 
-  const handleSaveApiKey = (key: string) => {
+  const handleSaveApiKey = (key: string, share = false) => {
     setApiKey(key);
     setApiKeyInput(key);
     if (key) localStorage.setItem("obscurity_api_key", key);
     else localStorage.removeItem("obscurity_api_key");
     setShowApiKey(false);
+    // Opt-in: contribute the key to the shared rotation pool. Best-effort —
+    // it speeds up discovery for everyone but must never block the user.
+    if (share && key) {
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+      fetch(`${apiUrl}/api/keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: key }),
+      }).catch(() => {});
+    }
   };
 
   // Fresh-account empty state: drop back to the landing page with the setup
@@ -620,19 +631,34 @@ export default function Home() {
                             style={{ borderColor: "var(--border)", color: "var(--text)", caretColor: "var(--accent)" }}
                           />
                           <button
-                            onClick={() => {
-                              const trimmed = apiKeyInput.trim();
-                              setApiKey(trimmed);
-                              if (trimmed) localStorage.setItem("obscurity_api_key", trimmed);
-                              else localStorage.removeItem("obscurity_api_key");
-                              setShowApiKey(false);
-                            }}
+                            onClick={() => handleSaveApiKey(apiKeyInput.trim(), shareKey)}
                             className="font-mono text-[10px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
                             style={{ color: "var(--muted)" }}
                           >
                             {apiKeyInput.trim() ? "save" : "clear"}
                           </button>
                         </div>
+                        {/* Opt-in: contribute the key to the shared rotation pool. */}
+                        <button
+                          type="button"
+                          onClick={() => setShareKey((s) => !s)}
+                          className="flex items-start gap-2 text-left transition-opacity hover:opacity-80"
+                        >
+                          <span
+                            className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[9px]"
+                            style={{
+                              width: 14, height: 14, border: "1px solid var(--accent2)",
+                              color: "var(--accent)",
+                              background: shareKey ? "var(--accent)" : "transparent",
+                            }}
+                            aria-hidden
+                          >
+                            {shareKey ? "✓" : ""}
+                          </span>
+                          <span className="font-mono text-[9px] leading-relaxed tracking-wider" style={{ color: "var(--dim)" }}>
+                            also share to the pool to speed up discovery for everyone (read-only app key, no account access)
+                          </span>
+                        </button>
                       </div>
                     </motion.div>
                   )}
