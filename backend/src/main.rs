@@ -42,7 +42,6 @@ struct DiscoveryQuery {
 struct AppState {
     client: Arc<LastfmClient>,
     spotify: Option<Arc<SpotifyClient>>,
-    http: reqwest::Client,
     cache: RwLock<HashMap<String, (Instant, models::DiscoveryResponse)>>,
     track_cache: RwLock<HashMap<String, (Instant, models::TrackDiscoveryResponse)>>,
 }
@@ -86,7 +85,7 @@ async fn discovery_handler(
         match discover_obscure_artists(client, query.username, query.period).await {
             Ok(result) => {
                 let result = annotate_sparse_artists(result);
-                let result = attach_listen_links(&state.spotify, &state.http, result).await;
+                let result = attach_listen_links(&state.spotify, result).await;
                 // Only cache non-empty results; degraded/empty runs shouldn't stick.
                 if !result.artists.is_empty() {
                     let mut cache = state.cache.write().await;
@@ -109,7 +108,7 @@ async fn discovery_handler(
         match discover_obscure_artists(client, query.username, query.period).await {
             Ok(result) => {
                 let result = annotate_sparse_artists(result);
-                let result = attach_listen_links(&state.spotify, &state.http, result).await;
+                let result = attach_listen_links(&state.spotify, result).await;
                 Ok(Json(result))
             }
             Err(e) if e.to_string().contains("No listening history") => {
@@ -149,28 +148,18 @@ fn annotate_sparse_artists(mut result: models::DiscoveryResponse) -> models::Dis
 /// configured. Runs all artists concurrently — wall-clock ≈ one round-trip.
 async fn attach_listen_links(
     spotify: &Option<Arc<SpotifyClient>>,
-    http: &reqwest::Client,
     mut result: models::DiscoveryResponse,
 ) -> models::DiscoveryResponse {
+    // Only Spotify links need server-side resolution and that needs creds;
+    // Last.fm/Bandcamp are built client-side. No Spotify client → nothing to do.
+    let Some(spotify) = spotify else { return result; };
     if result.artists.is_empty() {
         return result;
     }
-    // Spotify + "This Is" need credentials; Bandcamp does not. When Spotify is
-    // unconfigured we still resolve the auth-free Bandcamp link rather than
-    // returning no links at all.
     let lookups = result.artists.iter().map(|a| {
-        let spotify = spotify.clone();
-        let http = http.clone();
+        let spotify = Arc::clone(spotify);
         let name = a.name.clone();
-        async move {
-            match spotify {
-                Some(sp) => sp.resolve_artist_links(&name).await,
-                None => spotify::ArtistLinks {
-                    bandcamp_url: spotify::bandcamp_lookup(&http, &name).await,
-                    ..Default::default()
-                },
-            }
-        }
+        async move { spotify.resolve_artist_links(&name).await }
     });
     let links = futures::future::join_all(lookups).await;
     for (item, link) in result.artists.iter_mut().zip(links) {
@@ -328,14 +317,6 @@ async fn main() {
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::new(api_key)),
         spotify,
-        // Browser-like UA + a timeout: Bandcamp's public API rejects some
-        // datacenter/no-UA requests, and a timeout stops a slow/blocked lookup
-        // from stalling the whole discovery fan-out.
-        http: reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-            .timeout(std::time::Duration::from_secs(8))
-            .build()
-            .expect("failed to build http client"),
         cache: RwLock::new(HashMap::new()),
         track_cache: RwLock::new(HashMap::new()),
     });

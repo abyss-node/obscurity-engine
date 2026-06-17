@@ -36,74 +36,20 @@ pub struct ArtistLinks {
     pub bandcamp_url: Option<String>,
 }
 
-/// Best-effort Bandcamp artist page via the public autocomplete endpoint
-/// (unofficial, no key — works with any `reqwest::Client`, no Spotify creds
-/// required). Only returns a URL on an exact band-name match so we don't link
-/// to an unrelated page. Silently None on any failure.
-pub async fn bandcamp_lookup(client: &Client, artist: &str) -> Option<String> {
-    #[derive(Deserialize)]
-    struct Resp { auto: Auto }
-    #[derive(Deserialize)]
-    struct Auto { results: Vec<Hit> }
-    #[derive(Deserialize)]
-    struct Hit {
-        #[serde(rename = "type")]
-        kind: Option<String>,
-        name: Option<String>,
-        // Band hits expose the artist page as `item_url_root`
-        // (e.g. https://artist.bandcamp.com); the generic `url` is null.
-        item_url_root: Option<String>,
-    }
-
-    let body = serde_json::json!({
-        "search_text": artist,
-        "search_filter": "b", // bands/artists only
-        "full_page": false,
-        "fan_id": null,
-    });
-    let resp = client
-        .post("https://bandcamp.com/api/bcsearch_public_api/1/autocomplete_elastic")
-        .header("Accept", "application/json")
-        .header("Referer", "https://bandcamp.com/")
-        .json(&body)
-        .send()
-        .await.ok()?;
-    // Surface non-200s (e.g. a datacenter IP block) in logs; they otherwise
-    // vanish into a silent None and look identical to a genuine no-match.
-    if !resp.status().is_success() {
-        eprintln!("BANDCAMP: lookup '{}' -> HTTP {}", artist, resp.status());
-        return None;
-    }
-    let data = resp.json::<Resp>().await.ok()?;
-    data.auto.results.into_iter()
-        .find(|h| {
-            h.kind.as_deref() == Some("b")
-                && h.name.as_deref().map(|n| n.eq_ignore_ascii_case(artist)).unwrap_or(false)
-        })
-        .and_then(|h| h.item_url_root)
-}
-
 impl SpotifyClient {
-    /// Resolve all listen/find links for an artist. Best-effort: any individual
-    /// lookup that fails leaves that field None. The three sub-lookups run
-    /// concurrently so the whole thing costs ~one round-trip, not three.
+    /// Resolve Spotify listen/find links for an artist. Best-effort: a failed
+    /// lookup leaves that field None. Both sub-lookups run concurrently.
+    /// (Bandcamp is resolved client-side as a search link — its public API
+    /// 403s datacenter IPs, so there's no point calling it from the server.)
     pub async fn resolve_artist_links(&self, artist: &str) -> ArtistLinks {
-        let token = match self.get_token().await {
-            Ok(t) => t,
-            // No Spotify token → we can still try Bandcamp (it needs no auth).
-            Err(_) => {
-                return ArtistLinks {
-                    bandcamp_url: self.bandcamp_lookup(artist).await,
-                    ..Default::default()
-                };
-            }
+        let Ok(token) = self.get_token().await else {
+            return ArtistLinks::default();
         };
-        let (spotify_url, this_is_url, bandcamp_url) = futures::join!(
+        let (spotify_url, this_is_url) = futures::join!(
             self.search_artist_url(&token, artist),
             self.search_this_is(&token, artist),
-            self.bandcamp_lookup(artist),
         );
-        ArtistLinks { spotify_url, this_is_url, bandcamp_url }
+        ArtistLinks { spotify_url, this_is_url, bandcamp_url: None }
     }
 
     /// Top artist match → its open.spotify.com/artist URL.
@@ -162,11 +108,6 @@ impl SpotifyClient {
             .map(|p| p.external_urls.spotify)
     }
 
-    /// Best-effort Bandcamp lookup, delegating to the free function. Kept as a
-    /// thin method so the credentialed resolve path reads uniformly.
-    async fn bandcamp_lookup(&self, artist: &str) -> Option<String> {
-        bandcamp_lookup(&self.client, artist).await
-    }
 
     /// Look up a track by artist + name using client-credentials auth.
     /// Returns id, preview_url (30-second clip, may be None), and the spotify.com URL.
