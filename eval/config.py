@@ -56,6 +56,7 @@ class Config:
     max_candidates: int = 300     # scoring.rs MAX_CANDIDATES_FOR_INFO_FETCH (600 live)
     top_seeds_for_tags: int = 15  # tag_graph.rs TOP_SEEDS_FOR_TAGS
     tags_to_derive: int = 3       # tag_graph.rs TAGS_TO_DERIVE
+    tags_per_seed_derive: int = 3 # how many of each seed's own tags feed the tally (was hardcoded 3)
     tag_artists_limit: int = 100  # tag_graph.rs TAG_ARTISTS_LIMIT
     profile_top_seeds: int = 40   # scoring.rs build_seed_tag_profile TOP_SEEDS
     profile_tags_per_seed: int = 5
@@ -68,6 +69,15 @@ class Config:
     alignment_uplift: float = 0.5       # composite *= 1 + uplift * alignment
 
     # ── EXPERIMENT LEVERS (off = faithful baseline) ──────────────────────────
+    # cross-validation de-biasing: tag.getTopArtists is popularity-ranked, so the
+    # deepest cuts (the whole point) rarely make a broad genre's top-N and never
+    # get the dual-signal. Lever 3 adds a popularity-NEUTRAL path: a candidate is
+    # also cross-validated if its OWN tags overlap the user's seed-genre profile,
+    # independent of how famous it is. (Levers 1+2 = tags_per_seed_derive /
+    # tags_to_derive / tag_artists_limit, swept via the existing knobs above.)
+    xval_genre_overlap: bool = False     # lever 3: tag-overlap cross-validation
+    xval_overlap_min_tags: int = 2       # need ≥ this many of the candidate's tags in the profile
+    xval_overlap_min_weight: float = 0.15  # a profile tag must carry ≥ this normalized weight to count
     use_match_weight: bool = False  # backlog #1: weight conviction by getSimilar match
     genre_relative_ceiling: bool = False  # backlog #2: per-genre listener percentile ceiling
     genre_ceiling_pctl: float = 0.75   # backlog #2: per-genre listener percentile = the ceiling

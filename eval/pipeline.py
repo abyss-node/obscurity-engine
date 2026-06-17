@@ -257,9 +257,9 @@ async def build_tag_signals(client: LastfmClient, weights: dict, names: list[str
         share = weights[name] / total
         for tag in info["tags"][: cfg.profile_tags_per_seed]:
             profile[tag.lower()] = profile.get(tag.lower(), 0.0) + share
-        # cross-validation tag derivation uses the top seeds' top-3 tags
+        # cross-validation tag derivation uses the top seeds' own tags
         if name in names[: cfg.top_seeds_for_tags]:
-            for tag in info["tags"][:3]:
+            for tag in info["tags"][: cfg.tags_per_seed_derive]:
                 tag_freq[tag.lower()] = tag_freq.get(tag.lower(), 0) + 1
     max_w = max(profile.values(), default=0.0)
     if max_w > 0:
@@ -317,6 +317,15 @@ def score(cmap, info_map, weights, cross, exclude_known, profile, cfg: Config, t
         if cand.get("hop", 1) == 2:
             conv *= cfg.two_hop_discount   # lower confidence for similar-of-similar
         is_cross = norm in cross
+        # Lever 3: popularity-neutral path — the candidate's OWN tags overlapping
+        # the user's seed-genre profile counts as a second signal, regardless of
+        # whether the (popularity-ranked) tag top-N happened to include it.
+        if not is_cross and cfg.xval_genre_overlap:
+            overlap = sum(
+                1 for t in info["tags"][:5]
+                if profile.get(t.lower(), 0.0) >= cfg.xval_overlap_min_weight
+            )
+            is_cross = overlap >= cfg.xval_overlap_min_tags
         if is_cross:
             conv += cfg.cross_validation_bonus
 

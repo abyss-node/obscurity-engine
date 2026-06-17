@@ -39,6 +39,11 @@ async def main_async(args) -> None:
         future_days=args.future_days,
         past_days=args.past_days,
         max_candidates=args.max_candidates,
+        tags_to_derive=args.tags_to_derive,
+        tags_per_seed_derive=args.tags_per_seed_derive,
+        tag_artists_limit=args.tag_artists_limit,
+        xval_genre_overlap=args.xval_genre_overlap,
+        xval_overlap_min_tags=args.xval_overlap_min_tags,
         use_match_weight=args.use_match_weight,
         genre_relative_ceiling=args.genre_relative_ceiling,
         genre_ceiling_pctl=args.genre_ceiling_pctl,
@@ -84,7 +89,8 @@ async def main_async(args) -> None:
 
     # ── report: funnel (adopted→eligible→in_pool→hit) then ranking metrics ─────
     hdr = (f"  {'user':<16} {'adopt':>5} {'elig':>5} {'pool':>5} {'hit':>4} "
-           f"{'reach':>6} {'R@k':>6} {'P@k':>6} {'MRR':>6} {'obsc@k':>7} {'mean_lst':>9}")
+           f"{'reach':>6} {'R@k':>6} {'P@k':>6} {'MRR':>6} {'obsc@k':>7} {'mean_lst':>9} "
+           f"{'xval':>5} {'xvLst':>8} {'xvHit':>5}")
     print(hdr)
     print("  " + "-" * (len(hdr) - 2))
     for user, m, skipped in rows:
@@ -93,14 +99,16 @@ async def main_async(args) -> None:
             continue
         print(f"  {user:<16} {m['adopted']:>5} {m['eligible']:>5} {m['in_pool']:>5} {m['hits']:>4} "
               f"{m['reach']:>6.2f} {m['recall@k']:>6.3f} {m['precision@k']:>6.3f} {m['mrr']:>6.3f} "
-              f"{m['obscurity_weighted@k']:>7.3f} {m['mean_listeners']:>9.0f}")
+              f"{m['obscurity_weighted@k']:>7.3f} {m['mean_listeners']:>9.0f} "
+              f"{m['xval_count']:>5} {m['xval_mean_listeners']:>8.0f} {m['xval_hits']:>5}")
 
     agg = aggregate(per_user_metrics)
     if agg:
         print("  " + "-" * (len(hdr) - 2))
         print(f"  {'MEAN (' + str(len(per_user_metrics)) + ')':<16} {'':>5} {'':>5} {'':>5} {'':>4} "
               f"{agg['reach']:>6.2f} {agg['recall@k']:>6.3f} {agg['precision@k']:>6.3f} {agg['mrr']:>6.3f} "
-              f"{agg['obscurity_weighted@k']:>7.3f} {agg['mean_listeners']:>9.0f}")
+              f"{agg['obscurity_weighted@k']:>7.3f} {agg['mean_listeners']:>9.0f} "
+              f"{agg['xval_count']:>5.1f} {agg['xval_mean_listeners']:>8.0f} {agg['xval_hits']:>5.2f}")
     print(f"\n  cache entries: {cache.stats()}\n")
 
     if args.json:
@@ -117,6 +125,7 @@ async def main_async(args) -> None:
 
 
 def main() -> None:
+    _d0 = Config()  # default values for arg help/defaults
     p = argparse.ArgumentParser(description="Obscurity Engine offline eval harness")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--users", help="comma-separated Last.fm usernames")
@@ -127,6 +136,18 @@ def main() -> None:
     p.add_argument("--max-candidates", type=int, default=300)
     p.add_argument("--anchor", default="2026-06-10", help="reference 'now' (YYYY-MM-DD)")
     p.add_argument("--concurrency", type=int, default=5)
+    # cross-validation de-biasing levers
+    p.add_argument("--tags-to-derive", type=int, default=_d0.tags_to_derive,
+                   help="lever 1: how many genre tags to derive for cross-validation (live=3)")
+    p.add_argument("--tags-per-seed-derive", type=int, default=_d0.tags_per_seed_derive,
+                   help="lever 1: how many of each top-seed's own tags feed the tally (live=3)")
+    p.add_argument("--tag-artists-limit", type=int, default=_d0.tag_artists_limit,
+                   help="lever 2: top-N artists fetched per derived tag (live=100)")
+    p.add_argument("--xval-genre-overlap", action="store_true",
+                   help="lever 3: also cross-validate when a candidate's own tags overlap the "
+                        "seed-genre profile (popularity-neutral)")
+    p.add_argument("--xval-overlap-min-tags", type=int, default=_d0.xval_overlap_min_tags,
+                   help="lever 3: min overlapping profile tags to count as cross-validated")
     p.add_argument("--use-match-weight", action="store_true",
                    help="backlog #1: weight conviction by getSimilar match score")
     p.add_argument("--two-hop", action="store_true",

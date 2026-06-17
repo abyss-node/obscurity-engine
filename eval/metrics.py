@@ -52,6 +52,14 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
     gt_reengage = result.get("gt_reengage", set())
     reengage_hits = sum(1 for i in hit_idx if topk[i]["norm"] in gt_reengage)
 
+    # cross-validation (dual-signal) coverage in the top-K + how obscure those
+    # dual-signals are. De-biasing should raise the count AND lower mean listeners
+    # (more *obscure* artists earning the badge), and ideally lift xval_hits.
+    xval = [r for r in topk if r.get("cross_validated")]
+    xval_count = len(xval)
+    xval_mean_listeners = sum(r["listeners"] for r in xval) / len(xval) if xval else 0.0
+    xval_hits = sum(1 for i in hit_idx if topk[i].get("cross_validated"))
+
     return {
         "hits": hits,
         "adopted": len(ground_truth),
@@ -70,6 +78,9 @@ def evaluate(ranked: list[dict], result: dict, k: int) -> dict:
         "discovery_hits": hits - reengage_hits,                   # hits never heard before
         "adopted_reengage": len(gt_reengage),                     # GT split: light re-engagement
         "adopted_discovery": len(result.get("gt_discovery", result["ground_truth"])),
+        "xval_count": xval_count,                                 # dual-signals in top-K
+        "xval_mean_listeners": xval_mean_listeners,               # how obscure those dual-signals are
+        "xval_hits": xval_hits,                                   # dual-signals that were adopted
     }
 
 
