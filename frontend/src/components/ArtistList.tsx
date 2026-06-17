@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Artist } from "../app/page";
 import ArtistCard from "./ArtistCard";
 import Tooltip from "./Tooltip";
+
+// Default-visible rows; "view more" reveals the rest (engine returns up to 25).
+const DEFAULT_SHOWN = 10;
 
 interface ArtistListProps {
   artists: Artist[];
@@ -26,11 +29,27 @@ const ledgerCols =
 
 export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }: ArtistListProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [shown, setShown] = useState(DEFAULT_SHOWN);
+
+  // Collapse back to the default slice when the result SET changes (a new
+  // discovery), but NOT on a re-sort of the same set.
+  const setSignature = useMemo(
+    () => artists.map((a) => a.name).sort().join(""),
+    [artists]
+  );
+  useEffect(() => { setShown(DEFAULT_SHOWN); }, [setSignature]);
 
   // A matrix dot click focuses an artist — open and scroll to its row.
+  // Reveal the row first if it's beyond the current cut.
   useEffect(() => {
-    if (focusedArtist) setExpanded(focusedArtist);
-  }, [focusedArtist]);
+    if (!focusedArtist) return;
+    setExpanded(focusedArtist);
+    const idx = artists.findIndex((a) => a.name === focusedArtist);
+    if (idx >= shown) setShown(artists.length);
+  }, [focusedArtist, artists, shown]);
+
+  const visible = artists.slice(0, shown);
+  const remaining = artists.length - visible.length;
 
   return (
     <div className="w-full flex flex-col gap-5">
@@ -85,7 +104,7 @@ export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }
             no artists for this period
           </p>
         ) : (
-          artists.map((artist, idx) => (
+          visible.map((artist, idx) => (
             <ArtistCard
               key={`${artist.name}-${idx}`}
               artist={artist}
@@ -95,6 +114,19 @@ export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }
               isFocused={focusedArtist === artist.name}
             />
           ))
+        )}
+
+        {/* View more — reveal the deeper cuts (engine returns up to 25) */}
+        {remaining > 0 && (
+          <button
+            type="button"
+            onClick={() => setShown(artists.length)}
+            className="w-full flex items-center justify-center gap-2 py-4 font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
+            style={{ color: "var(--accent)" }}
+          >
+            view more
+            <span style={{ color: "var(--dim)" }}>+{remaining}</span>
+          </button>
         )}
       </div>
     </div>

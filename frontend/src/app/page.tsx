@@ -857,7 +857,7 @@ export default function Home() {
                               className="overflow-hidden"
                             >
                               <DiscoveryMatrix
-                                artists={sortedArtists}
+                                artists={artists.slice(0, 10)}
                                 onArtistClick={(name) => {
                                   setFocusedArtist(null);
                                   setTimeout(() => setFocusedArtist(name), 0);
