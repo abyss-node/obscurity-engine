@@ -1,97 +1,79 @@
-# obscurity engine
+# Obscurity Engine
 
-A music discovery tool that maps your Last.fm listening history to find artists you haven't heard yet — surfacing hidden connections between what you already love and what you're likely to love next.
+A music discovery tool that maps your Last.fm listening history to find artists
+you haven't heard yet — under-the-radar acts your taste genuinely points to,
+that **haven't broken through** (under 25,000 listeners) and that you
+**haven't already dug into**.
 
-Built around a dual-graph pipeline: seeds (your most-played artists) → candidates (similar-artist graph + genre tag graph) → scoring (conviction × stickiness × genre fit). A "MIX" mode blends all six Last.fm time periods, weighted by recency, to give you a live picture of your current taste.
+It runs entirely on the public Last.fm API. No database, no model training —
+the intelligence is a deterministic dual-graph pipeline over Last.fm's
+similar-artist graph and genre folksonomy.
 
----
+**Live:** [obscurity-engine.vercel.app](https://obscurity-engine.vercel.app)
+· **Docs:** [docs/](docs/)
 
-## How it works
+## Who it's for
 
-1. Enter a Last.fm username
-2. The engine fetches your top artists across 6 time windows (7d, 1mo, 3mo, 6mo, 1yr, all-time) and blends them with recency weighting
-3. Two pipelines run in parallel: similar-artist expansion (collaborative filtering) and genre tag graph (folksonomy-based)
-4. Candidates confirmed by both pipelines get a DUAL SIGNAL badge and a conviction bonus
-5. Artists you already listen to are filtered out; results above 25K listeners are excluded; remaining candidates are ranked by composite score (conviction × stickiness) with genre diversity enforcement
+- **Listeners** tired of mainstream recommenders surfacing what they'd have
+  found anyway, who want the deep cuts their taste actually supports.
+- **People with a Last.fm history** (or who scrobble) — the engine reads your
+  real listening, not a vibe.
+- Underneath, a longer-term aim: help **under-discovered artists reach their
+  "true 1000 fans"** by routing the long tail to the right listeners. See
+  [docs/roadmap.md](docs/roadmap.md).
 
----
+## What it does
+
+- **Discovers obscure artists** from your top artists across six time windows,
+  blended with recency weighting (the "MIX" mode) or from a single period.
+- **Dual-graph confirmation:** a candidate found by both your similar-artist
+  graph *and* your genres earns a DUAL signal (gold ✦) and a ranking bonus.
+  Cross-validation is **popularity-neutral**, so genuinely obscure artists can
+  earn it — not just famous ones.
+- **Ranks** by `conviction × stickiness × genre-fit`, filters out the
+  mainstream (25K ceiling) and what you already know, and enforces genre
+  diversity.
+- **Obscurity index (0–100):** how deep your results sit, as a headline number.
+- **Discovery Matrix:** a 2×2 of conviction × stickiness (dot size = obscurity,
+  gold = dual-signal) plus a sortable artist ledger.
+- **Listen / find links** (Last.fm, Spotify, Bandcamp), a **share-card image
+  export**, and **"view more"** to expand from 10 to 25 results.
+
+## How it works (60 seconds)
+
+1. Enter a Last.fm username.
+2. **Seeds** — your top artists across 6 windows, recency-weighted (MIX) or one
+   period.
+3. **Two graphs in parallel** — similar-artist expansion (collaborative
+   filtering) and a genre tag graph (folksonomy).
+4. **Score** — conviction (seeds pointing here) × stickiness (returning
+   fanbase) × genre-fit, with a cross-validation bonus for dual-signal finds.
+5. **Filter & rank** — drop artists you've heard, drop anything over 25K
+   listeners, diversify by genre, return up to 25.
+
+Full detail: [docs/explanation-how-it-works.md](docs/explanation-how-it-works.md)
+and [docs/explanation-scoring.md](docs/explanation-scoring.md).
 
 ## Quick start (local)
 
-### Prerequisites
-
-- [Rust](https://rustup.rs) (for the backend)
-- [Node.js 18+](https://nodejs.org) LTS (for the frontend)
-- A free [Last.fm API key](https://www.last.fm/api/account/create)
-
-### One-command start
+**Prerequisites:** [Rust](https://rustup.rs), [Node.js 18+](https://nodejs.org),
+a free [Last.fm API key](https://www.last.fm/api/account/create).
 
 ```bash
 git clone https://github.com/abyss-node/obscurity-engine.git
 cd obscurity-engine
 chmod +x start.sh
-./start.sh
+./start.sh        # prompts for your API key, builds, starts both servers
 ```
 
-The script will:
-- Prompt you for your Last.fm API key on first run
-- Build the Rust backend (~2 min first time, ~10s after)
-- Install frontend npm dependencies if missing
-- Start both servers and open the app at `http://localhost:3000`
+Manual setup, Docker, and troubleshooting:
+[docs/howto-run-locally.md](docs/howto-run-locally.md).
 
-### Manual setup
+## Hosted deployment
 
-**Backend**
-```bash
-cd backend
-cp .env.example .env
-# edit .env and add your LASTFM_API_KEY
-cargo run --release
-# runs on http://localhost:8080
-```
-
-**Frontend**
-```bash
-cd frontend
-echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:8080" > .env.local
-npm install
-npm run dev
-# runs on http://localhost:3000
-```
-
-### Docker (alternative)
-
-Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
-
-```bash
-LASTFM_API_KEY=your_key docker compose up --build
-# open http://localhost:3000
-```
-
----
-
-## Hosted deployment (free)
-
-The recommended stack is [Railway](https://railway.app) for the backend and [Vercel](https://vercel.com) for the frontend. Both have free tiers that are always-on (no cold starts).
-
-### Backend → Railway
-
-1. Create a new Railway project, connect this GitHub repo
-2. Set the root directory to `backend/`
-3. Add environment variables:
-   - `LASTFM_API_KEY` = your key
-   - `FRONTEND_URL` = your Vercel frontend URL (add after deploying frontend)
-4. Railway auto-detects Rust and builds with `cargo build --release`
-
-### Frontend → Vercel
-
-1. Import this repo on [vercel.com/new](https://vercel.com/new)
-2. Set the root directory to `frontend/`
-3. Add environment variable:
-   - `NEXT_PUBLIC_BACKEND_URL` = your Railway backend URL
-4. Deploy — Vercel handles everything else for Next.js
-
----
+Railway (backend) + Vercel (frontend), both free-tier always-on. Note: Vercel
+auto-deploys from `git push`, but **the backend deploys via `railway up` only**.
+Full guide: [docs/howto-deploy.md](docs/howto-deploy.md).
 
 ## Tech stack
 
@@ -99,75 +81,53 @@ The recommended stack is [Railway](https://railway.app) for the backend and [Ver
 |---|---|
 | Backend | Rust · Axum · Tokio · reqwest |
 | Frontend | Next.js 15 · TypeScript · Tailwind CSS · Framer Motion |
-| Data | Last.fm API (no database, stateless) |
-| Fonts | Playfair Display · IBM Plex Mono · IBM Plex Serif |
+| Data | Last.fm API (stateless, no database) |
+| Eval | Python offline harness with temporal holdout (`eval/`) |
 
----
+## Documentation
+
+| Doc | For |
+|---|---|
+| [Getting started](docs/tutorial-getting-started.md) | using the app as a listener |
+| [How it works](docs/explanation-how-it-works.md) | the discovery pipeline |
+| [Scoring model](docs/explanation-scoring.md) | why artists rank where they do |
+| [HTTP API](docs/reference-api.md) | endpoints, schema, caching |
+| [Eval harness](docs/reference-eval-harness.md) | measuring scoring changes |
+| [Run locally](docs/howto-run-locally.md) | dev setup |
+| [Deploy](docs/howto-deploy.md) | Railway + Vercel |
+| [Roadmap](docs/roadmap.md) | what's planned and what's been tried |
 
 ## Project structure
 
 ```
 obscurity-engine/
-├── backend/
-│   ├── src/
-│   │   ├── main.rs              # Axum server setup, CORS, routing, cache
-│   │   ├── lastfm.rs            # Last.fm API client with retry logic
-│   │   ├── models.rs            # Shared data types
-│   │   ├── spotify.rs           # Spotify client (track lookup for preview)
-│   │   ├── utils.rs             # Artist name normalization, period parsing
-│   │   └── pipeline/
-│   │       ├── seeds.rs         # Phase 1: collect seed artists from scrobble history
-│   │       ├── candidates.rs    # Phase 2: similar-artist expansion
-│   │       ├── tag_graph.rs     # Phase 2b: genre tag graph (cross-validation)
-│   │       ├── scoring.rs       # Phase 3: score, rank, diversity pass, depth score
-│   │       ├── track_seeds.rs   # Track mode: seed tracks from listening history
-│   │       ├── track_candidates.rs  # Track mode: candidate expansion
-│   │       └── track_scoring.rs     # Track mode: scoring and ranking
-│   ├── .env.example             # Copy to .env and fill in your API key
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx         # Main page: landing, results, period controls, share
-│   │   │   ├── layout.tsx       # Font setup, global metadata
-│   │   │   └── globals.css      # CSS custom property token system
-│   │   ├── components/
-│   │   │   ├── ArtistCard.tsx   # Expandable artist card with scores and via overlay
-│   │   │   ├── ArtistList.tsx   # Sort controls, geo/via filters, artist grid
-│   │   │   ├── TrackCard.tsx    # Track card with Spotify lookup
-│   │   │   ├── IcebergVisual.tsx # Sonar depth map
-│   │   │   ├── ErrorState.tsx   # [ERR] SONAR_FAILURE with retry
-│   │   │   ├── LoadingState.tsx # Scan bar animation
-│   │   │   ├── OnboardingGuide.tsx # Last.fm setup instructions
-│   │   │   └── Tooltip.tsx      # Hover tooltip with delay
-│   │   └── lib/
-│   │       ├── geoTags.ts       # Geographic tag detection, canonical map, formatting
-│   │       ├── scoring.ts       # Depth score → prose tier labels
-│   │       ├── cache.ts         # localStorage result cache
-│   │       └── spotify.ts       # Spotify OAuth + playlist creation
-│   └── Dockerfile
-├── docker-compose.yml
-├── start.sh                     # One-command local start script
-└── DESIGN.md                    # Design system reference (tokens, fonts, rules)
+├── backend/                      # Rust · Axum API
+│   └── src/
+│       ├── main.rs               # server, routing, CORS, 1h result cache
+│       ├── lastfm.rs             # Last.fm client + retry/backoff
+│       ├── spotify.rs            # Spotify track preview + link resolution
+│       ├── models.rs · utils.rs  # shared types · name normalization
+│       └── pipeline/
+│           ├── mod.rs            # orchestrator (seeds→tags→candidates→scoring)
+│           ├── seeds.rs          # phase 1: seed artists (recency-weighted)
+│           ├── tag_graph.rs      # phase 2: genre cross-validation set
+│           ├── candidates.rs     # phase 3: similar-artist expansion
+│           ├── scoring.rs        # phase 4: score, filter, diversify, depth score
+│           └── track_*.rs        # parallel track-discovery pipeline
+├── frontend/                     # Next.js 15 · TypeScript
+│   └── src/
+│       ├── app/page.tsx          # landing, results, period controls, share
+│       └── components/           # DiscoveryMatrix, ArtistList/Card, ShareCard…
+├── eval/                         # Python offline eval harness
+├── docs/                         # this documentation set
+├── docker-compose.yml · render.yaml · start.sh
+└── DESIGN.md                     # design system
 ```
-
----
-
-## Scoring reference
-
-| Term | What it measures |
-|---|---|
-| **conviction** | How many of your seed artists point to this candidate. Multiple independent signals = higher confidence. |
-| **stickiness** | Monthly listeners ÷ total listeners. High ratio = dedicated, returning fanbase. |
-| **composite** | Conviction × stickiness. The default sort. |
-| **DUAL** | Artist was confirmed by both the similar-artist graph AND the genre tag graph. |
-| **genre fit** | How much this artist's tags overlap with your overall taste profile. |
-| **obscurity index** | Conviction-weighted average of `sqrt(1 − listeners/25000)` across all results. 0 = ceiling (25K listeners), 100 = completely unknown. |
-
----
 
 ## Contributing
 
-The backend pipeline is split across `backend/src/pipeline/`. Scoring weights and constants live at the top of `scoring.rs` and `track_scoring.rs`. The 25K listener ceiling is `MAX_LISTENER_CEILING` in both files.
-
-Get a Last.fm API key (free): https://www.last.fm/api/account/create
+Scoring weights and constants live at the top of
+`backend/src/pipeline/scoring.rs`. Any change that affects ranking should be
+A/B'd in the [eval harness](docs/reference-eval-harness.md) before shipping —
+that's the project's standing rule. Get a free Last.fm API key:
+https://www.last.fm/api/account/create
