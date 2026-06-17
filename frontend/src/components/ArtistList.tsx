@@ -20,8 +20,9 @@ const SORT_OPTIONS = [
 ];
 
 // Shared grid template — column header row must line up with each ledger row.
+// Keep in sync with `ledgerCols` in ArtistCard.tsx.
 const ledgerCols =
-  "grid-cols-[22px_minmax(0,1fr)_54px_58px_20px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
 export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }: ArtistListProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -35,13 +36,13 @@ export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }
     <div className="w-full flex flex-col gap-5">
       {/* Sort tabs */}
       <div
-        className="sticky top-12 z-30 flex items-center gap-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8"
+        className="sticky top-[68px] min-[720px]:top-12 z-30 flex items-center gap-3 min-[720px]:gap-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8 overflow-x-auto"
         style={{ background: "var(--bg)" }}
       >
         <span className="font-mono text-[8px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
           sort by
         </span>
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4 min-[720px]:gap-5 shrink-0">
           {SORT_OPTIONS.map((opt) => {
             const active = sortBy === opt.id;
             return (
@@ -66,7 +67,7 @@ export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }
       <div className="w-full">
         {/* Column header */}
         <div
-          className={`grid w-full items-center gap-4 px-3 pb-2.5 border-b ${ledgerCols}`}
+          className={`grid w-full items-center gap-2.5 min-[720px]:gap-4 px-3 pb-2.5 border-b ${ledgerCols}`}
           style={{ borderColor: "var(--border)" }}
         >
           <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>#</span>

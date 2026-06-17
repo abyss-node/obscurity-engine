@@ -438,8 +438,13 @@ export default function Home() {
 
   return (
     <>
-      {/* Fixed wordmark */}
-      <div className="fixed top-0 left-0 z-50 px-6 h-12 flex items-center pointer-events-none">
+      {/* Fixed wordmark. On mobile it's hidden in the results view (the top bar
+          needs that space); the landing view keeps it. Always shown ≥720px. */}
+      <div
+        className={`fixed top-0 left-0 z-50 px-6 h-12 items-center pointer-events-none ${
+          username ? "hidden min-[720px]:flex" : "flex"
+        }`}
+      >
         <span
           className="font-serif text-[13px] font-semibold tracking-wide cursor-pointer pointer-events-auto transition-opacity duration-200 hover:opacity-70"
           style={{ color: "var(--accent)" }}
@@ -632,13 +637,13 @@ export default function Home() {
           >
             {/* Fixed top bar */}
             <div
-              className="fixed top-0 left-0 right-0 z-40 h-12 flex items-center px-6 gap-4 border-b"
+              className="fixed top-0 left-0 right-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b min-[720px]:flex-nowrap min-[720px]:h-12 min-[720px]:py-0 min-[720px]:px-6 min-[720px]:gap-4"
               style={{ background: "var(--surface)", borderColor: "var(--border)" }}
             >
-              {/* Wordmark spacer */}
-              <div className="w-40 shrink-0" />
+              {/* Wordmark spacer (desktop only — the floating wordmark is hidden on mobile) */}
+              <div className="w-40 shrink-0 hidden min-[720px]:block" />
 
-              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>
+              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
                 |
               </span>
 
@@ -651,7 +656,7 @@ export default function Home() {
                 {username}
               </button>
 
-              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>
+              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
                 |
               </span>
 
@@ -672,10 +677,10 @@ export default function Home() {
                 ))}
               </div>
 
-              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>|</span>
+              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
 
-              {/* Period pills */}
-              <div className="flex flex-wrap gap-1 flex-1 min-w-0">
+              {/* Period pills — own full-width row on mobile, inline on desktop */}
+              <div className="flex flex-wrap gap-1 order-last basis-full min-[720px]:order-none min-[720px]:basis-auto min-[720px]:flex-1 min-[720px]:min-w-0">
                 {Object.entries(PERIOD_LABELS).map(([val, label]) => (
                   <button
                     key={val}
@@ -701,7 +706,7 @@ export default function Home() {
                 {isRefreshing ? "..." : "↺ refresh"}
               </button>
 
-              <span className="font-mono text-xs shrink-0" style={{ color: "var(--border)" }}>|</span>
+              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
 
               {/* Share */}
               <button
@@ -720,8 +725,8 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Scrollable content */}
-            <div className="pt-12 min-h-screen">
+            {/* Scrollable content (extra top pad on mobile clears the 2-row bar) */}
+            <div className="pt-[68px] min-[720px]:pt-12 min-h-screen">
               <AnimatePresence mode="wait">
                 {isInitialLoad ? (
                   <LoadingState wakingUp={wakingUp} />

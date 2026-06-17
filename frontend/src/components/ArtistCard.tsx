@@ -35,7 +35,7 @@ const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
 );
 
 const ledgerCols =
-  "grid-cols-[22px_minmax(0,1fr)_54px_58px_20px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
 export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused }: ArtistCardProps) {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -62,16 +62,21 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
   const stickiness = normStickiness(artist);
   const genreFit = Math.round((artist.taste_alignment ?? 0) * 100);
   const seeds = (artist.source_seeds ?? []).slice(0, 3).map((s) => s.name);
+  const allSeeds = (artist.source_seeds ?? []).map((s) => s.name);
 
   const lastfmUrl = `https://www.last.fm/music/${encodeURIComponent(artist.name)}`;
+  // Prefer a backend-resolved exact URL; otherwise fall back to a search that
+  // always lands somewhere useful (never a dead link).
   const spotifyUrl =
     artist.spotify_url ?? `https://open.spotify.com/search/${encodeURIComponent(artist.name)}`;
+  const bandcampUrl =
+    artist.bandcamp_url ?? `https://bandcamp.com/search?q=${encodeURIComponent(artist.name)}&item_type=b`;
 
-  // Last.fm + Spotify always; Bandcamp + "This Is" only when resolved (no dead links).
+  // Last.fm + Spotify + Bandcamp always; "This Is" only when the resolver confirms it.
   const links: LinkDef[] = [
     { label: "Last.fm", href: lastfmUrl },
     { label: "Spotify", href: spotifyUrl },
-    ...(artist.bandcamp_url ? [{ label: "Bandcamp", href: artist.bandcamp_url }] : []),
+    { label: "Bandcamp", href: bandcampUrl },
     ...(artist.this_is_url ? [{ label: '"This Is" playlist', href: artist.this_is_url }] : []),
   ];
 
@@ -85,7 +90,7 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
       <button
         type="button"
         onClick={onToggle}
-        className={`group grid w-full items-center gap-4 px-3 py-3.5 text-left transition-colors duration-150 ${ledgerCols}`}
+        className={`group grid w-full items-center gap-2.5 min-[720px]:gap-4 px-3 py-3.5 text-left transition-colors duration-150 ${ledgerCols}`}
         style={{ background: expanded ? "var(--surface)" : "transparent" }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = expanded ? "var(--surface)" : "transparent")}
@@ -103,7 +108,7 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                 ✦
               </span>
             )}
-            <span className="font-serif font-semibold text-[18px] leading-tight truncate" style={{ color: "var(--text)" }}>
+            <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
               {artist.name}
             </span>
           </span>
@@ -165,6 +170,16 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                   <StatBlock value={genreFit > 0 ? `${genreFit}` : "—"} caption="overlap with your taste profile" />
                   <StatBlock value={`${stickiness}`} caption="likelihood you'll keep them" />
                 </div>
+                {allSeeds.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                      recommended via
+                    </span>
+                    <p className="font-mono text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
+                      {allSeeds.join("  ·  ")}
+                    </p>
+                  </div>
+                )}
                 {extraGenres.length > 0 && (
                   <div className="flex flex-col gap-2.5">
                     <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genres</span>

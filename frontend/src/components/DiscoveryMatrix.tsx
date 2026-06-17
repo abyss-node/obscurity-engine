@@ -47,6 +47,25 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
     [artists]
   );
 
+  // Vertically de-collide the always-on (dual-signal) labels: when several dual
+  // dots cluster at a similar height (e.g. three high-conviction finds), stack
+  // their labels downward in fixed px steps so they don't overprint each other.
+  // Deterministic order (y, then name) keeps it stable across renders.
+  const labelDy = useMemo(() => {
+    const out: Record<string, number> = {};
+    const cluster = dots
+      .filter((d) => d.dual)
+      .sort((a, b) => a.y - b.y || a.name.localeCompare(b.name));
+    let lastY = -999;
+    let run = 0;
+    for (const d of cluster) {
+      run = d.y - lastY < 7 ? run + 1 : 0;
+      out[d.name] = run * 15;
+      lastY = d.y;
+    }
+    return out;
+  }, [dots]);
+
   if (artists.length === 0) {
     return (
       <div
@@ -151,10 +170,13 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
                       className="absolute font-mono whitespace-nowrap"
                       style={{
                         top: 0,
-                        transform: "translateY(-50%)",
+                        transform: `translateY(calc(-50% + ${labelDy[d.name] ?? 0}px))`,
                         fontSize: "9.5px",
                         letterSpacing: "0.02em",
                         color: labelColor,
+                        // Dark halo so a label stays legible over dots and any
+                        // neighbouring label it sits near.
+                        textShadow: "0 0 4px var(--bg), 0 0 6px var(--bg)",
                         ...(d.labelRight
                           ? { left: offset }
                           : { right: offset, textAlign: "right" as const }),
