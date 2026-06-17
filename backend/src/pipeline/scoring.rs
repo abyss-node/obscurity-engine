@@ -304,6 +304,9 @@ fn score_candidate(
         velocity: None,
         user_playcount: user_plays,
         reengagement,
+        spotify_url: None,
+        bandcamp_url: None,
+        this_is_url: None,
     })
 }
 

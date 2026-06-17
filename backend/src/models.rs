@@ -50,6 +50,14 @@ pub struct DiscoveryResponseItem {
     pub user_playcount: u64,
     #[serde(default)]
     pub reengagement: bool,
+    // Resolved listen/find links (populated by the Spotify resolver post-discovery;
+    // gated per-artist so the frontend never renders a dead link).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spotify_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandcamp_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub this_is_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
