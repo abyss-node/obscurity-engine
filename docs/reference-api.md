@@ -89,6 +89,33 @@ open-in-Spotify URL) for `?artist=&track=`. **Returns `404` when Spotify
 credentials are not configured** — which is the case in production today, so a
 404 here is the normal "Spotify not set up" signal, not a bug.
 
+## `POST /api/keys`
+
+Opt-in: contribute a Last.fm API key to the server's rotation pool to speed up
+discovery for everyone. POST (not GET) so the key never lands in a URL or log.
+
+Request body: `{ "api_key": "<32-char key>" }`. The key is format-checked
+(16–64 alphanumeric) and validated against Last.fm with a cheap real call
+before being accepted.
+
+| Response | When |
+|---|---|
+| `200 { "ok": true, "pool_size": N }` | added; pool now has N keys |
+| `200 { "ok": true, "duplicate": true, "pool_size": N }` | already in the pool |
+| `400 { "ok": false, "error": "invalid key format" }` | bad shape |
+| `400 { "ok": false, "error": "key failed Last.fm validation" }` | key doesn't work |
+
+### How the key pool works
+
+The backend holds a pool of Last.fm keys. Owner keys come from a
+comma-separated `LASTFM_API_KEYS` env var (falling back to the single
+`LASTFM_API_KEY`); user-contributed keys are added at runtime via this endpoint.
+`get_with_retry` round-robins across the pool per attempt and benches any key
+that returns Error 29 (rate limit) for ~20s. Since Last.fm rate-limits per key,
+N keys ≈ N× the aggregate limit — faster cold computes and fewer failures. The
+pool is in-memory (resets on restart); user contributions are opt-in and
+disclosed in the UI.
+
 ## Caching
 
 - **Server result cache:** in-memory `RwLock<HashMap>`, **1-hour TTL**, keyed by

@@ -44,7 +44,8 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
 | Underexplored novelty model | ✅ Shipped (`mult=1.0`; `0.5` only lost hits). |
 | Temporal seed weighting (#4) | ❌ A/B'd NO. |
 | Genre-relative ceiling (#2) | ❌ A/B'd NO. |
-| Two-hop "similar-of-similar" expansion (#3) | Lever exists; not validated. |
+| **Two-hop "similar-of-similar" expansion (#3)** | ❌ **A/B'd NO.** Reach stayed flat at 0.09 across candidate caps (300/600/1000) and obscurity got worse — the artists users adopt aren't in the Last.fm similar-graph even two hops out. Strong evidence that reach is capped by the data source, not traversal. |
+| Match-weighted conviction (#1) | ❌ A/B'd NO. Lifts MRR but drags precision/recall/obscurity and doesn't touch reach. |
 | Velocity / momentum signal (#5) | Parked. |
 | Wider/more-specific tag derivation for cross-validation | Tested; little gain for added API cost — not shipped (genre-overlap won instead). |
 
@@ -64,6 +65,10 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
 
 ## Recently shipped (for context)
 
+- **Rotating Last.fm key pool** (speed/reliability): `LASTFM_API_KEYS` env pool +
+  round-robin with bench-on-429, plus an opt-in `POST /api/keys` so users can
+  share their key to the pool (validated, deduped, never logged). More keys =
+  more aggregate rate limit = faster cold computes, fewer Error-29 failures.
 - Listen/find links (Last.fm + Spotify + Bandcamp, with search fallbacks).
 - Share-card PNG export.
 - Empty / error / loading / onboarding states.
