@@ -23,7 +23,7 @@ interface ArtistCardProps {
 
 /** A resolved listen/find destination. Last.fm + Spotify always render; the
  *  others only when the backend resolver confirmed they exist. */
-type LinkDef = { label: string; href: string };
+type LinkDef = { label: string; href: string; share?: boolean };
 
 const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
   <div className="flex flex-col gap-1.5">
@@ -70,6 +70,9 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
     artist.spotify_url ?? `https://open.spotify.com/search/${encodeURIComponent(artist.name)}`;
   const bandcampUrl =
     artist.bandcamp_url ?? `https://bandcamp.com/search?q=${encodeURIComponent(artist.name)}&item_type=b`;
+  // Share the artist's Spotify page on WhatsApp. wa.me opens the app (mobile) or
+  // WhatsApp Web (desktop) with the message pre-filled; the user picks the chat.
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${artist.name} on Spotify: ${spotifyUrl}`)}`;
 
   // Last.fm + Spotify + Bandcamp always; "This Is" only when the resolver confirms it.
   const links: LinkDef[] = [
@@ -77,6 +80,7 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
     { label: "Spotify", href: spotifyUrl },
     { label: "Bandcamp", href: bandcampUrl },
     ...(artist.this_is_url ? [{ label: '"This Is" playlist', href: artist.this_is_url }] : []),
+    { label: "WhatsApp", href: whatsappUrl, share: true },
   ];
 
   return (
@@ -206,7 +210,7 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                       onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
                     >
                       <span>{l.label}</span>
-                      <span>↗</span>
+                      <span>{l.share ? "↪" : "↗"}</span>
                     </a>
                   ))}
                 </div>
