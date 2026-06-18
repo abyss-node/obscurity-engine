@@ -347,6 +347,9 @@ async fn main() {
         .or_else(|| std::env::var("LASTFM_API_KEY").ok().map(|k| vec![k]))
         .unwrap_or_else(|| vec!["DEMO_KEY".to_string()]);
     println!("Last.fm key pool: {} key(s)", api_keys.len());
+    // Optional persistence for user-contributed keys (set KEY_STORE_PATH to a
+    // file on a Railway Volume so the opt-in pool survives redeploys).
+    let key_store = std::env::var("KEY_STORE_PATH").ok().filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
@@ -365,7 +368,7 @@ async fn main() {
     };
 
     let state = Arc::new(AppState {
-        client: Arc::new(LastfmClient::with_keys(api_keys)),
+        client: Arc::new(LastfmClient::with_keys(api_keys, key_store)),
         spotify,
         cache: RwLock::new(HashMap::new()),
         track_cache: RwLock::new(HashMap::new()),

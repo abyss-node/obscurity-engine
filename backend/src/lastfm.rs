@@ -4,6 +4,7 @@ use std::fmt;
 use dashmap::DashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use serde_json::Value;
 use std::time::SystemTime;
@@ -192,6 +193,10 @@ pub struct LastfmClient {
     pub api_key: String,
     keys: RwLock<Vec<Arc<PooledKey>>>,
     cursor: AtomicUsize,
+    /// User-contributed keys only (owner/env keys excluded). Mirrored to
+    /// `store_path` so the opt-in pool survives restarts/redeploys.
+    contributed: RwLock<Vec<String>>,
+    store_path: Option<PathBuf>,
     pub audit_cache: DashMap<String, (Instant, crate::models::ArtistInfoResponse)>,
 }
 
@@ -201,49 +206,88 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 const KEY_BENCH_SECS: u64 = 20;
 
 impl LastfmClient {
-    /// Single-key client (used for per-user custom-key requests).
+    /// Single-key client (used for per-user custom-key requests). No persistence.
     pub fn new(api_key: String) -> Self {
-        Self::with_keys(vec![api_key])
+        Self::with_keys(vec![api_key], None)
     }
 
     /// Multi-key client. The first key is the primary (used to build URLs); all
-    /// keys join the rotation pool. Empty/blank keys are dropped.
-    pub fn with_keys(keys: Vec<String>) -> Self {
+    /// keys join the rotation pool. Empty/blank/duplicate keys are dropped. When
+    /// `store_path` is set, previously-contributed keys are loaded from it on boot
+    /// and new contributions are written back, so the opt-in pool persists.
+    pub fn with_keys(keys: Vec<String>, store_path: Option<PathBuf>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_default();
-        let cleaned: Vec<String> = keys.into_iter()
-            .map(|k| k.trim().to_string())
-            .filter(|k| !k.is_empty())
-            .collect();
-        let primary = cleaned.first().cloned().unwrap_or_default();
-        let pooled = cleaned.into_iter()
-            .map(|k| Arc::new(PooledKey { key: k, benched_until: Mutex::new(None) }))
-            .collect();
+
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut pool: Vec<Arc<PooledKey>> = Vec::new();
+        // Owner/env keys first (so the primary is an owner key).
+        for k in keys {
+            let k = k.trim().to_string();
+            if k.is_empty() || !seen.insert(k.clone()) { continue; }
+            pool.push(Arc::new(PooledKey { key: k, benched_until: Mutex::new(None) }));
+        }
+        // Then any persisted user-contributed keys.
+        let mut contributed: Vec<String> = Vec::new();
+        if let Some(path) = &store_path {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                for line in text.lines() {
+                    let k = line.trim().to_string();
+                    if k.is_empty() || k.starts_with('#') || !seen.insert(k.clone()) { continue; }
+                    pool.push(Arc::new(PooledKey { key: k.clone(), benched_until: Mutex::new(None) }));
+                    contributed.push(k);
+                }
+                if !contributed.is_empty() {
+                    println!("Loaded {} contributed key(s) from store", contributed.len());
+                }
+            }
+        }
+        let primary = pool.first().map(|p| p.key.clone()).unwrap_or_default();
         Self {
             client,
             api_key: primary,
-            keys: RwLock::new(pooled),
+            keys: RwLock::new(pool),
             cursor: AtomicUsize::new(0),
+            contributed: RwLock::new(contributed),
+            store_path,
             audit_cache: DashMap::new(),
         }
     }
 
-    /// Add a key to the rotation pool at runtime (user-shared, opt-in).
-    /// Returns the new pool size, or None if the key was empty or a duplicate.
+    /// Add a key to the rotation pool at runtime (user-shared, opt-in). Persists
+    /// the contributed set when a store path is configured. Returns the new pool
+    /// size, or None if the key was empty or a duplicate.
     pub fn add_key(&self, key: String) -> Option<usize> {
         let key = key.trim().to_string();
         if key.is_empty() {
             return None;
         }
-        let mut keys = self.keys.write().ok()?;
-        if keys.iter().any(|k| k.key == key) {
-            return None;
+        let n = {
+            let mut keys = self.keys.write().ok()?;
+            if keys.iter().any(|k| k.key == key) {
+                return None;
+            }
+            keys.push(Arc::new(PooledKey { key: key.clone(), benched_until: Mutex::new(None) }));
+            keys.len()
+        };
+        if let Ok(mut c) = self.contributed.write() {
+            c.push(key);
+            self.persist(&c);
         }
-        keys.push(Arc::new(PooledKey { key, benched_until: Mutex::new(None) }));
-        Some(keys.len())
+        Some(n)
+    }
+
+    /// Write the user-contributed keys to the store file (one per line).
+    /// Best-effort: a write failure is logged, never fatal.
+    fn persist(&self, contributed: &[String]) {
+        if let Some(path) = &self.store_path {
+            if let Err(e) = std::fs::write(path, contributed.join("\n")) {
+                eprintln!("KEY STORE: failed to persist contributed keys: {}", e);
+            }
+        }
     }
 
     pub fn key_count(&self) -> usize {

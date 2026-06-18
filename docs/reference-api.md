@@ -112,9 +112,14 @@ comma-separated `LASTFM_API_KEYS` env var (falling back to the single
 `LASTFM_API_KEY`); user-contributed keys are added at runtime via this endpoint.
 `get_with_retry` round-robins across the pool per attempt and benches any key
 that returns Error 29 (rate limit) for ~20s. Since Last.fm rate-limits per key,
-N keys ≈ N× the aggregate limit — faster cold computes and fewer failures. The
-pool is in-memory (resets on restart); user contributions are opt-in and
-disclosed in the UI.
+N keys ≈ N× the aggregate limit — faster cold computes and fewer failures.
+User contributions are opt-in and disclosed in the UI.
+
+**Persistence:** set `KEY_STORE_PATH` to a file on a persistent disk (a Railway
+Volume) and user-contributed keys are written there and reloaded on boot, so the
+opt-in pool survives redeploys. Unset → the pool is in-memory (contributions
+reset on restart). Owner keys (`LASTFM_API_KEYS`) come from env each boot and are
+not written to the store.
 
 ## Caching
 

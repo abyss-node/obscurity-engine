@@ -91,9 +91,21 @@ username end to end.
 | `LASTFM_API_KEY` | backend | yes | all Last.fm calls |
 | `FRONTEND_URL` | backend | yes | CORS allow-origin (must match the site URL exactly) |
 | `PORT` | backend | no | listen port (8080 default; Railway sets it; Render uses 10000) |
+| `LASTFM_API_KEYS` | backend | no | comma-separated owner key pool (overrides `LASTFM_API_KEY` for the pool) |
+| `KEY_STORE_PATH` | backend | no | file path on a persistent disk where opt-in user-contributed keys are saved/reloaded |
 | `SPOTIFY_CLIENT_ID` | backend | no | direct Spotify artist links + preview |
 | `SPOTIFY_CLIENT_SECRET` | backend | no | same |
 | `NEXT_PUBLIC_BACKEND_URL` | frontend | yes | points the browser at the backend |
+
+### Persisting the user-contributed key pool
+
+By default the pool of user-shared keys is in-memory and resets on each deploy.
+To keep contributions across redeploys:
+1. Railway dashboard → service → **Volumes** → add a volume, mount path e.g. `/data`.
+2. Set `KEY_STORE_PATH=/data/contributed_keys.json`.
+3. Redeploy. New contributions are written there and reloaded on boot.
+
+Owner keys (`LASTFM_API_KEYS`) are not stored in the file — they come from env each boot.
 
 ## Wishlist: make the backend auto-deploy too
 
