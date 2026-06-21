@@ -19,7 +19,7 @@ door; the deeper goal is reach for the long tail.
 |---|---|
 | **Spotify direct artist links** | Resolver + frontend are wired; needs `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` on Railway. Without creds, Spotify links are search fallbacks. Spotify's API won't IP-block Railway, so this works once creds are set — no code change. |
 | **Railway backend auto-deploy** | Connect the Railway service to GitHub (root `backend`, watch path `backend/**`) so backend pushes deploy themselves, matching Vercel. Dashboard steps in [howto-deploy.md](howto-deploy.md); not yet wired (still `railway up`). |
-| **Tracks discovery mode** | The track pipeline (`track_seeds`/`track_candidates`/`track_scoring`) is functional but gated behind a "Coming soon" overlay. Plan: quality-tune and ship. |
+| **Tracks discovery mode** | **Deferred until CEGE (decided 2026-06-21).** The pipeline (`track_seeds`/`track_candidates`/`track_scoring`) is functional but gated behind "Coming soon". It rides the *same* reach-capped Last.fm similar-artist graph as the artist engine and has no offline eval harness, so tuning it would face the same data ceiling the artist eval exhaustively confirmed. Hold until richer graph data exists. |
 
 ## Strategic (the big bets)
 
