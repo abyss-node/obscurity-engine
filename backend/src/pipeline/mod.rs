@@ -22,22 +22,17 @@ use std::sync::Arc;
 use crate::lastfm::LastfmClient;
 use crate::models::{DiscoveryResponse, TrackDiscoveryResponse};
 
-/// Underexplored-novelty multiplier. The recommendation threshold is the user's
-/// lifetime mean plays-per-artist × this multiplier; artists played fewer times
-/// than the threshold (including never) are recommendable, deeper ones excluded.
-/// Eval (de-biased n=54, 2026-06-21): sweeping this UP is a clean monotonic win —
-/// obscurity-weighted adoptions +33% at 2.0 (+67% by ~4.0), obscurity preserved
-/// (mean listeners flat ~11K), MRR healthy. The gain is re-engagement: it surfaces
-/// more lightly-played obscure artists the user dug back into, not new discovery
-/// (that's reach-capped by Last.fm's graph — see roadmap). Per-user adaptive
-/// auto-tuning was A/B'd and can't beat this flat-but-per-user-relative bound.
-/// 2.0 is the balanced ship point (majority of recs still pure discovery).
-const UNDEREXPLORED_MULT: f64 = 2.0;
-
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
     username: String,
     period_str: String,
+    // Discovery-appetite multiplier (from the slider, mapped in main.rs):
+    // `None` = strict (recommend only never-played artists); `Some(m)` = the
+    // recommendation threshold is the user's lifetime mean plays-per-artist × m, so
+    // more lightly-played obscure artists are resurfaced as the appetite rises.
+    // Eval (de-biased n=54, 2026-06-21): obscW rises monotonically with m, all of it
+    // re-engagement; new discovery is reach-capped by Last.fm's graph (see roadmap).
+    appetite_mult: Option<f64>,
 ) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
     let seeds = seeds::collect(&client, &username, &period_str).await?;
 
@@ -60,11 +55,16 @@ pub async fn discover_obscure_artists(
         .and_then(|u| u.artist_count.as_ref())
         .and_then(|a| a.parse::<u64>().ok())
         .or(seeds.total_artist_count);
-    let under_threshold: Option<u64> = match (total_scrobbles, distinct_artists) {
-        (Some(plays), Some(artists)) if artists > 0 => {
-            Some(((plays / artists as f64) * UNDEREXPLORED_MULT).round() as u64)
-        }
-        _ => None,
+    // None appetite (slider = "new") → strict, recommend only never-played artists.
+    // Some(mult) → mean plays-per-artist × mult is the light/deep cutoff.
+    let under_threshold: Option<u64> = match appetite_mult {
+        Some(mult) => match (total_scrobbles, distinct_artists) {
+            (Some(plays), Some(artists)) if artists > 0 => {
+                Some(((plays / artists as f64) * mult).round() as u64)
+            }
+            _ => None,
+        },
+        None => None,
     };
     println!(
         "UNDEREXPLORED: threshold={:?} (scrobbles={:?}, artists={:?})",

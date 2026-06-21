@@ -38,6 +38,26 @@ struct DiscoveryQuery {
     /// Optional user-supplied Last.fm API key. When present, bypasses the
     /// server key and skips the cache (results are not stored server-side).
     api_key: Option<String>,
+    /// Discovery-appetite slider: how much re-engagement to mix into discovery.
+    /// new = brand-new only; low/balanced/high = resurface lightly-played obscure
+    /// artists below mean-plays × {1,2,4}. Absent → balanced. See appetite_to_mult.
+    appetite: Option<String>,
+}
+
+/// Map the discovery-appetite slider to the underexplored-novelty multiplier.
+/// `None` = strict (recommend only never-played artists); `Some(m)` = the
+/// recommendation threshold is the user's mean plays-per-artist × m, so more
+/// lightly-played obscure artists get resurfaced as the appetite rises. Eval
+/// (de-biased n=54) showed obscW rises monotonically with the multiplier, all of
+/// it re-engagement; the slider hands that dial to the user. Balanced (2.0) is the
+/// default and what the server ships when no appetite is given.
+fn appetite_to_mult(appetite: Option<&str>) -> Option<f64> {
+    match appetite.unwrap_or("balanced") {
+        "new" => None,
+        "low" => Some(1.0),
+        "high" => Some(4.0),
+        _ => Some(2.0), // "balanced" (and any unknown value) → the default
+    }
 }
 
 struct AppState {
@@ -70,9 +90,12 @@ async fn discovery_handler(
         None => Arc::clone(&state.client),
     };
 
+    let appetite = query.appetite.as_deref().unwrap_or("balanced");
+    let appetite_mult = appetite_to_mult(query.appetite.as_deref());
+
     // Custom-key requests skip the cache — results aren't stored server-side.
     if custom_key.is_none() {
-        let cache_key = format!("reverse_scrobble:{}:{}", query.username, query.period);
+        let cache_key = format!("reverse_scrobble:{}:{}:{}", query.username, query.period, appetite);
         {
             let cache = state.cache.read().await;
             if let Some((timestamp, data)) = cache.get(&cache_key) {
@@ -83,7 +106,7 @@ async fn discovery_handler(
             }
         }
         println!("Cache miss: {}", cache_key);
-        match discover_obscure_artists(client, query.username, query.period).await {
+        match discover_obscure_artists(client, query.username, query.period, appetite_mult).await {
             Ok(result) => {
                 let result = annotate_sparse_artists(result);
                 let result = attach_listen_links(&state.spotify, result).await;
@@ -106,7 +129,7 @@ async fn discovery_handler(
             }
         }
     } else {
-        match discover_obscure_artists(client, query.username, query.period).await {
+        match discover_obscure_artists(client, query.username, query.period, appetite_mult).await {
             Ok(result) => {
                 let result = annotate_sparse_artists(result);
                 let result = attach_listen_links(&state.spotify, result).await;
