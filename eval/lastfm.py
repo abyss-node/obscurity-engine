@@ -12,7 +12,12 @@ import urllib.parse
 import aiohttp
 
 from cache import Cache
-from config import API_KEY, API_URL
+from config import API_KEYS, API_URL
+
+# Last.fm returns these as HTTP 200 with an {"error": N} body, NOT a 4xx:
+# 8 = operation failed, 11 = service offline, 16 = temporarily unavailable,
+# 29 = rate limit. They're transient → rotate key + retry, and never cache.
+RETRYABLE_LASTFM_ERRORS = {8, 11, 16, 29}
 
 
 class LastfmClient:
@@ -20,6 +25,15 @@ class LastfmClient:
         self.cache = cache
         self.sem = asyncio.Semaphore(concurrency)
         self.session: aiohttp.ClientSession | None = None
+        self.keys = list(API_KEYS)
+        self._ki = 0
+        # more keys → more retry headroom before giving up
+        self.max_attempts = max(3, len(self.keys) + 2)
+
+    def _next_key(self) -> str:
+        key = self.keys[self._ki % len(self.keys)]
+        self._ki += 1
+        return key
 
     async def __aenter__(self):
         timeout = aiohttp.ClientTimeout(total=15, connect=5)
@@ -34,8 +48,8 @@ class LastfmClient:
         # api_key excluded so key rotation never busts the cache
         return urllib.parse.urlencode(dict(sorted(params.items())))
 
-    def _url(self, params: dict) -> str:
-        full = {**params, "api_key": API_KEY, "format": "json"}
+    def _url(self, params: dict, key: str) -> str:
+        full = {**params, "api_key": key, "format": "json"}
         return API_URL + "?" + urllib.parse.urlencode(full)
 
     async def _get(self, params: dict) -> dict:
@@ -46,15 +60,27 @@ class LastfmClient:
 
         async with self.sem:
             last = {"error": "never attempted"}
-            for attempt in range(3):
+            for attempt in range(self.max_attempts):
                 if attempt:
                     await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
                 try:
-                    async with self.session.get(self._url(params)) as resp:
+                    async with self.session.get(self._url(params, self._next_key())) as resp:
                         if resp.status == 200:
                             text = await resp.text()
-                            self.cache.set(ck, text)
-                            return json.loads(text)
+                            try:
+                                data = json.loads(text)
+                            except ValueError:
+                                last = {"error": "bad json"}
+                                continue
+                            # Last.fm signals rate-limit/transient failures as a 200
+                            # body — rotate to the next key and retry, NEVER cache them
+                            # (the previous code cached these, poisoning future runs).
+                            err = data.get("error") if isinstance(data, dict) else None
+                            if err in RETRYABLE_LASTFM_ERRORS:
+                                last = {"error": err}
+                                continue
+                            self.cache.set(ck, text)  # genuine response (incl. permanent errors)
+                            return data
                         if 400 <= resp.status < 500:
                             return {"error": resp.status}
                         last = {"error": resp.status}

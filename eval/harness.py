@@ -13,9 +13,9 @@ import json
 import pathlib
 
 from cache import Cache
-from config import API_KEY, CACHE_PATH, Config, anchor_ts  # noqa: F401  (API_KEY validates early)
+from config import API_KEY, API_KEYS, CACHE_PATH, Config, anchor_ts  # noqa: F401  (API_KEY validates early)
 from lastfm import LastfmClient
-from metrics import aggregate, evaluate
+from metrics import aggregate, confidence_intervals, evaluate
 from pipeline import run_user
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -70,60 +70,89 @@ async def main_async(args) -> None:
         velocity_min_genre_n=args.velocity_min_genre_n,
         concurrency=args.concurrency,
     )
-    anchor = anchor_ts(args.anchor)
+    anchor_strs = [a.strip() for a in (args.anchors or args.anchor).split(",") if a.strip()]
     cohort = load_cohort(args)
     cache = Cache(CACHE_PATH, enabled=not args.no_cache)
 
     print(f"\n  cohort: {len(cohort)} users | k={cfg.k} | threshold={cfg.threshold_model} | "
-          f"novelty={cfg.novelty_model} | match_weight={cfg.use_match_weight} | "
-          f"two_hop={cfg.two_hop} | cache={'off' if args.no_cache else 'on'}")
-    print(f"  split: seeds=[-{cfg.past_days}d] holdout=[{cfg.future_days}d] anchored at {args.anchor}\n")
+          f"novelty={cfg.novelty_model} | mult={cfg.underexplored_mult} | "
+          f"keys={len(API_KEYS)} | cache={'off' if args.no_cache else 'on'}")
+    print(f"  anchors: {', '.join(anchor_strs)} | split: seeds=[-{cfg.past_days}d] holdout=[{cfg.future_days}d]\n")
 
-    per_user_metrics = []
-    rows = []
+    # Each (user, anchor) pair is one evaluation sample; pooling anchors multiplies
+    # the effective n and averages out single-cutoff noise.
+    per_user_metrics = []                 # pooled across all anchors
+    per_anchor: dict[str, list] = {}      # anchor -> [metrics]
+    rows = []                             # single-anchor per-user table
+    single = len(anchor_strs) == 1
     async with LastfmClient(cache, cfg.concurrency) as client:
-        results = await asyncio.gather(*(run_user(client, u, anchor, cfg) for u in cohort))
-
-    for res in results:
-        if "skipped" in res:
-            rows.append((res["user"], None, res["skipped"]))
-            continue
-        m = evaluate(res["ranked"], res, cfg.k)
-        per_user_metrics.append(m)
-        rows.append((res["user"], m, None))
+        for astr in anchor_strs:
+            anc = anchor_ts(astr)
+            results = await asyncio.gather(*(run_user(client, u, anc, cfg) for u in cohort))
+            am = []
+            for res in results:
+                if "skipped" in res:
+                    if single:
+                        rows.append((res["user"], None, res["skipped"]))
+                    continue
+                m = evaluate(res["ranked"], res, cfg.k)
+                per_user_metrics.append(m)
+                am.append(m)
+                if single:
+                    rows.append((res["user"], m, None))
+            per_anchor[astr] = am
 
     # ── report: funnel (adopted→eligible→in_pool→hit) then ranking metrics ─────
     hdr = (f"  {'user':<16} {'adopt':>5} {'elig':>5} {'pool':>5} {'hit':>4} "
            f"{'reach':>6} {'R@k':>6} {'P@k':>6} {'MRR':>6} {'obsc@k':>7} {'mean_lst':>9} "
            f"{'xval':>5} {'xvLst':>8} {'xvHit':>5}")
+
+    def summary_line(label: str, a: dict) -> str:
+        return (f"  {label:<16} {'':>5} {'':>5} {'':>5} {'':>4} "
+                f"{a['reach']:>6.2f} {a['recall@k']:>6.3f} {a['precision@k']:>6.3f} {a['mrr']:>6.3f} "
+                f"{a['obscurity_weighted@k']:>7.3f} {a['mean_listeners']:>9.0f} "
+                f"{a['xval_count']:>5.1f} {a['xval_mean_listeners']:>8.0f} {a['xval_hits']:>5.2f}")
+
     print(hdr)
     print("  " + "-" * (len(hdr) - 2))
-    for user, m, skipped in rows:
-        if skipped:
-            print(f"  {user:<16} — {skipped}")
-            continue
-        print(f"  {user:<16} {m['adopted']:>5} {m['eligible']:>5} {m['in_pool']:>5} {m['hits']:>4} "
-              f"{m['reach']:>6.2f} {m['recall@k']:>6.3f} {m['precision@k']:>6.3f} {m['mrr']:>6.3f} "
-              f"{m['obscurity_weighted@k']:>7.3f} {m['mean_listeners']:>9.0f} "
-              f"{m['xval_count']:>5} {m['xval_mean_listeners']:>8.0f} {m['xval_hits']:>5}")
+    if single:
+        for user, m, skipped in rows:
+            if skipped:
+                print(f"  {user:<16} — {skipped}")
+                continue
+            print(f"  {user:<16} {m['adopted']:>5} {m['eligible']:>5} {m['in_pool']:>5} {m['hits']:>4} "
+                  f"{m['reach']:>6.2f} {m['recall@k']:>6.3f} {m['precision@k']:>6.3f} {m['mrr']:>6.3f} "
+                  f"{m['obscurity_weighted@k']:>7.3f} {m['mean_listeners']:>9.0f} "
+                  f"{m['xval_count']:>5} {m['xval_mean_listeners']:>8.0f} {m['xval_hits']:>5}")
+    else:
+        for astr in anchor_strs:
+            a = aggregate(per_anchor[astr])
+            if a:
+                print(summary_line(f"{astr} (n={len(per_anchor[astr])})", a))
 
     agg = aggregate(per_user_metrics)
+    ci_keys = ["obscurity_weighted@k", "mrr", "recall@k", "precision@k", "reach"]
+    cis = confidence_intervals(per_user_metrics, ci_keys) if agg else {}
     if agg:
         print("  " + "-" * (len(hdr) - 2))
-        print(f"  {'MEAN (' + str(len(per_user_metrics)) + ')':<16} {'':>5} {'':>5} {'':>5} {'':>4} "
-              f"{agg['reach']:>6.2f} {agg['recall@k']:>6.3f} {agg['precision@k']:>6.3f} {agg['mrr']:>6.3f} "
-              f"{agg['obscurity_weighted@k']:>7.3f} {agg['mean_listeners']:>9.0f} "
-              f"{agg['xval_count']:>5.1f} {agg['xval_mean_listeners']:>8.0f} {agg['xval_hits']:>5.2f}")
+        print(summary_line(f"MEAN ({len(per_user_metrics)})", agg))
+        print(f"\n  95% bootstrap CI (n={len(per_user_metrics)} samples, "
+              f"{len(anchor_strs)} anchor{'s' if len(anchor_strs) > 1 else ''}):")
+        for k in ci_keys:
+            lo, hi = cis[k]
+            print(f"    {k:<22} {agg[k]:>8.4f}  [{lo:.4f}, {hi:.4f}]")
     print(f"\n  cache entries: {cache.stats()}\n")
 
     if args.json:
         out = {
             "config": vars(cfg),
-            "anchor": args.anchor,
+            "anchors": anchor_strs,
             "per_user": [
                 {"user": u, "metrics": m, "skipped": s} for (u, m, s) in rows
             ],
+            "per_anchor": {a: aggregate(per_anchor[a]) for a in anchor_strs},
             "aggregate": agg,
+            "ci": {k: list(v) for k, v in cis.items()},
         }
         pathlib.Path(args.json).write_text(json.dumps(out, indent=2), encoding="utf-8")
         print(f"  wrote {args.json}\n")
@@ -140,6 +169,9 @@ def main() -> None:
     p.add_argument("--past-days", type=int, default=365)
     p.add_argument("--max-candidates", type=int, default=300)
     p.add_argument("--anchor", default="2026-06-10", help="reference 'now' (YYYY-MM-DD)")
+    p.add_argument("--anchors", default=None,
+                   help="comma-separated anchor dates to POOL for multi-anchor averaging "
+                        "(e.g. 2026-06-10,2026-03-10,2025-12-10); overrides --anchor, de-noises")
     p.add_argument("--concurrency", type=int, default=5)
     # cross-validation de-biasing levers
     p.add_argument("--tags-to-derive", type=int, default=_d0.tags_to_derive,

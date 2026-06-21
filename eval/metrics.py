@@ -9,6 +9,8 @@ product goal: surfacing *obscure* artists that land.
 """
 from __future__ import annotations
 
+import random
+
 CEILING = 25_000
 
 
@@ -94,3 +96,34 @@ def aggregate(per_user: list[dict]) -> dict:
         return {}
     keys = [k for k, v in per_user[0].items() if isinstance(v, (int, float))]
     return {k: sum(u[k] for u in per_user) / len(per_user) for k in keys}
+
+
+def confidence_intervals(per_user: list[dict], metric_keys: list[str],
+                         n_boot: int = 2000, seed: int = 12345,
+                         alpha: float = 0.05) -> dict:
+    """Seeded bootstrap 95% CIs on the cohort-mean of each metric.
+
+    Resample users with replacement n_boot times, take the mean each time, and
+    read off the [alpha/2, 1-alpha/2] percentiles. Seeded so re-runs are
+    reproducible. With ~50 users and a few dozen total hits these intervals are
+    WIDE — that's the point: a lever whose CI straddles the baseline isn't a
+    real effect, however good its point estimate looks.
+    """
+    n = len(per_user)
+    if n < 2:
+        return {k: (float("nan"), float("nan")) for k in metric_keys}
+    rng = random.Random(seed)
+    cols = {k: [u.get(k, 0.0) for u in per_user] for k in metric_keys}
+    boot = {k: [] for k in metric_keys}
+    for _ in range(n_boot):
+        idx = [rng.randrange(n) for _ in range(n)]
+        for k in metric_keys:
+            c = cols[k]
+            boot[k].append(sum(c[i] for i in idx) / n)
+    lo_i = int((alpha / 2) * n_boot)
+    hi_i = min(n_boot - 1, int((1 - alpha / 2) * n_boot))
+    out = {}
+    for k in metric_keys:
+        s = sorted(boot[k])
+        out[k] = (s[lo_i], s[hi_i])
+    return out

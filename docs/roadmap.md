@@ -59,6 +59,24 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
 
 ## Data / eval
 
+- **Harness hardened (2026-06-21) for statistical trust.** Three additions:
+  (1) the eval client now round-robins a **key pool** (`LASTFM_API_KEYS`, like
+  prod) and correctly treats Last.fm's 200-body rate-limit errors as transient
+  (no longer caches them); (2) **bootstrap 95% confidence intervals** on the
+  headline metrics, printed every run; (3) **multi-anchor averaging**
+  (`--anchors d1,d2,d3`) pools each (user, anchor) as a sample to multiply
+  effective n and de-noise. A **paired-difference bootstrap** is the right A/B
+  significance test (same users), not overlapping marginal CIs.
+- **Significance of the shipped findings (de-biased n=54, paired bootstrap):**
+  underexplored-novelty is a **real win** (turning it off: obscW −0.0041, 95% CI
+  [−0.0074, −0.0011], significant). The **mult 1→2 bump we shipped is *not*
+  statistically significant** (+0.0026, CI [−0.0000, +0.0068]) — only **mult 4 is**
+  (+0.0055, CI [+0.0013, +0.0115]). Takeaway: the "right" multiplier is small,
+  taste-dependent, and partly in the noise at this cohort size — which is exactly
+  why the user-facing appetite slider is the correct design, and why the next
+  reach work needs the bigger cohort + multi-anchor power these tools enable.
+
+
 - **De-biased cohort run — DONE.** `eval/cohort_debiased.txt` (60 users from 7
   disconnected roots, built via `eval/build_cohort.py`) is now the trustworthy
   anchor cohort. Live engine (flat + underexplored + cross-val de-biasing) scores

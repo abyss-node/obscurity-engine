@@ -31,7 +31,27 @@ def load_api_key() -> str:
     )
 
 
-API_KEY = load_api_key()
+def load_api_keys() -> list[str]:
+    """A pool of Last.fm keys, round-robined by the client to spread the rate
+    limit (mirrors the prod backend). Prefers a comma-separated LASTFM_API_KEYS
+    (env or backend/.env); falls back to the single key. More keys → bigger
+    cohorts and multi-anchor cold runs without saturating Last.fm."""
+    raw = os.environ.get("LASTFM_API_KEYS")
+    if not raw and BACKEND_ENV.exists():
+        for line in BACKEND_ENV.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("LASTFM_API_KEYS="):
+                raw = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    if raw:
+        keys = [k.strip() for k in raw.split(",") if k.strip()]
+        if keys:
+            return keys
+    return [load_api_key()]
+
+
+API_KEYS = load_api_keys()
+API_KEY = API_KEYS[0]
 
 
 def anchor_ts(date_str: str = "2026-06-10") -> int:
