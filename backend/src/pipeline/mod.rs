@@ -25,8 +25,14 @@ use crate::models::{DiscoveryResponse, TrackDiscoveryResponse};
 /// Underexplored-novelty multiplier. The recommendation threshold is the user's
 /// lifetime mean plays-per-artist × this multiplier; artists played fewer times
 /// than the threshold (including never) are recommendable, deeper ones excluded.
-/// The eval harness confirmed 1.0 is optimal (0.5 only lost hits).
-const UNDEREXPLORED_MULT: f64 = 1.0;
+/// Eval (de-biased n=54, 2026-06-21): sweeping this UP is a clean monotonic win —
+/// obscurity-weighted adoptions +33% at 2.0 (+67% by ~4.0), obscurity preserved
+/// (mean listeners flat ~11K), MRR healthy. The gain is re-engagement: it surfaces
+/// more lightly-played obscure artists the user dug back into, not new discovery
+/// (that's reach-capped by Last.fm's graph — see roadmap). Per-user adaptive
+/// auto-tuning was A/B'd and can't beat this flat-but-per-user-relative bound.
+/// 2.0 is the balanced ship point (majority of recs still pure discovery).
+const UNDEREXPLORED_MULT: f64 = 2.0;
 
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
