@@ -63,6 +63,10 @@ async def main_async(args) -> None:
         temporal_seed_weighting=args.temporal_seed_weighting,
         recency_days=args.recency_days,
         recency_boost=args.recency_boost,
+        velocity_signal=args.velocity_signal,
+        velocity_boost=args.velocity_boost,
+        velocity_cap=args.velocity_cap,
+        velocity_min_genre_n=args.velocity_min_genre_n,
         concurrency=args.concurrency,
     )
     anchor = anchor_ts(args.anchor)
@@ -193,6 +197,15 @@ def main() -> None:
                    help="recent sub-window (days back from cutoff) for temporal seed weighting")
     p.add_argument("--recency-boost", type=float, default=_d.recency_boost,
                    help="weight *= 1 + recency_boost * (recent_plays / total_plays)")
+    p.add_argument("--velocity-signal", action="store_true",
+                   help="backlog #5: genre-relative devotion (plays/listener vs genre median) "
+                        "ranking tilt — a breakout/momentum proxy")
+    p.add_argument("--velocity-boost", type=float, default=_d.velocity_boost,
+                   help="velocity tilt strength: composite *= 1 + boost * clamp(sticky/genre_median - 1)")
+    p.add_argument("--velocity-cap", type=float, default=_d.velocity_cap,
+                   help="clamp on the velocity deviation term (±)")
+    p.add_argument("--velocity-min-genre-n", type=int, default=_d.velocity_min_genre_n,
+                   help="min pool artists in a genre to trust its median devotion")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()

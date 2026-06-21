@@ -348,6 +348,31 @@ def score(cmap, info_map, weights, cross, exclude_known, profile, cfg: Config, t
         it["alignment"] = align
         it["composite"] *= 1.0 + cfg.alignment_uplift * align
 
+    # ── velocity / momentum: genre-relative devotion tilt (backlog #5) ────────
+    # Boost artists whose plays-per-listener beats their genre's median devotion
+    # (a more rabid fanbase than typical for the scene = breakout proxy). This is
+    # distinct from raw stickiness, which is already in the composite. Off = no-op.
+    if cfg.velocity_signal and items:
+        genre_sticky: dict[str, list[float]] = {}
+        for it in items:
+            g = it["tags"][0].lower() if it["tags"] else ""
+            if g:
+                genre_sticky.setdefault(g, []).append(it["stickiness"])
+        genre_median = {
+            g: statistics.median(v) for g, v in genre_sticky.items()
+            if len(v) >= cfg.velocity_min_genre_n
+        }
+        for it in items:
+            g = it["tags"][0].lower() if it["tags"] else ""
+            med = genre_median.get(g, 0.0)
+            if med > 0:
+                dev = it["stickiness"] / med - 1.0
+                dev = max(min(dev, cfg.velocity_cap), -cfg.velocity_cap)
+            else:
+                dev = 0.0
+            it["velocity"] = dev
+            it["composite"] *= 1.0 + cfg.velocity_boost * dev
+
     # ── discovery: obscurity bias (soft) + tier tagging on the eligible pool ──
     if cfg.threshold_model == "discovery" and items:
         # pos = percentile position by listener count within the eligible pool

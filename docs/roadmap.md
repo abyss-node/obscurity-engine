@@ -52,15 +52,19 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
 | Genre-relative ceiling (#2) | ❌ A/B'd NO. |
 | **Two-hop "similar-of-similar" expansion (#3)** | ❌ **A/B'd NO.** Reach stayed flat at 0.09 across candidate caps (300/600/1000) and obscurity got worse — the artists users adopt aren't in the Last.fm similar-graph even two hops out. Strong evidence that reach is capped by the data source, not traversal. |
 | Match-weighted conviction (#1) | ❌ A/B'd NO. Lifts MRR but drags precision/recall/obscurity and doesn't touch reach. |
-| Velocity / momentum signal (#5) | Parked. |
+| **Velocity / momentum signal (#5)** | ❌ **A/B'd NO** (de-biased n=54). Genre-relative devotion (plays/listener vs genre median) as a ranking tilt: gentle (boost 0.25) is a no-op, stronger (0.5–1.0) drags MRR (0.125→0.11) and precision while reach/obscurity stay flat. The signal is real but anti-correlated with adoptions. Lever kept (`velocity_signal`/`velocity_boost`), default-off. |
 | Wider/more-specific tag derivation for cross-validation | Tested; little gain for added API cost — not shipped (genre-overlap won instead). |
 
 ## Data / eval
 
-- **De-biased cohort run.** The current eval cohort (~26 users) is one bubbled
-  friend cluster. `eval/build_cohort.py` builds a cohort from **multiple
-  disconnected seed accounts** — running it with several unrelated seeds is
-  needed before trusting absolute eval numbers.
+- **De-biased cohort run — DONE.** `eval/cohort_debiased.txt` (60 users from 7
+  disconnected roots, built via `eval/build_cohort.py`) is now the trustworthy
+  anchor cohort. Live engine (flat + underexplored + cross-val de-biasing) scores
+  **obscW@k 0.009, MRR 0.125, reach 0.05, mean listeners 11.2K** on it (n=54
+  evaluable). Notably the engine does *worse* on this diverse cohort than on the
+  old bubbled n=26 (obscW 0.020) — diverse users' adoptions are even less reachable
+  in Last.fm's similar-graph, reinforcing the data-ceiling finding. Artifact:
+  `eval/under_flat_debiased_n60.json`.
 
 ## Polish / deferred
 

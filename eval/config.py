@@ -89,6 +89,17 @@ class Config:
     recency_days: int = 30                 # recent sub-window inside the past window
     recency_boost: float = 1.0             # weight *= 1 + recency_boost * (recent_plays / total_plays)
 
+    # ── velocity / momentum signal (backlog #5) ──────────────────────────────
+    # Raw plays-per-listener is already the `stickiness` factor, so a naive ratio
+    # lever would be redundant. The genuinely-new signal is genre-RELATIVE
+    # devotion: an artist whose plays/listener exceeds its genre's median has an
+    # unusually rabid fanbase for the scene — a proxy for "heating up / about to
+    # break out" (Last.fm exposes no historical listener counts). Soft ranking tilt.
+    velocity_signal: bool = False
+    velocity_boost: float = 0.5    # composite *= 1 + boost * clamp(sticky/genre_median - 1, ±cap)
+    velocity_cap: float = 2.0      # clamp on the deviation term (so a 3×-median artist caps out)
+    velocity_min_genre_n: int = 5  # min pool artists in a genre to trust its median devotion
+
     # ── threshold model: "flat" (legacy 25K) | "true_fans" (per-user, devotion-aware)
     # The "1000 true fans" model: a discovery target is an artist who hasn't yet
     # crossed the sustainability line — estimated true fans below a target T,
