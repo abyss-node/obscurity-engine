@@ -1,3 +1,4 @@
+// obscurity-engine backend — Axum HTTP server (deployed to Railway).
 use axum::{
     extract::{Query, State},
     http::StatusCode,
