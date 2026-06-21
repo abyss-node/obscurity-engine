@@ -526,10 +526,13 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
 
     # ── novelty split: which past artists are "deep" vs "underexplored/light" ──
     # threshold = mean plays-per-artist over the reconstructed past window × mult.
-    if cfg.novelty_model == "underexplored":
+    if cfg.novelty_model in ("underexplored", "adaptive"):
         total_past_plays = sum(c for _d, c in plays_before.values())
         n_distinct_past = len(plays_before) or 1
-        under_threshold = (total_past_plays / n_distinct_past) * cfg.underexplored_mult
+        # adaptive defines light/deep (and thus GT) at a fixed generous bound so the
+        # backfill policy is measured against a constant ground truth.
+        mult = cfg.adaptive_bound_mult if cfg.novelty_model == "adaptive" else cfg.underexplored_mult
+        under_threshold = (total_past_plays / n_distinct_past) * mult
         deep_known = {
             norm for norm, (_d, count) in plays_before.items()
             if count >= under_threshold
@@ -567,6 +570,23 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
     seed_infos = await asyncio.gather(*(client.artist_info(n) for n in names[: cfg.profile_top_seeds]))
     th = build_threshold(info_map, [i for i in seed_infos if i], cfg)
 
+    adaptive_tightened = None
+    if cfg.novelty_model == "adaptive":
+        # adaptive backfill (pool, not order): reach-rich users — enough pure-discovery
+        # candidates in-pool to fill the page — get a TIGHT bound (mean×1, minimal
+        # re-engagement); reach-starved users keep the generous bound so obscure
+        # re-engagement gems backfill the page. Composite ranking is preserved
+        # (MRR intact); only the eligible SET adapts. GT stays at the generous bound.
+        discovery_in_pool = sum(
+            1 for n, info in info_map.items()
+            if n not in past_known and n not in seed_norms and passes_threshold(info, th, cfg)
+        )
+        adaptive_tightened = discovery_in_pool >= cfg.k
+        if adaptive_tightened:
+            mean_ppa = sum(c for _d, c in plays_before.values()) / (len(plays_before) or 1)
+            tight_deep = {norm for norm, (_d, c) in plays_before.items() if c >= mean_ppa}
+            exclude_known = tight_deep | seed_norms
+
     ranked = score(cmap, info_map, weights, cross, exclude_known, profile, cfg, th)
 
     # reach funnel: adopted → eligible (passes threshold) → generated as candidate
@@ -594,4 +614,5 @@ async def run_user(client: LastfmClient, user: str, anchor: int, cfg: Config) ->
         "under_threshold": round(under_threshold, 2) if under_threshold else None,
         "n_past_deep": len(deep_known),
         "n_past_light": len(light_known),
+        "adaptive_tightened": adaptive_tightened,
     }

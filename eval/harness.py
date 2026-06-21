@@ -60,6 +60,7 @@ async def main_async(args) -> None:
         global_appetite=args.global_appetite,
         novelty_model=args.novelty_model,
         underexplored_mult=args.underexplored_mult,
+        adaptive_bound_mult=args.adaptive_bound_mult,
         temporal_seed_weighting=args.temporal_seed_weighting,
         recency_days=args.recency_days,
         recency_boost=args.recency_boost,
@@ -184,12 +185,15 @@ def main() -> None:
                    help="discovery: obscurity bias for fully-obscure taste (tilt strength upper bound)")
     p.add_argument("--global-appetite", type=float, default=_d.global_appetite,
                    help="discovery: tilt strength when personalize-appetite is off / shrinkage prior")
-    p.add_argument("--novelty-model", choices=["strict", "underexplored"], default=_d.novelty_model,
+    p.add_argument("--novelty-model", choices=["strict", "underexplored", "adaptive"], default=_d.novelty_model,
                    help="strict: exclude all past-known artists | underexplored: artists with fewer "
                         "plays than the user's mean plays-per-artist stay recommendable, and "
-                        "re-engaging with them counts as adoption")
+                        "re-engaging with them counts as adoption | adaptive: discovery-first "
+                        "backfill — re-engagement gems fill the page only when discovery is thin")
     p.add_argument("--underexplored-mult", type=float, default=_d.underexplored_mult,
                    help="underexplored threshold = mean plays-per-artist × this multiplier")
+    p.add_argument("--adaptive-bound-mult", type=float, default=_d.adaptive_bound_mult,
+                   help="adaptive mode: generous mult defining the light/deep split + ground truth")
     p.add_argument("--temporal-seed-weighting", action="store_true",
                    help="backlog #4: blend all-time seed weight with a recency multiplier "
                         "so recent listening tilts both seed selection and conviction weighting")

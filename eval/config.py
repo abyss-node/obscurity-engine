@@ -143,8 +143,16 @@ class Config:
     # "light" — heard in passing, never dug into — and becomes recommendable, and
     # re-engagement with it counts as a hit. "deep" artists (plays ≥ threshold)
     # stay excluded as before. "strict" reproduces the legacy past_known behavior.
+    # "adaptive" = discovery-first backfill: lead with pure-discovery candidates and
+    # only backfill the page with re-engagement (light past artists, ranked by
+    # composite) when discovery is thin. Reach-rich users → ~all discovery; reach-
+    # starved → gems backfill the page instead of a thin result. The page size IS
+    # the target (cfg.k / the live cap), so there is no flat obscurity constant.
+    # GT + eligibility use `adaptive_bound_mult` (a fixed generous bound) so the
+    # adaptive policy is scored against a constant ground truth — honest A/B.
     novelty_model: str = "strict"
     underexplored_mult: float = 1.0  # threshold = mean_plays_per_artist × mult
+    adaptive_bound_mult: float = 4.0  # adaptive mode: generous bound defining light/deep + GT
 
     # ── eval ──────────────────────────────────────────────────────────────────
     k: int = 20                   # evaluate top-K recommendations
