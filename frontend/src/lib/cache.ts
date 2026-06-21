@@ -1,17 +1,17 @@
 const TTL_MS = 15 * 60 * 1000; // 15 minutes
 const KEY_PREFIX = "obscurity_cache_";
 
-function key(username: string, period: string, mode: string): string {
-  return `${KEY_PREFIX}${username}_${period}_${mode}`;
+function key(username: string, period: string, mode: string, appetite: string): string {
+  return `${KEY_PREFIX}${username}_${period}_${mode}_${appetite}`;
 }
 
-export function loadCache<T>(username: string, period: string, mode: string): T | null {
+export function loadCache<T>(username: string, period: string, mode: string, appetite: string): T | null {
   try {
-    const raw = localStorage.getItem(key(username, period, mode));
+    const raw = localStorage.getItem(key(username, period, mode, appetite));
     if (!raw) return null;
     const entry = JSON.parse(raw) as { data: T; ts: number };
     if (Date.now() - entry.ts > TTL_MS) {
-      localStorage.removeItem(key(username, period, mode));
+      localStorage.removeItem(key(username, period, mode, appetite));
       return null;
     }
     return entry.data;
@@ -20,13 +20,13 @@ export function loadCache<T>(username: string, period: string, mode: string): T 
   }
 }
 
-export function saveCache<T>(username: string, period: string, mode: string, data: T): void {
+export function saveCache<T>(username: string, period: string, mode: string, appetite: string, data: T): void {
   try {
-    localStorage.setItem(key(username, period, mode), JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(key(username, period, mode, appetite), JSON.stringify({ data, ts: Date.now() }));
   } catch {
     pruneExpired();
     try {
-      localStorage.setItem(key(username, period, mode), JSON.stringify({ data, ts: Date.now() }));
+      localStorage.setItem(key(username, period, mode, appetite), JSON.stringify({ data, ts: Date.now() }));
     } catch { /* localStorage full and still failing — silently skip */ }
   }
 }

@@ -84,6 +84,16 @@ const PERIOD_LABELS: Record<string, string> = {
   overall: "ALL",
 };
 
+// Discovery-appetite slider stops: how much re-engagement (resurfacing obscure
+// artists you've only lightly played) to mix into pure discovery. Maps to the
+// backend's underexplored-novelty multiplier. Ordered new → rediscover.
+const APPETITE_STOPS: { val: string; label: string; blurb: string }[] = [
+  { val: "new", label: "Only new", blurb: "Brand-new artists only" },
+  { val: "low", label: "Mostly new", blurb: "Mostly new, a few rediscoveries" },
+  { val: "balanced", label: "Balanced", blurb: "Even mix of new and rediscovered gems" },
+  { val: "high", label: "Rediscover", blurb: "Resurface obscure gems you've barely played" },
+];
+
 // Human-readable window phrase for the short-window empty state.
 const PERIOD_WINDOWS: Record<string, string> = {
   blend: "your library",
@@ -99,6 +109,7 @@ export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
   const [inputLocal, setInputLocal] = useState("");
   const [period, setPeriod] = useState("blend");
+  const [appetite, setAppetite] = useState("balanced");
   const [mode, setMode] = useState<DiscoveryMode>("artists");
   const [artists, setArtists] = useState<Artist[]>([]);
   const [tracks, setTracks] = useState<TrackItem[]>([]);
@@ -168,12 +179,16 @@ export default function Home() {
       setInputLocal(urlUser);
       setIsSharedView(true);
       if (urlPeriod && PERIOD_LABELS[urlPeriod]) setPeriod(urlPeriod);
+      const urlAppetite = params.get("a");
+      if (urlAppetite && APPETITE_STOPS.some((s) => s.val === urlAppetite)) setAppetite(urlAppetite);
       if (urlMode === "tracks" || urlMode === "artists") setMode(urlMode as DiscoveryMode);
     } else {
       const saved = localStorage.getItem("obscurity_username");
       if (saved) setInputLocal(saved); // pre-fill input but don't auto-fetch; user submits
       const savedPeriod = localStorage.getItem("obscurity_period");
       if (savedPeriod && PERIOD_LABELS[savedPeriod]) setPeriod(savedPeriod);
+      const savedAppetite = localStorage.getItem("obscurity_appetite");
+      if (savedAppetite && APPETITE_STOPS.some((s) => s.val === savedAppetite)) setAppetite(savedAppetite);
       const savedKey = localStorage.getItem("obscurity_api_key");
       if (savedKey) { setApiKey(savedKey); setApiKeyInput(savedKey); }
     }
@@ -186,6 +201,10 @@ export default function Home() {
   useEffect(() => {
     if (!isSharedView) localStorage.setItem("obscurity_period", period);
   }, [period, isSharedView]);
+
+  useEffect(() => {
+    if (!isSharedView) localStorage.setItem("obscurity_appetite", appetite);
+  }, [appetite, isSharedView]);
 
   const stickinessThreshold = useMemo(() => {
     if (artists.length < 1) return Infinity;
@@ -268,7 +287,7 @@ export default function Home() {
 
       // Serve from cache when fresh and not a forced retry
       if (!isForceFresh) {
-        const cached = loadCache<DiscoveryData | TrackDiscoveryData>(username, period, mode);
+        const cached = loadCache<DiscoveryData | TrackDiscoveryData>(username, period, mode, appetite);
         if (cached) {
           if (mode === "tracks") setArtists([]);
           else setTracks([]);
@@ -290,7 +309,7 @@ export default function Home() {
         const keyParam = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
         const endpoint = mode === "tracks"
           ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}${keyParam}`
-          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}${keyParam}`;
+          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}&appetite=${appetite}${keyParam}`;
         // One automatic retry on a transient network drop (connection reset,
         // brief backend restart). New users on flaky mobile connections were
         // hitting a one-off "couldn't reach" that a manual retry fixed. We do
@@ -327,11 +346,11 @@ export default function Home() {
         if (mode === "tracks") {
           const data: TrackDiscoveryData = await response.json();
           applyData(data, mode);
-          saveCache(username, period, mode, data);
+          saveCache(username, period, mode, appetite, data);
         } else {
           const data: DiscoveryData = await response.json();
           applyData(data, mode);
-          saveCache(username, period, mode, data);
+          saveCache(username, period, mode, appetite, data);
         }
       } catch (e) {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
@@ -353,11 +372,11 @@ export default function Home() {
     } else {
       fetchData();
     }
-  }, [username, period, mode, fetchTrigger, applyData]);
+  }, [username, period, appetite, mode, fetchTrigger, applyData]);
 
   const copyShareUrl = () => {
     if (!username) return;
-    const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&m=${mode}`;
+    const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
     navigator.clipboard.writeText(url).then(() => {
       setShareState("copied");
       setTimeout(() => setShareState("idle"), 2000);
@@ -733,6 +752,31 @@ export default function Home() {
                     {label}
                   </button>
                 ))}
+              </div>
+
+              {/* Discovery appetite slider — own full-width row, mixes re-engagement into discovery */}
+              <div className="flex items-center gap-2 order-last basis-full">
+                <span className="font-mono text-[10px] tracking-wider shrink-0" style={{ color: "var(--dim)" }}>
+                  appetite
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={APPETITE_STOPS.length - 1}
+                  step={1}
+                  value={Math.max(0, APPETITE_STOPS.findIndex((s) => s.val === appetite))}
+                  onChange={(e) => setAppetite(APPETITE_STOPS[Number(e.target.value)].val)}
+                  className="flex-1 min-w-0 max-w-[220px] cursor-pointer"
+                  style={{ accentColor: "var(--accent)" }}
+                  aria-label="Discovery appetite"
+                  title={APPETITE_STOPS.find((s) => s.val === appetite)?.blurb}
+                />
+                <span className="font-mono text-[10px] tracking-wider shrink-0" style={{ color: "var(--accent)" }}>
+                  {APPETITE_STOPS.find((s) => s.val === appetite)?.label}
+                </span>
+                <span className="font-mono text-[9px] shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
+                  {APPETITE_STOPS.find((s) => s.val === appetite)?.blurb}
+                </span>
               </div>
 
               {/* Refresh */}
