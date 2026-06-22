@@ -67,14 +67,24 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
   (`--anchors d1,d2,d3`) pools each (user, anchor) as a sample to multiply
   effective n and de-noise. A **paired-difference bootstrap** is the right A/B
   significance test (same users), not overlapping marginal CIs.
-- **Significance of the shipped findings (de-biased n=54, paired bootstrap):**
-  underexplored-novelty is a **real win** (turning it off: obscW −0.0041, 95% CI
-  [−0.0074, −0.0011], significant). The **mult 1→2 bump we shipped is *not*
-  statistically significant** (+0.0026, CI [−0.0000, +0.0068]) — only **mult 4 is**
-  (+0.0055, CI [+0.0013, +0.0115]). Takeaway: the "right" multiplier is small,
-  taste-dependent, and partly in the noise at this cohort size — which is exactly
-  why the user-facing appetite slider is the correct design, and why the next
-  reach work needs the bigger cohort + multi-anchor power these tools enable.
+- **High-power re-validation (de-biased n=348 — 126 users × 3 anchors, paired
+  bootstrap).** Cohort grown 60→126 via the key pool; 3 anchors (2026-06-10,
+  2025-12-10, 2025-06-10) pooled. CIs ~3× tighter than n=54. Every prior
+  conclusion held, with **two findings that flipped under the added power:**
+  - **The shipped mult-2 default is now statistically significant** (+0.0034 obscW
+    vs mult1, CI [+0.0021, +0.0049]) — it was merely borderline n.s. at n=54. The
+    whole multiplier ladder is monotonic-significant (mult3 +0.0059, mult4 +0.0068).
+  - **Adaptive backfill is now significantly *negative*** (−0.0014 vs mult2) and
+    **temporal seed-weighting significantly negative** (−0.0033) — both confirmed dead.
+  - Unchanged: underexplored is a significant win (off −0.0060); velocity /
+    match-weight / genre-ceiling all **NO** (ΔobscW ≈ 0); xval de-biasing has no
+    obscW effect but **significantly lifts adopted dual-signals (+0.30)** — a
+    *signal* win, not a ranking one.
+  - **The discovery ceiling is now ironclad:** pure-discovery hits sit at ~78
+    across *every* multiplier and lever (strict's 89 is the max, precisely because
+    it shows nothing but discovery); the entire obscW ladder is re-engagement.
+    Reach is data-capped — the empirical case for CEGE, at n=348.
+  - Harness now round-robins the key pool, so this scale of cold run is repeatable.
 
 
 - **De-biased cohort run — DONE.** `eval/cohort_debiased.txt` (60 users from 7

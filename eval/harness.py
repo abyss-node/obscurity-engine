@@ -83,6 +83,7 @@ async def main_async(args) -> None:
     # the effective n and averages out single-cutoff noise.
     per_user_metrics = []                 # pooled across all anchors
     per_anchor: dict[str, list] = {}      # anchor -> [metrics]
+    samples = []                          # [{user, anchor, metrics}] for paired-diff analysis
     rows = []                             # single-anchor per-user table
     single = len(anchor_strs) == 1
     async with LastfmClient(cache, cfg.concurrency) as client:
@@ -98,6 +99,7 @@ async def main_async(args) -> None:
                 m = evaluate(res["ranked"], res, cfg.k)
                 per_user_metrics.append(m)
                 am.append(m)
+                samples.append({"user": res["user"], "anchor": astr, "metrics": m})
                 if single:
                     rows.append((res["user"], m, None))
             per_anchor[astr] = am
@@ -151,6 +153,7 @@ async def main_async(args) -> None:
                 {"user": u, "metrics": m, "skipped": s} for (u, m, s) in rows
             ],
             "per_anchor": {a: aggregate(per_anchor[a]) for a in anchor_strs},
+            "samples": samples,
             "aggregate": agg,
             "ci": {k: list(v) for k, v in cis.items()},
         }
