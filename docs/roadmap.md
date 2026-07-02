@@ -99,12 +99,22 @@ Run through the [eval harness](reference-eval-harness.md). Most levers exist in
 ## Polish / deferred
 
 - Design elements from `design-preview.html` worth revisiting.
-- Vercel KV share-link persistence (shareable result URLs that survive).
-- Redis cache (replace the in-memory result cache for multi-instance scaling).
 - Track-pipeline quality tuning (prerequisite for shipping tracks mode).
 
 ## Recently shipped (for context)
 
+- **Persistent share links** (2026-07-02): `POST /api/share` + `GET /r/{id}`
+  store a share payload and server-render it read-only. Backed by Vercel KV
+  (`KV_REST_API_URL` + `KV_REST_API_TOKEN`) when configured, with a graceful
+  fallback to an in-process in-memory store (zero-config, ephemeral) when those
+  vars are absent — no behavior change for existing deployments. 30-day TTL,
+  100KB payload cap, strict payload validation. See
+  [reference-api.md](reference-api.md).
+- **Redis-backed result cache** (2026-07-02): the backend's `/api/discovery`
+  and `/api/discovery/tracks` result cache is now pluggable — in-memory by
+  default, Redis-backed when `REDIS_URL` is set (degrades cleanly to a cache
+  miss if Redis is unreachable, never fails the request). See
+  [howto-deploy.md](howto-deploy.md).
 - **Rotating Last.fm key pool** (speed/reliability): `LASTFM_API_KEYS` env pool +
   round-robin with bench-on-429, plus an opt-in `POST /api/keys` so users can
   share their key to the pool (validated, deduped, never logged). More keys =
