@@ -16,6 +16,7 @@ import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
 import * as Spotify from "../lib/spotify";
 import { loadCache, saveCache } from "../lib/cache";
+import type { SharePayload } from "../lib/shareStore";
 import OnboardingGuide from "../components/OnboardingGuide";
 
 export type Artist = {
@@ -374,13 +375,44 @@ export default function Home() {
     }
   }, [username, period, appetite, mode, fetchTrigger, applyData]);
 
-  const copyShareUrl = () => {
+  // Copy a shareable link. Preferred: persist the actual results via
+  // POST /api/share and hand back a stable /r/{id} URL that opens the sender's
+  // real results in any browser without recomputing. Fallback (store down, or
+  // nothing worth persisting): today's ?u=&p=&a=&m= recompute-on-open URL.
+  const copyShareUrl = async () => {
     if (!username) return;
-    const url = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setShareState("copied");
-      setTimeout(() => setShareState("idle"), 2000);
-    });
+    const origin = window.location.origin;
+    const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
+    let shareUrl = queryUrl;
+    try {
+      if (mode === "artists" && artists.length > 0) {
+        const res = await fetch("/api/share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            period,
+            mode,
+            appetite,
+            recommendations: artists,
+            computedAt: Date.now(),
+          }),
+        });
+        if (res.ok) {
+          const { id } = (await res.json()) as { id?: string };
+          if (typeof id === "string" && id) shareUrl = `${origin}/r/${id}`;
+        }
+      }
+    } catch {
+      /* network / store failure — keep the query-param fallback URL */
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      /* clipboard unavailable — nothing further we can do */
+    }
+    setShareState("copied");
+    setTimeout(() => setShareState("idle"), 2000);
   };
 
   // Export the 660×860 result card as a PNG (§8). Falls back to copying the
@@ -390,7 +422,7 @@ export default function Home() {
     const canExport =
       mode === "artists" && artists.length > 0 && depthScore > 0 && shareCardRef.current;
     if (!canExport) {
-      copyShareUrl();
+      await copyShareUrl();
       return;
     }
     try {
@@ -415,7 +447,7 @@ export default function Home() {
     } catch (e) {
       console.error("Share card export failed:", e);
       setShareState("idle");
-      copyShareUrl(); // never leave the button dead — copy the URL instead
+      await copyShareUrl(); // never leave the button dead — copy the URL instead
     }
   };
 
@@ -1057,6 +1089,89 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+    </>
+  );
+}
+
+/**
+ * Read-only rendering of a persisted share payload, used by the `/r/[id]` route.
+ * Reuses the existing DiscoveryMatrix and ArtistList unchanged; the sort control
+ * stays live (local state) but there is no input, refresh, or share action — a
+ * viewer sees exactly the sender's computed results, then a "get your own" CTA.
+ * Exported from the client module so the `/r/[id]` server component can render
+ * it (and SSR the artist names into the initial HTML) after fetching the store.
+ */
+export function ReadonlyResults({ payload }: { payload: SharePayload }) {
+  const { username, period, recommendations } = payload;
+  const [sortBy, setSortBy] = useState<SortType>("composite");
+
+  const sortedArtists = useMemo(() => {
+    const arr = [...recommendations];
+    if (sortBy === "composite") arr.sort((a, b) => b.composite_score - a.composite_score);
+    else if (sortBy === "conviction") arr.sort((a, b) => b.conviction_score - a.conviction_score);
+    else if (sortBy === "stickiness") arr.sort((a, b) => b.stickiness_score - a.stickiness_score);
+    else if (sortBy === "listeners") arr.sort((a, b) => b.total_listeners - a.total_listeners);
+    return arr.sort((a, b) => {
+      const aUntagged = a.top_tags.length === 0;
+      const bUntagged = b.top_tags.length === 0;
+      if (aUntagged === bUntagged) return 0;
+      return aUntagged ? 1 : -1;
+    });
+  }, [recommendations, sortBy]);
+
+  return (
+    <>
+      <div className="fixed top-0 left-0 z-50 px-6 h-12 flex items-center pointer-events-none">
+        <a
+          href="/"
+          className="font-serif text-[13px] font-semibold tracking-wide pointer-events-auto transition-opacity duration-200 hover:opacity-70"
+          style={{ color: "var(--accent)" }}
+        >
+          OBSCURITY ENGINE
+        </a>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-8 pt-24 pb-16 flex flex-col gap-16">
+        {/* Shared-view header */}
+        <div className="flex flex-col gap-3 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
+          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+            shared discovery
+          </span>
+          <h1
+            className="font-serif text-4xl sm:text-5xl font-bold italic leading-none"
+            style={{ color: "var(--text)" }}
+          >
+            {username}
+          </h1>
+          <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+            {PERIOD_WINDOWS[period] ?? period} · {recommendations.length} finds
+          </p>
+          <a
+            href="/"
+            className="font-mono text-[11px] tracking-widest transition-opacity duration-200 hover:opacity-60 w-fit"
+            style={{ color: "var(--accent)" }}
+          >
+            get your own →
+          </a>
+        </div>
+
+        {/* Discovery Matrix (top 10) */}
+        {recommendations.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+              discovery matrix
+            </span>
+            <DiscoveryMatrix artists={recommendations.slice(0, 10)} />
+          </div>
+        )}
+
+        {/* Artist list (read-only; sort stays interactive) */}
+        <ArtistList
+          artists={sortedArtists}
+          sortBy={sortBy}
+          setSortBy={(val) => setSortBy(val as SortType)}
+        />
+      </div>
     </>
   );
 }
