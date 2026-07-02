@@ -1,0 +1,1888 @@
+{
+  "cege_state": {
+    "root": "C:\\Users\\Arnuv'\\cege",
+    "exists": true,
+    "data_dir_exists": true,
+    "data_files": [
+      {
+        "path": "seed_creators.sql",
+        "bytes": 1896
+      },
+      {
+        "path": "seed_edges.sql",
+        "bytes": 4175
+      },
+      {
+        "path": "seed_ips.csv",
+        "bytes": 642
+      },
+      {
+        "path": "seed_works.csv",
+        "bytes": 491
+      }
+    ],
+    "only_seed_stubs": true,
+    "graph_db_files": [],
+    "has_populated_graph": false,
+    "verdict": "seed SQL/CSV stubs only \u2014 MusicBrainz/Wikidata ETL has not run"
+  },
+  "phase_a": {
+    "artifact": "under_flat_debiased_n60.json",
+    "anchor": "2026-06-10",
+    "users_in_artifact": 54,
+    "users_reconstructed": 54,
+    "users_cache_incomplete": 0,
+    "cache_hits": 38811,
+    "cache_misses": 0,
+    "pooled_eligible": 2895,
+    "pooled_in_pool": 144,
+    "pooled_lastfm_reach": 0.049740932642487044,
+    "missed_unique_count": 2709,
+    "cege_state": {
+      "root": "C:\\Users\\Arnuv'\\cege",
+      "exists": true,
+      "data_dir_exists": true,
+      "data_files": [
+        {
+          "path": "seed_creators.sql",
+          "bytes": 1896
+        },
+        {
+          "path": "seed_edges.sql",
+          "bytes": 4175
+        },
+        {
+          "path": "seed_ips.csv",
+          "bytes": 642
+        },
+        {
+          "path": "seed_works.csv",
+          "bytes": 491
+        }
+      ],
+      "only_seed_stubs": true,
+      "graph_db_files": [],
+      "has_populated_graph": false,
+      "verdict": "seed SQL/CSV stubs only \u2014 MusicBrainz/Wikidata ETL has not run"
+    }
+  },
+  "proxy": {
+    "sampling": "random seeded sample n=200 of 2709 (seed=1729)",
+    "sample_size": 200,
+    "mb_requests_made": 348,
+    "present": 148,
+    "connected": 71,
+    "present_rate": 0.74,
+    "connected_rate": 0.355,
+    "lastfm_pooled_reach": 0.049740932642487044,
+    "missed_frac_of_eligible": 0.950259067357513,
+    "cege_reach_if_present": 0.7529326424870466,
+    "cege_reach_if_connected": 0.3870829015544041,
+    "ratio_present_over_lastfm": 15.137083333333333,
+    "ratio_connected_over_lastfm": 7.781979166666666,
+    "kill_criterion": "CEGE reach must be >= 2x Last.fm reach",
+    "verdict": "PROXY-PASS"
+  },
+  "probes": [
+    {
+      "norm": "\u0440\u043e\u0441\u0442\u0438\u0441\u043b\u0430\u0432 \u0447\u0435\u0431\u044b\u043a\u0438\u043d",
+      "name": "\u0420\u043e\u0441\u0442\u0438\u0441\u043b\u0430\u0432 \u0427\u0435\u0431\u044b\u043a\u0438\u043d",
+      "present": true,
+      "mbid": "5fb73598-eaa0-4957-8581-1e578f27ea57",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "asmus tietchens and miki yui",
+      "name": "Asmus Tietchens & Miki Yui",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "mush",
+      "name": "Mush",
+      "present": true,
+      "mbid": "fc6b2bc2-d50d-46b4-8ac1-edbb414d9719",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "ryujin",
+      "name": "Ryujin",
+      "present": true,
+      "mbid": "e0efb258-e7fc-4305-96fa-45e8bac2200e",
+      "match_score": 100,
+      "artist_rel_degree": 8,
+      "connected": true
+    },
+    {
+      "norm": "peter ruzicka",
+      "name": "Peter Ruzicka",
+      "present": true,
+      "mbid": "7090d3cf-ec19-4517-84a4-efaf737275f4",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "dymytry paradox",
+      "name": "Dymytry Paradox",
+      "present": true,
+      "mbid": "337f8a44-4dbe-43ab-bd55-4398d5ac9855",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "barry booth",
+      "name": "Barry Booth",
+      "present": true,
+      "mbid": "10e4df2c-0829-473e-835a-238cbe2ac38f",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "enfants",
+      "name": "Enfants",
+      "present": true,
+      "mbid": "37657024-9fb0-46ed-a5b5-2547f34d9be0",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "joe fujinoki",
+      "name": "Joe Fujinoki",
+      "present": true,
+      "mbid": "e5dec1a4-74fe-416a-bb6c-897f2d435885",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "shamshad begum",
+      "name": "Shamshad Begum",
+      "present": true,
+      "mbid": "b7d84882-1811-4d9f-b2ef-bf98d5075011",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "madison b",
+      "name": "Madison B",
+      "present": true,
+      "mbid": "deb5b053-d656-4e9d-9903-d39babea247f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "jessie montgomery",
+      "name": "Jessie Montgomery",
+      "present": true,
+      "mbid": "ffbbaad9-8468-4191-a292-c0152543f8d5",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "fran\u00e7oisbernard m\u00e2che",
+      "name": "Fran\u00e7ois-Bernard M\u00e2che",
+      "present": true,
+      "mbid": "246ab984-1faf-4bed-b94e-13ed77a43f65",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "dj red alert",
+      "name": "DJ Red Alert",
+      "present": true,
+      "mbid": "73f40bf2-5b39-4edf-87b2-1e03756b8024",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "stan taylor",
+      "name": "Stan Taylor",
+      "present": true,
+      "mbid": "51da19a2-4578-4aa4-ae45-1977146d0560",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "runkus",
+      "name": "Runkus",
+      "present": true,
+      "mbid": "c4e19473-3155-45dd-9e71-fd8bb279367e",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "a tribe called quest kanye west consequence talib kweli",
+      "name": "A Tribe Called Quest, Kanye West, Consequence, Talib Kweli",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "vickie cherie",
+      "name": "Vickie Cherie",
+      "present": true,
+      "mbid": "018077aa-c494-463e-99aa-40c83089080e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "pete tong jules buckley",
+      "name": "Pete Tong , Jules Buckley",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "marc mellits",
+      "name": "Marc Mellits",
+      "present": true,
+      "mbid": "19d99aba-9795-48a9-a828-b0b277b5ae33",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "minutes",
+      "name": "The Minutes",
+      "present": true,
+      "mbid": "544b3247-574d-4c42-8c49-c5d152be4605",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "louis hayes",
+      "name": "Louis Hayes",
+      "present": true,
+      "mbid": "1e15c55f-e661-4910-9c0c-49a7b77b4d55",
+      "match_score": 100,
+      "artist_rel_degree": 13,
+      "connected": true
+    },
+    {
+      "norm": "murya",
+      "name": "Murya",
+      "present": true,
+      "mbid": "0f714dc0-9bef-4418-acca-3e38de1525dd",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "wendy eisenberg",
+      "name": "Wendy Eisenberg",
+      "present": true,
+      "mbid": "38ad6626-54e7-4301-8637-02952462f90e",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "lojoren\u00e9 lacaille",
+      "name": "Lo'Jo/Ren\u00e9 Lacaille",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "gorgeous",
+      "name": "The Gorgeous",
+      "present": true,
+      "mbid": "26f83ff2-aff9-4764-8b4f-1777de192c3d",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "monty norman",
+      "name": "Monty Norman",
+      "present": true,
+      "mbid": "779b18a5-47c5-4416-a7e9-12664e8cf519",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "bally jagpal",
+      "name": "Bally Jagpal",
+      "present": true,
+      "mbid": "2c39b785-4bb3-4230-8705-74480d012c82",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "the professor nick harrison",
+      "name": "\"The Professor\" Nick Harrison",
+      "present": true,
+      "mbid": "7570ddaa-343e-4a79-9397-6d7f6b3eee6f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "azana",
+      "name": "Azana",
+      "present": true,
+      "mbid": "57df9bbc-52cd-483c-ae1e-daf43dd312eb",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "uscsb",
+      "name": "USCSB",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "cash kru",
+      "name": "Cash Kru",
+      "present": true,
+      "mbid": "35362cc4-7aea-44f4-b849-37e52a78f3a0",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "sooj",
+      "name": "Sooj",
+      "present": true,
+      "mbid": "82f65a06-11c8-44aa-b08e-a415cbfdd027",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "mary sue and the clementi sound appreciation club",
+      "name": "Mary Sue & The Clementi Sound Appreciation Club",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "valentine brothers",
+      "name": "The Valentine Brothers",
+      "present": true,
+      "mbid": "f42d0dee-7b54-4b43-9612-42badf67921c",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "tartaros",
+      "name": "Tartaros",
+      "present": true,
+      "mbid": "2f13b401-a1e3-4fde-aad5-437c1669dfe0",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "josh lambert",
+      "name": "Josh Lambert",
+      "present": true,
+      "mbid": "2def15f1-748d-40ac-a68a-67946edde854",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "locomotive",
+      "name": "Locomotive",
+      "present": true,
+      "mbid": "e894ce29-5f80-48b6-b079-5f38a6f2712d",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "a tribe called quest busta rhymes",
+      "name": "A Tribe Called Quest, Busta Rhymes",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "talbot tagora",
+      "name": "Talbot Tagora",
+      "present": true,
+      "mbid": "e6cf2586-d345-465d-b5f5-dad93319cc86",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "jin sangtae takahiro kawaguchi",
+      "name": "Jin Sangtae / Takahiro Kawaguchi",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "terrain",
+      "name": "Terrain",
+      "present": true,
+      "mbid": "4614f004-9b6e-4cf2-b598-d94e3fe47fff",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "phat memer",
+      "name": "Phat Memer",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "tommy down",
+      "name": "Tommy Down",
+      "present": true,
+      "mbid": "3bbc9190-4327-479f-a1d3-0ef46d735327",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "raj santos",
+      "name": "Raj Santos",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "mynolia",
+      "name": "MYNOLIA",
+      "present": true,
+      "mbid": "850b3847-db11-4f65-a3a3-15cb7ec05ed9",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "paradise motel",
+      "name": "The Paradise Motel",
+      "present": true,
+      "mbid": "97b15458-267b-4c3e-9530-b83998947390",
+      "match_score": 100,
+      "artist_rel_degree": 4,
+      "connected": true
+    },
+    {
+      "norm": "ny oh",
+      "name": "Ny Oh",
+      "present": true,
+      "mbid": "97505c88-d429-4008-83e0-35bbe63daaa4",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "hailu mergia dahlak band",
+      "name": "Hailu Mergia, Dahlak Band",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "abduction",
+      "name": "Abduction",
+      "present": true,
+      "mbid": "657a85f6-b775-4554-b680-3770d81fc669",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "jamie oliver ruins pad thai",
+      "name": "Jamie Oliver RUINS PAD THAI",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "mike the mechanics",
+      "name": "Mike + The Mechanics",
+      "present": true,
+      "mbid": "a04e09c8-733c-4430-9e22-99ef9dd5e2d7",
+      "match_score": 100,
+      "artist_rel_degree": 20,
+      "connected": true
+    },
+    {
+      "norm": "circle of ouroborus",
+      "name": "Circle of Ouroborus",
+      "present": true,
+      "mbid": "3bdc4bf0-2bf2-44e9-ae9d-bed6ed4c6424",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "fun squad",
+      "name": "The Fun Squad",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "edward hollcraft",
+      "name": "Edward Hollcraft",
+      "present": true,
+      "mbid": "877c9be6-d6f0-4692-8d26-cf6e3c142ec1",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "peter culshaw",
+      "name": "Peter Culshaw",
+      "present": true,
+      "mbid": "accd15cc-0e0d-4ea1-8322-c3bcc36b5ade",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "jinger stone de mthuda and murumba pitch",
+      "name": "Jinger Stone, De Mthuda & Murumba Pitch",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "sunshine productions",
+      "name": "Sunshine Productions",
+      "present": true,
+      "mbid": "3a1f4dd9-f480-4e50-9389-d468d8cd41d4",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "podcast patron child audio feed",
+      "name": "The Podcast Patron Child Audio Feed",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "chicago underground duo",
+      "name": "Chicago Underground Duo",
+      "present": true,
+      "mbid": "fc961881-c931-4884-844d-467570a58fc8",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "old grape god",
+      "name": "Old Grape God",
+      "present": true,
+      "mbid": "ebead099-2cf3-4b3b-a471-bfb1a513ba65",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "deformer",
+      "name": "Deformer",
+      "present": true,
+      "mbid": "bf56eec8-ea75-40dd-bbdd-9f6d17803a9c",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "zhu wenboyan jun",
+      "name": "Zhu Wenbo/Yan Jun",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "malizia",
+      "name": "MaLizia",
+      "present": true,
+      "mbid": "23ac06e5-e4d7-4876-a8b0-974dcdcc3d10",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "jack sheen",
+      "name": "Jack Sheen",
+      "present": true,
+      "mbid": "b619e2b1-6b81-4253-ad0a-5af9e212ea6a",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "sello",
+      "name": "Sello",
+      "present": true,
+      "mbid": "b6146c16-c82b-4cb1-bedf-a661239d92f7",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "olivia barton",
+      "name": "Olivia Barton",
+      "present": true,
+      "mbid": "3e9fed33-b7a7-45f0-9624-ee8d962db293",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "paleface swiss stick to your guns",
+      "name": "Paleface Swiss, Stick To Your Guns",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "get shakes",
+      "name": "Get Shakes",
+      "present": true,
+      "mbid": "e07afe7c-16ab-47cf-aef9-ed2611da4543",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "kuumbatoudie heath",
+      "name": "Kuumba-Toudie Heath",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "cootie catcher",
+      "name": "Cootie Catcher",
+      "present": true,
+      "mbid": "3559a88a-e47f-461a-b63d-9a626e85c1eb",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "barry phillips",
+      "name": "Barry Phillips",
+      "present": true,
+      "mbid": "2f22cdea-7b59-4941-a0b9-23778d380341",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "sense of fear",
+      "name": "Sense of Fear",
+      "present": true,
+      "mbid": "10ccb582-05c4-48fa-990d-a428618d921c",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "wulfer",
+      "name": "Wulfer",
+      "present": true,
+      "mbid": "c61fe9d5-798b-4367-b3bb-af27e62a3398",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "rob base and dj ez rock",
+      "name": "Rob Base and DJ E-Z Rock",
+      "present": true,
+      "mbid": "6f191c70-1345-4ea5-b7af-5db9ee50d7c0",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "atw",
+      "name": "atw",
+      "present": true,
+      "mbid": "0c9601d5-0c9b-4411-8560-85303966cf01",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "jennarie",
+      "name": "Jennarie",
+      "present": true,
+      "mbid": "a15a1907-0b5a-4c58-816d-9b596e4d3d7f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "maquahuitl",
+      "name": "Maquahuitl",
+      "present": true,
+      "mbid": "9a8a71f9-7af4-4f7e-bfe8-12fe69814673",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "nedgravd",
+      "name": "Nedgravd",
+      "present": true,
+      "mbid": "2cb8844d-e26f-4432-b1dc-2de8685d6c79",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "electric eels",
+      "name": "Electric Eels",
+      "present": true,
+      "mbid": "b5905195-a456-454a-b32d-cdeafd9bea51",
+      "match_score": 100,
+      "artist_rel_degree": 5,
+      "connected": true
+    },
+    {
+      "norm": "tigre ulli",
+      "name": "Tigre Ulli",
+      "present": true,
+      "mbid": "310ff54f-9598-43e0-a47e-1882afc29f54",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "dodobirdie",
+      "name": "DODOBIRDIE",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "sun of the suns",
+      "name": "sun of the suns",
+      "present": true,
+      "mbid": "d121984b-71cf-472e-a4db-200640ffb5b5",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "patrice roberts and machel montano",
+      "name": "Patrice Roberts & Machel Montano",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "elephant man and di genius",
+      "name": "ELEPHANT MAN & DI GENIUS",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "oscenrad",
+      "name": "Oscenrad",
+      "present": true,
+      "mbid": "85c63559-685a-4fae-8597-aa76e795ab96",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "stnlss",
+      "name": "STNLSS",
+      "present": true,
+      "mbid": "b9d12002-b89f-4334-8481-ce34fc8a5bb5",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "hundreds of au",
+      "name": "Hundreds of AU",
+      "present": true,
+      "mbid": "6c42c57b-b2f5-4075-9b14-20e23aed9201",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "samantics",
+      "name": "Samantics",
+      "present": true,
+      "mbid": "6f1a154b-4599-448a-89ef-393e356098f9",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "postmen",
+      "name": "Postmen",
+      "present": true,
+      "mbid": "9cf6761f-e82e-4fd3-b95d-5c1091e5455f",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "satan jokers",
+      "name": "Satan jokers",
+      "present": true,
+      "mbid": "3c816202-1d93-4d95-b753-4fcd73c043fa",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "spencer krug",
+      "name": "Spencer Krug",
+      "present": true,
+      "mbid": "2ba12d30-216e-48b2-b673-e92203bab01c",
+      "match_score": 100,
+      "artist_rel_degree": 8,
+      "connected": true
+    },
+    {
+      "norm": "ullah",
+      "name": "Ullah",
+      "present": true,
+      "mbid": "fd2d35ce-cb63-40b6-8949-37a0a2e8dd29",
+      "match_score": 100,
+      "artist_rel_degree": 6,
+      "connected": true
+    },
+    {
+      "norm": "common people",
+      "name": "The Common People",
+      "present": true,
+      "mbid": "f5879c33-3902-41cb-b6bb-00ddbf1cdc4e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "ie",
+      "name": "IE",
+      "present": true,
+      "mbid": "98aa858c-adc6-41ea-9cac-753f82b825fb",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "nielshenning \u00f8rsted pedersen",
+      "name": "Niels-Henning \u00d8rsted Pedersen",
+      "present": true,
+      "mbid": "3a3cec56-8514-49a0-b676-c816a5f43bda",
+      "match_score": 100,
+      "artist_rel_degree": 14,
+      "connected": true
+    },
+    {
+      "norm": "cemetery skyline",
+      "name": "Cemetery Skyline",
+      "present": true,
+      "mbid": "05a1a0e7-fb0d-4433-8f02-b23eb12e1ab3",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "beyond conscious",
+      "name": "Beyond Conscious",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "purima purima",
+      "name": "Purima Purima",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "jaz elise",
+      "name": "Jaz Elise",
+      "present": true,
+      "mbid": "3715d1f5-e7c4-46ec-9f9f-6d677ef43d2d",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "tapps",
+      "name": "Tapps",
+      "present": true,
+      "mbid": "c3e515af-67f3-4bc8-849b-97468e2bd284",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "ali and charif megarbane",
+      "name": "Ali & Charif Megarbane",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "x101",
+      "name": "X-101",
+      "present": true,
+      "mbid": "79a13ec7-1c0d-41c0-9151-8de1f95f0a2a",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "ipy",
+      "name": "I.P.Y.",
+      "present": true,
+      "mbid": "1deee676-eabb-472b-805e-768f3c1a62e1",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "angkanang kunchai",
+      "name": "Angkanang Kunchai",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "enchanted hunters",
+      "name": "Enchanted Hunters",
+      "present": true,
+      "mbid": "00a15a2f-7c56-4595-9ea9-28a76f7212df",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "varnheim",
+      "name": "Varnheim",
+      "present": true,
+      "mbid": "792e3a9c-10b2-4a29-af4c-2e12b9354094",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "world without",
+      "name": "World Without",
+      "present": true,
+      "mbid": "7a2e2f57-3cdf-4787-95be-85014c520c2e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "pretty swans",
+      "name": "Pretty Swans",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "jacobus clemens non papa",
+      "name": "Jacobus Clemens non Papa",
+      "present": true,
+      "mbid": "ea07995e-fd2d-4091-85bd-f780bc3c45bf",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "grupo rana",
+      "name": "Grupo Rana",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "ethiopiques series",
+      "name": "Ethiopiques Series",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "bunny hops",
+      "name": "Bunny Hops",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "kan\u00e9",
+      "name": "Kan\u00e9",
+      "present": true,
+      "mbid": "bc3ead02-18f6-4b63-8214-638ffbb42a11",
+      "match_score": 100,
+      "artist_rel_degree": 19,
+      "connected": true
+    },
+    {
+      "norm": "proffesionally dumb",
+      "name": "Proffesionally dumb",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "jessica moss",
+      "name": "Jessica Moss",
+      "present": true,
+      "mbid": "17736c57-3846-4d15-9d9e-acbb82398a20",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "salif",
+      "name": "Salif",
+      "present": true,
+      "mbid": "789edc91-6362-4e92-b8db-cd6b5456b176",
+      "match_score": 98,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "hockitay",
+      "name": "Hockitay",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "nuclear messiah",
+      "name": "Nuclear Messiah",
+      "present": true,
+      "mbid": "3acf3dd9-7646-441b-9763-ec6d672a31cc",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "joseph bologne",
+      "name": "Joseph Bologne",
+      "present": true,
+      "mbid": "65818030-2526-449b-89e2-9d562ac68bb3",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "ron coolen",
+      "name": "Ron Coolen",
+      "present": true,
+      "mbid": "2745fbc9-6709-46d9-8900-a5dca5202313",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "metalhawk",
+      "name": "METALHAWK",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "149 dead marines",
+      "name": "149 Dead Marines",
+      "present": true,
+      "mbid": "40e9096f-6746-4892-9d72-58a3ce3d90bf",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "s janaki",
+      "name": "S. Janaki",
+      "present": true,
+      "mbid": "ea5c9518-f1e4-4304-a6ed-9ead3a60ac2e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "gryla",
+      "name": "Gryla",
+      "present": true,
+      "mbid": "b4fd1c6d-3bc9-4d7a-bdbd-9a2d56009cd9",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "commodo and rocks foe",
+      "name": "Commodo & Rocks FOE",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "kele le roc",
+      "name": "Kele Le Roc",
+      "present": true,
+      "mbid": "270c0fed-5cba-4f3f-89e3-b594e9bfc689",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "emma beko",
+      "name": "Emma Beko",
+      "present": true,
+      "mbid": "f64d1514-c58d-47b1-b280-40730bb3824e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "erland dahlen",
+      "name": "Erland Dahlen",
+      "present": true,
+      "mbid": "c38878fc-4aae-40d9-a721-7d234bd4ad99",
+      "match_score": 100,
+      "artist_rel_degree": 5,
+      "connected": true
+    },
+    {
+      "norm": "jennifer walton",
+      "name": "Jennifer Walton",
+      "present": true,
+      "mbid": "d193f3e0-6a9a-4ddf-99d2-6e7beeabc22a",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "horn",
+      "name": "Horn",
+      "present": true,
+      "mbid": "9b02b1ef-8ded-4dbf-a005-a5c98b6b178a",
+      "match_score": 93,
+      "artist_rel_degree": 5,
+      "connected": true
+    },
+    {
+      "norm": "toothpick",
+      "name": "Toothpick",
+      "present": true,
+      "mbid": "d6acdaa1-489f-45b6-ae05-96a2f7e9680a",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "thomas peter",
+      "name": "Thomas Peter",
+      "present": true,
+      "mbid": "a78af9a5-7ee1-49b1-a703-cdbfb6afdd12",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "burying angels",
+      "name": "Burying Angels",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "hayes bradley",
+      "name": "Hayes Bradley",
+      "present": true,
+      "mbid": "6eee7896-f7b9-45e7-94b5-7c0727c2692d",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "wired",
+      "name": "Wired",
+      "present": true,
+      "mbid": "980d1429-f858-4d62-bb65-d2661a4b901c",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "patrola",
+      "name": "Patrola",
+      "present": true,
+      "mbid": "179514ae-eb09-4063-9701-5bfe4cb0703c",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "bro folded faster than the samsung fold",
+      "name": "Bro Folded Faster Than The Samsung Fold",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "limitlezz",
+      "name": "Limitlezz",
+      "present": true,
+      "mbid": "3a1fb6ca-6116-4daa-ab69-7fa60a27f3d0",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "michael kiske and amanda somerville",
+      "name": "Michael Kiske & Amanda Somerville",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "juan del encina",
+      "name": "Juan del Encina",
+      "present": true,
+      "mbid": "3472646b-0d12-4319-9544-defac601ea6b",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "rebound x",
+      "name": "REBOUND X",
+      "present": true,
+      "mbid": "0e01d323-8130-4895-81b7-b8466466d02f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "arenna",
+      "name": "Arenna",
+      "present": true,
+      "mbid": "90706643-6be5-4741-8876-1825f59e21e7",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "leil\u00eda",
+      "name": "Leil\u00eda",
+      "present": true,
+      "mbid": "75b9668f-8c70-4f18-b794-4216cf2b54f9",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "emma",
+      "name": "E.m.m.a.",
+      "present": true,
+      "mbid": "ec6eaf55-d743-46ce-89b6-014943a2773c",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "mshukai",
+      "name": "Mshukai",
+      "present": true,
+      "mbid": "5b9e1202-cb66-4179-8f4b-2988cfb65d92",
+      "match_score": 100,
+      "artist_rel_degree": 4,
+      "connected": true
+    },
+    {
+      "norm": "badge \u00e9poque ensemble lammping and boldy james",
+      "name": "Badge \u00c9poque Ensemble, Lammping & Boldy James",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "carl oesterhelt",
+      "name": "Carl Oesterhelt",
+      "present": true,
+      "mbid": "4ef085d7-9685-4ba5-86d1-2e200f7eb993",
+      "match_score": 100,
+      "artist_rel_degree": 5,
+      "connected": true
+    },
+    {
+      "norm": "manchester orchestra and phoebe bridgers",
+      "name": "Manchester Orchestra & Phoebe Bridgers",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "decarthus",
+      "name": "Decarthus",
+      "present": true,
+      "mbid": "cd910605-3834-49d3-b6ca-1b494ceb75c9",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "hannah boleyn",
+      "name": "Hannah Boleyn",
+      "present": true,
+      "mbid": "556434ff-ef1a-4442-9436-b70864746efb",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "soft no",
+      "name": "Soft No",
+      "present": true,
+      "mbid": "bd411a83-1475-4ee3-8207-74f27ef434c6",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "dj rn music",
+      "name": "Dj Rn Music",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "zaki ali",
+      "name": "Zaki Ali",
+      "present": true,
+      "mbid": "c033cc82-2159-422a-9520-bebbf1455b98",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "spaceman",
+      "name": "Spaceman",
+      "present": true,
+      "mbid": "e7716dae-5cca-4ad4-bbe1-acc7ca2253a6",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "anna mabo",
+      "name": "annA Mabo",
+      "present": true,
+      "mbid": "b329bb07-a17e-423f-9d32-c524ccf40215",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "rsun",
+      "name": "Rsun",
+      "present": true,
+      "mbid": "fe8fe9ad-ca4f-4ea2-a3dc-3ea90a6b831f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "bloody vengeance",
+      "name": "Bloody Vengeance",
+      "present": true,
+      "mbid": "e6bec581-96ab-4b3f-9dff-82cb616dd3d0",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "ashley alisha",
+      "name": "Ashley Alisha",
+      "present": true,
+      "mbid": "74cc387e-e793-4011-9183-02e7e3186563",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "ppp piezo plead and python",
+      "name": "PPP (Piezo, Plead & Python)",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "ictus x suzanne vega x collegium vocale gent",
+      "name": "Ictus x Suzanne Vega x Collegium Vocale Gent",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "minou",
+      "name": "Minou",
+      "present": true,
+      "mbid": "9f655b36-c315-43af-880e-b8e1e41db660",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "claim",
+      "name": "The Claim",
+      "present": true,
+      "mbid": "74d5e521-825a-49b6-a52e-e349be3d286e",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "\ucd5c\uc900\uc6a9 \ud64d\ucca0\uae30 sachiko m and otomo yoshihide",
+      "name": "\ucd5c\uc900\uc6a9, \ud64d\ucca0\uae30, Sachiko M, & Otomo Yoshihide",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "charlotte ekkel",
+      "name": "Charlotte Ekkel",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "tochi raina",
+      "name": "Tochi Raina",
+      "present": true,
+      "mbid": "64e61fc0-1aac-48f5-bd9c-ef5192f56515",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "desade",
+      "name": "DeSade",
+      "present": true,
+      "mbid": "72f04fbf-2b04-40b8-afa9-3cad42bf23ed",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "zhu wenbo noah ophovenbaldwin",
+      "name": "Zhu Wenbo, Noah Ophoven-Baldwin",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "tensor",
+      "name": "Tensor",
+      "present": true,
+      "mbid": "c0ff52a0-1ad4-4d8c-abab-2579d3260880",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "junk drawer",
+      "name": "Junk Drawer",
+      "present": true,
+      "mbid": "996cf38a-ca7c-4f34-b253-3523d0140935",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "eighteenth day of may",
+      "name": "The Eighteenth Day of May",
+      "present": true,
+      "mbid": "32aa555f-cd0e-445a-9cc8-25d94d3ac36a",
+      "match_score": 100,
+      "artist_rel_degree": 3,
+      "connected": true
+    },
+    {
+      "norm": "br\u00ecghde chaimbeul",
+      "name": "Br\u00ecghde Chaimbeul",
+      "present": true,
+      "mbid": "719719b6-3ae8-4ec1-8007-560af954cf6e",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "mathman",
+      "name": "Mathman",
+      "present": true,
+      "mbid": "fc885578-5da2-4d6a-902f-238f30ab4557",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "suffer through",
+      "name": "Suffer Through",
+      "present": true,
+      "mbid": "44b975df-719d-4482-af00-76c4cab9517a",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "dean summerwind",
+      "name": "Dean Summerwind",
+      "present": true,
+      "mbid": "f9e221b1-e9c4-40c1-b358-7e9bd23a8b9d",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "stephen vitiello",
+      "name": "Stephen Vitiello",
+      "present": true,
+      "mbid": "dd6a95fb-28e8-4863-a94c-4232459cef99",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "blood countess",
+      "name": "Blood Countess",
+      "present": true,
+      "mbid": "8b9352fa-779b-4b13-a706-b3d44d29ebd4",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "little grandad",
+      "name": "Little Grandad",
+      "present": true,
+      "mbid": "4d60a679-0156-43c2-8bcd-fc19fb99060c",
+      "match_score": 100,
+      "artist_rel_degree": 4,
+      "connected": true
+    },
+    {
+      "norm": "hrant melody",
+      "name": "Hrant Melody",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "montparnasse musique",
+      "name": "Montparnasse Musique",
+      "present": true,
+      "mbid": "208de1b3-bd28-472d-a5b0-9c09a625c173",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "nean",
+      "name": "Nean",
+      "present": true,
+      "mbid": "82132964-a660-44b8-9ed4-ffef8f65da93",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "wren carpenter",
+      "name": "Wren Carpenter",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "laa lee",
+      "name": "Laa Lee",
+      "present": true,
+      "mbid": "5381f5c0-55b2-42b9-9f2b-c275e7673580",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "piae cantiones",
+      "name": "Piae Cantiones",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "will sheff",
+      "name": "Will Sheff",
+      "present": true,
+      "mbid": "6f3f6cd4-edbe-4003-8b22-055e4ff8b927",
+      "match_score": 100,
+      "artist_rel_degree": 2,
+      "connected": true
+    },
+    {
+      "norm": "sinister ghost",
+      "name": "Sinister Ghost",
+      "present": true,
+      "mbid": "48f6766a-fe0f-4a87-8ee2-07f474575e47",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "hekt",
+      "name": "Hekt",
+      "present": true,
+      "mbid": "177a4baa-9033-4bc2-8d00-15dbb80dbe6f",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "salvador sobral and s\u00edlvia p\u00e9rez cruz",
+      "name": "Salvador Sobral & S\u00edlvia P\u00e9rez Cruz",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "twin s and rekky",
+      "name": "Twin S & Rekky",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "nanku",
+      "name": "Nanku",
+      "present": true,
+      "mbid": "5e1ee83e-682a-42c5-ac97-e8e4f2a74564",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "swing bot",
+      "name": "The Swing Bot",
+      "present": true,
+      "mbid": "bbd7ae85-3533-4da4-9719-bd16c5de5251",
+      "match_score": 100,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "maddie bay",
+      "name": "Maddie Bay",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "trio apolo and yuri ortu\u00f1o",
+      "name": "Trio Apolo & Yuri Ortu\u00f1o",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "split",
+      "name": "Split",
+      "present": true,
+      "mbid": "7e4acd7f-c6cc-4bac-9e1d-a92c27950b71",
+      "match_score": 81,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "le\u00f3 weiner",
+      "name": "Le\u00f3 Weiner",
+      "present": true,
+      "mbid": "364944aa-abf5-4220-b1b3-089080630a49",
+      "match_score": 100,
+      "artist_rel_degree": 9,
+      "connected": true
+    },
+    {
+      "norm": "esapekka salonen",
+      "name": "Esa-Pekka Salonen",
+      "present": true,
+      "mbid": "66b01c9c-3344-46b1-b5fe-cab3c2834e32",
+      "match_score": 100,
+      "artist_rel_degree": 20,
+      "connected": true
+    },
+    {
+      "norm": "ina boyle",
+      "name": "Ina Boyle",
+      "present": true,
+      "mbid": "08060c1b-6004-4cf6-ae7b-16b48e8dfc7e",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    },
+    {
+      "norm": "harmony my strength",
+      "name": "Harmony My Strength",
+      "present": false,
+      "mbid": null,
+      "match_score": null,
+      "artist_rel_degree": null,
+      "connected": false
+    },
+    {
+      "norm": "mould",
+      "name": "Mould",
+      "present": true,
+      "mbid": "758c7b15-0774-4313-a822-52bb1cf04df9",
+      "match_score": 83,
+      "artist_rel_degree": 0,
+      "connected": false
+    },
+    {
+      "norm": "morelia",
+      "name": "morelia",
+      "present": true,
+      "mbid": "770ed7bd-2841-49f8-a957-d14d2c12aaf6",
+      "match_score": 100,
+      "artist_rel_degree": 1,
+      "connected": true
+    }
+  ]
+}
