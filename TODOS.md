@@ -1,0 +1,33 @@
+# TODOS
+
+Deferred work with context. Format: what / why / context / effort (human → CC) / priority.
+
+## From /autoplan review of docs/roadmap-10x-2026-07-02.md (2026-07-02)
+
+- [ ] **Bandcamp analysis: candidate source + paid-fan surface** — "1000 true
+  fans" is about fans who pay; Bandcamp is where obscure-artist fans pay, and
+  its Discover/fan-collections graph is an unanalyzed candidate source.
+  Research first (API/ToS, adjacency quality), then A/B in the eval harness
+  like E3's alternates. Effort M → S. P2. Depends on: E3 harness plumbing.
+- [ ] **Mission-arithmetic section** — write the fan-delivery equation
+  (MAU × discoveries/user × concentration per artist) with real numbers once
+  the analytics baseline (E1) produces actual MAU; decide what the listener
+  app can honestly claim toward the mission. Effort S → S. P2. Depends on: E1.
+- [ ] **Competitive one-pager** — Obscurify/stats.fm/Receiptify (taste-toy),
+  Spotify for Artists/ChartMetric/Soundcharts (artist analytics),
+  ListenBrainz (open infra): who does what, why they won't do obscurity-first,
+  what the durable edge is (candidate: attributed obscure-adoption data +
+  artist community). Effort S → S. P2.
+- [ ] **Unify MAX_LISTENER_CEILING constants** — defined twice
+  (backend/src/pipeline/scoring.rs:29, track_scoring.rs:24); single config
+  const so "obscurity" has one definition. Also drop vestigial
+  `recommended_by`/`conviction_score` fields (models.rs:77-79, never
+  populated). Effort S → S. P3.
+- [ ] **E4: Artist self-submission v0** *(pending final-gate decision;
+  default lands here as P2 if unanswered)* — form + review queue + candidate
+  -pool injection; the only candidate-source fix requiring no CEGE and no
+  scraping; seeds the two-sided marketplace. Effort M → S. P2.
+- [ ] **E5: Friend-compare on the share page** *(pending final-gate decision;
+  default lands here as P2 if unanswered)* — compare-with-friend on /u/ or
+  /r/ pages; the proven growth mechanic in this category (Obscurify,
+  Receiptify). Effort S/M → S. P2.
