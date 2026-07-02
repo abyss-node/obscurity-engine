@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Playfair_Display, IBM_Plex_Mono, IBM_Plex_Serif } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const playfair = Playfair_Display({
@@ -48,6 +49,10 @@ export default function RootLayout({
         className={`${playfair.variable} ${ibmMono.variable} ${ibmSerif.variable} font-mono antialiased min-h-screen`}
       >
         {children}
+        {/* Vercel Web Analytics. No-op until Analytics is enabled in the Vercel
+            dashboard (user action) — renders nothing and sends no requests when
+            the feature/env is absent, so it is zero-impact in dev and locally. */}
+        <Analytics />
       </body>
     </html>
   );
