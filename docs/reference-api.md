@@ -123,13 +123,78 @@ not written to the store.
 
 ## Caching
 
-- **Server result cache:** in-memory `RwLock<HashMap>`, **1-hour TTL**, keyed by
-  `username:period`. Only non-empty results are cached. A custom `api_key`
-  bypasses it entirely.
+- **Server result cache:** keyed by `reverse_scrobble:{username}:{period}:{appetite}`
+  (and an analogous `tracks:…` key for `/api/discovery/tracks`), **1-hour TTL**.
+  Only non-empty results are cached. A custom `api_key` bypasses it entirely.
+  Two pluggable backends, selected at boot:
+  - **In-memory (default):** an `RwLock<HashMap>`. Zero config, per-instance —
+    a cache miss on every fresh backend process/instance.
+  - **Redis-backed (opt-in):** set `REDIS_URL` and the same cache is backed by
+    Redis instead, so results are shared across backend instances and survive
+    restarts/redeploys. If Redis is unreachable at boot or at request time, the
+    backend logs a warning and **degrades to a cache miss** (never fails the
+    request) — see [howto-deploy.md](howto-deploy.md).
 - **Per-artist audit cache:** `artist.getinfo` responses are cached **24h**
-  (capped at 10,000 entries) so repeated computes are cheap.
+  (capped at 10,000 entries) so repeated computes are cheap. Always in-memory,
+  independent of `REDIS_URL`.
 - **Client cache:** the frontend also caches results in `localStorage` for 15
   minutes; the "↺ refresh" control bypasses it.
+
+## Frontend API routes (Next.js, not the Rust backend)
+
+The following two routes are served by the **frontend** app (Next.js route
+handlers), not the Axum backend above. They back the persistent share-link
+feature (share a result set via a short URL that survives a page reload / a
+different browser).
+
+### `POST /api/share`
+
+Store a share payload and return a short id. Body is the raw JSON payload
+(not wrapped) — see the shape below. Max **100KB**; extra/unknown top-level
+keys are rejected.
+
+Request body (`SharePayload`):
+
+```jsonc
+{
+  "username": "rj",
+  "period": "6month",
+  "mode": "artists",        // must be "artists" — "tracks" mode isn't shareable yet
+  "appetite": "balanced",
+  "recommendations": [ /* the `artists` array from /api/discovery */ ],
+  "computedAt": 1751500000000  // Date.now() at compute time
+}
+```
+
+| Response | When |
+|---|---|
+| `201 { "id": "Ltjg6OZUns" }` | stored; 10-char URL-safe id |
+| `400 { "error": "invalid JSON" }` | body isn't valid JSON |
+| `400 { "error": "malformed share payload" }` | fails shape/type validation |
+| `413 { "error": "payload too large" }` | body exceeds 100KB |
+| `500 { "error": "could not store share" }` | store write failed (e.g. KV unreachable) |
+
+### `GET /api/share/{id}`
+
+Fetch a previously stored payload by id. Returns the exact bytes that were
+POSTed (byte-identical roundtrip), `Content-Type: application/json`.
+
+| Response | When |
+|---|---|
+| `200` + the stored JSON | id exists and hasn't expired |
+| `404 { "error": "share not found or expired" }` | unknown id, or past the 30-day TTL |
+
+The human-facing page for a share is `GET /r/{id}` (a server-rendered Next.js
+page, not a JSON API) — it calls the same store directly, renders the
+recommendations read-only, and shows a "link expired" state on a miss.
+
+### Storage backend
+
+Same two-tier pattern as the backend result cache: **Vercel KV** (Upstash-Redis
+REST API) when `KV_REST_API_URL` + `KV_REST_API_TOKEN` are set, else an
+in-process in-memory `Map` (zero-config default, ephemeral — lost on restart,
+not shared across serverless instances). TTL is 30 days either way. See
+[howto-deploy.md](howto-deploy.md) for the env var setup.
 
 ## Rate limiting & retries
 
