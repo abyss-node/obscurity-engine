@@ -7,11 +7,10 @@ use axum::{
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use std::time::Duration;
 
+mod cache;
 mod lastfm;
 mod models;
 mod pipeline;
@@ -63,8 +62,9 @@ fn appetite_to_mult(appetite: Option<&str>) -> Option<f64> {
 struct AppState {
     client: Arc<LastfmClient>,
     spotify: Option<Arc<SpotifyClient>>,
-    cache: RwLock<HashMap<String, (Instant, models::DiscoveryResponse)>>,
-    track_cache: RwLock<HashMap<String, (Instant, models::TrackDiscoveryResponse)>>,
+    // Result cache — in-memory by default, Redis-backed when REDIS_URL is set.
+    // Keys are namespaced by the callers (`reverse_scrobble:…`, `tracks:…`).
+    cache: cache::CacheStore,
 }
 
 type ApiResult = Result<Json<models::DiscoveryResponse>, (StatusCode, Json<models::ErrorResponse>)>;
@@ -96,14 +96,9 @@ async fn discovery_handler(
     // Custom-key requests skip the cache — results aren't stored server-side.
     if custom_key.is_none() {
         let cache_key = format!("reverse_scrobble:{}:{}:{}", query.username, query.period, appetite);
-        {
-            let cache = state.cache.read().await;
-            if let Some((timestamp, data)) = cache.get(&cache_key) {
-                if timestamp.elapsed() < Duration::from_secs(3600) {
-                    println!("Cache hit: {}", cache_key);
-                    return Ok(Json(data.clone()));
-                }
-            }
+        if let Some(data) = state.cache.get_json::<models::DiscoveryResponse>(&cache_key).await {
+            println!("Cache hit: {}", cache_key);
+            return Ok(Json(data));
         }
         println!("Cache miss: {}", cache_key);
         match discover_obscure_artists(client, query.username, query.period, appetite_mult).await {
@@ -112,8 +107,9 @@ async fn discovery_handler(
                 let result = attach_listen_links(&state.spotify, result).await;
                 // Only cache non-empty results; degraded/empty runs shouldn't stick.
                 if !result.artists.is_empty() {
-                    let mut cache = state.cache.write().await;
-                    cache.insert(cache_key, (Instant::now(), result.clone()));
+                    state.cache
+                        .put_json(&cache_key, &result, Duration::from_secs(cache::DEFAULT_TTL_SECS))
+                        .await;
                 }
                 Ok(Json(result))
             }
@@ -230,20 +226,16 @@ async fn track_discovery_handler(
 
     if custom_key.is_none() {
         let cache_key = format!("tracks:{}:{}", query.username, query.period);
-        {
-            let cache = state.track_cache.read().await;
-            if let Some((timestamp, data)) = cache.get(&cache_key) {
-                if timestamp.elapsed() < Duration::from_secs(3600) {
-                    return Ok(Json(data.clone()));
-                }
-            }
+        if let Some(data) = state.cache.get_json::<models::TrackDiscoveryResponse>(&cache_key).await {
+            return Ok(Json(data));
         }
         match discover_obscure_tracks(client, query.username, query.period).await {
             Ok(result) => {
                 // Only cache non-empty results; degraded/empty runs shouldn't stick.
                 if !result.tracks.is_empty() {
-                    let mut cache = state.track_cache.write().await;
-                    cache.insert(cache_key, (Instant::now(), result.clone()));
+                    state.cache
+                        .put_json(&cache_key, &result, Duration::from_secs(cache::DEFAULT_TTL_SECS))
+                        .await;
                 }
                 Ok(Json(result))
             }
@@ -391,11 +383,34 @@ async fn main() {
         }
     };
 
+    // Select the cache backend: Redis when REDIS_URL is set (degrades to a miss
+    // if Redis is unreachable), in-memory otherwise. Log the active store.
+    let cache_store = match std::env::var("REDIS_URL").ok().filter(|s| !s.is_empty()) {
+        Some(url) => match cache::RedisStore::new(&url) {
+            Ok(store) => {
+                if store.ping().await {
+                    println!("Cache store: Redis (REDIS_URL set, connected)");
+                } else {
+                    println!("Cache store: Redis (REDIS_URL set, currently unreachable — will degrade to cache miss until it recovers)");
+                }
+                cache::CacheStore::Redis(store)
+            }
+            Err(e) => {
+                eprintln!("REDIS_URL is malformed ({e}); falling back to in-memory cache");
+                println!("Cache store: in-memory (Redis URL invalid)");
+                cache::CacheStore::InMemory(cache::InMemoryStore::new())
+            }
+        },
+        None => {
+            println!("Cache store: in-memory (REDIS_URL not set)");
+            cache::CacheStore::InMemory(cache::InMemoryStore::new())
+        }
+    };
+
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::with_keys(api_keys, key_store)),
         spotify,
-        cache: RwLock::new(HashMap::new()),
-        track_cache: RwLock::new(HashMap::new()),
+        cache: cache_store,
     });
 
     // B2: CORS — use FRONTEND_URL env var; fall back to any localhost in dev
