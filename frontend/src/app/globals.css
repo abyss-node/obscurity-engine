@@ -10,9 +10,12 @@
   --text:      #EDE8DC;
   --muted:     #7A7265;
   --dim:       #4A4640;
-  --accent:    #B8832E;
-  --accent2:   #8B5E2A;
-  --discovery: #8B3A2A;
+  --accent:      #B8832E;
+  --accent2:     #8B5E2A;
+  /* hover-brightened gold — from the results-redesign handoff token table
+     ("gold-bright"); used only for hover on gold affordances. */
+  --accent-bright: #D9A441;
+  --discovery:   #8B3A2A;
 }
 
 @layer base {
