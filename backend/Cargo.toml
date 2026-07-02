@@ -15,7 +15,7 @@ futures = "0.3"
 urlencoding = "2.1"
 dashmap = "5.5"
 chrono = { version = "0.4", features = ["serde"] }
-redis = { version = "0.25", features = ["tokio-comp"], optional = true }
-
-[features]
-redis-cache = ["redis"]
+# Non-optional so the default `cargo build --release` compiles and runs the
+# Redis-backed cache path. When REDIS_URL is unset the in-memory store is used
+# and Redis is never contacted.
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
