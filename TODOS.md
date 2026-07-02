@@ -23,11 +23,12 @@ Deferred work with context. Format: what / why / context / effort (human → CC)
   const so "obscurity" has one definition. Also drop vestigial
   `recommended_by`/`conviction_score` fields (models.rs:77-79, never
   populated). Effort S → S. P3.
-- [ ] **E4: Artist self-submission v0** *(pending final-gate decision;
-  default lands here as P2 if unanswered)* — form + review queue + candidate
-  -pool injection; the only candidate-source fix requiring no CEGE and no
-  scraping; seeds the two-sided marketplace. Effort M → S. P2.
-- [ ] **E5: Friend-compare on the share page** *(pending final-gate decision;
-  default lands here as P2 if unanswered)* — compare-with-friend on /u/ or
-  /r/ pages; the proven growth mechanic in this category (Obscurify,
-  Receiptify). Effort S/M → S. P2.
+- [ ] **E4: Artist self-submission v0** *(user decision 2026-07-02: DEFERRED)*
+  — form + review queue + candidate-pool injection; the only candidate-source
+  fix requiring no CEGE and no scraping; seeds the two-sided marketplace.
+  Revisit alongside Phase 4 or if the E3 alternate-source spikes disappoint.
+  Effort M → S. P2.
+- [ ] **E5: Friend-compare on the share page** *(user decision 2026-07-02:
+  DEFERRED)* — compare-with-friend on /u/ or /r/ pages; the proven growth
+  mechanic in this category (Obscurify, Receiptify). Revisit when retention
+  is measurable post-Phase-2. Effort S/M → S. P2.
