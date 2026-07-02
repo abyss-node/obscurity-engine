@@ -52,8 +52,10 @@ export default function EmptyState({
           {onCheckSetup && (
             <button
               onClick={onCheckSetup}
-              className="font-mono text-[10px] tracking-[0.16em] uppercase px-5 py-[9px] border transition-opacity duration-150 hover:opacity-70"
+              className="font-mono text-[10px] tracking-[0.16em] uppercase px-5 py-[9px] border transition-colors duration-150"
               style={{ borderColor: "var(--accent2)", color: "var(--accent)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-bright)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--accent)")}
             >
               check my setup
             </button>

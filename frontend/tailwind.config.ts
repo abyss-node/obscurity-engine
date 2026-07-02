@@ -13,6 +13,11 @@ const config: Config = {
         mono: ['var(--font-mono)', 'monospace'],
         body: ['var(--font-serif)', 'Georgia', 'serif'],
       },
+      colors: {
+        // Hover-brightened gold (handoff "gold-bright" token). Registered so the
+        // token is part of the Tailwind theme; components reference the CSS var.
+        'accent-bright': 'var(--accent-bright)',
+      },
     },
   },
   plugins: [],
