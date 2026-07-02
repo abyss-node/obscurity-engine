@@ -206,8 +206,14 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                       rel="noopener noreferrer"
                       className="flex items-center justify-between px-3 py-2.5 border font-mono text-[10px] tracking-wider transition-colors duration-150"
                       style={{ color: "var(--accent)", borderColor: "var(--border)" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--accent2)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = "var(--accent2)";
+                        e.currentTarget.style.color = "var(--accent-bright)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = "var(--border)";
+                        e.currentTarget.style.color = "var(--accent)";
+                      }}
                     >
                       <span>{l.label}</span>
                       <span>{l.share ? "↪" : "↗"}</span>
