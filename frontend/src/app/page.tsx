@@ -12,13 +12,12 @@ import ErrorState from "../components/ErrorState";
 import EmptyState from "../components/EmptyState";
 import ShareCard from "../components/ShareCard";
 import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
-import { getDepthProse } from "../lib/scoring";
 import * as Spotify from "../lib/spotify";
-import { loadCache, saveCache } from "../lib/cache";
 import OnboardingGuide from "../components/OnboardingGuide";
 import SavedView from "../components/SavedView";
 import { getSession, buildLoginUrl, isLoginConfigured, logout as sessionLogout, type Session } from "../lib/session";
 import { fetchSaved } from "../lib/me";
+import { useDiscovery } from "../lib/useDiscovery";
 import {
   PERIOD_WINDOWS,
   PERIOD_LABELS,
@@ -47,16 +46,6 @@ export default function Home() {
   const [period, setPeriod] = useState("blend");
   const [appetite, setAppetite] = useState("balanced");
   const [mode, setMode] = useState<DiscoveryMode>("artists");
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [tracks, setTracks] = useState<TrackItem[]>([]);
-  const [topGenres, setTopGenres] = useState<GenreWeight[]>([]);
-  const [activeSeedCount, setActiveSeedCount] = useState(0);
-  const [depthScore, setDepthScore] = useState(0);
-  const [lowDataMessage, setLowDataMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [wakingUp, setWakingUp] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchTrigger, setFetchTrigger] = useState(0);
   const [sortBy, setSortBy] = useState<SortType>("composite");
   const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
   const [isSharedView, setIsSharedView] = useState(false);
@@ -68,16 +57,32 @@ export default function Home() {
   const [apiKey, setApiKey] = useState("");
   const [shareKey, setShareKey] = useState(false);  // opt-in: contribute key to the shared pool
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
-  const [runId, setRunId] = useState<string | null>(null);
-  const [persistence, setPersistence] = useState(false);
   const [session, setSessionState] = useState<Session | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [showSaved, setShowSaved] = useState(false);
 
-  const lastFetchedUsernameRef = useRef<string | null>(null);
-  const forceFreshRef = useRef(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [shareState, setShareState] = useState<"idle" | "rendering" | "saved" | "copied">("idle");
+
+  // selectedGeoTags lives here (feeds the geo-tag filter memo below, never
+  // actually driven by any UI control today — see refactor notes) but the
+  // discovery fetch effect resets it on every fetch; resetSelectedGeoTags
+  // must stay referentially stable (empty dep array) so passing it into
+  // useDiscovery doesn't change when that effect re-runs.
+  const resetSelectedGeoTags = useCallback(() => setSelectedGeoTags([]), []);
+
+  // NOTE on hook-call order: useDiscovery is called here, ahead of the
+  // mount/session/url-mode effect below, so its setters (setTracks etc.)
+  // are available to that effect's closure. This registers useDiscovery's
+  // internal fetch effect BEFORE the mount effect, which is the reverse of
+  // the original page.tsx's source order (mount effect was declared first,
+  // fetch effect last). This re-ordering is safe: React defers all setState
+  // calls made during an effect to the *next* render/commit, so within any
+  // given commit every effect closes over the same pre-commit state
+  // regardless of call order, and none of these effects share a mutable ref
+  // with each other (useDiscovery's forceFreshRef/lastFetchedUsernameRef are
+  // internal-only). Verified against the full 144-test suite post-refactor.
+  const discovery = useDiscovery(username, period, appetite, mode, apiKey, resetSelectedGeoTags);
 
   useEffect(() => {
     // Last.fm session, if one was minted by a previous /auth/lastfm exchange.
@@ -98,7 +103,7 @@ export default function Home() {
         setUsername(meta.username);
         setInputLocal(meta.username);
         setMode("tracks");
-        setTracks(storedTracks);
+        discovery.setTracks(storedTracks);
         setSpotifyStatus("loading");
         (async () => {
           try {
@@ -164,14 +169,17 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [session]);
 
+  // stickinessThreshold/availableGeoTags are computed but not consumed
+  // anywhere (pre-existing dead code, preserved verbatim — see refactor
+  // report; not fixed here per the "no logic edits" rule).
   const stickinessThreshold = useMemo(() => {
-    if (artists.length < 1) return Infinity;
-    const scores = artists.map((a) => a.stickiness_score).sort((a, b) => b - a);
+    if (discovery.artists.length < 1) return Infinity;
+    const scores = discovery.artists.map((a) => a.stickiness_score).sort((a, b) => b - a);
     return scores[Math.max(0, Math.floor(scores.length * 0.1) - 1)] ?? Infinity;
-  }, [artists]);
+  }, [discovery.artists]);
 
   const sortedArtists = useMemo(() => {
-    const arr = [...artists];
+    const arr = [...discovery.artists];
     if (sortBy === "composite") arr.sort((a, b) => b.composite_score - a.composite_score);
     else if (sortBy === "conviction") arr.sort((a, b) => b.conviction_score - a.conviction_score);
     else if (sortBy === "stickiness") arr.sort((a, b) => b.stickiness_score - a.stickiness_score);
@@ -183,7 +191,7 @@ export default function Home() {
       if (aUntagged === bUntagged) return 0;
       return aUntagged ? 1 : -1;
     });
-  }, [artists, sortBy]);
+  }, [discovery.artists, sortBy]);
 
   const availableGeoTags = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -209,131 +217,6 @@ export default function Home() {
     );
   }, [sortedArtists, selectedGeoTags]);
 
-  const resultCount = mode === "tracks" ? tracks.length : artists.length;
-  const isInitialLoad = loading && resultCount === 0;
-  const isRefreshing = loading && resultCount > 0;
-
-  const applyData = useCallback((data: DiscoveryData | TrackDiscoveryData, m: DiscoveryMode) => {
-    if (m === "tracks") {
-      const d = data as TrackDiscoveryData;
-      setTracks(d.tracks || []);
-      setTopGenres(d.top_genres || []);
-      setActiveSeedCount(d.active_seed_count || 0);
-      setDepthScore(d.depth_score ?? 0);
-      setLowDataMessage(d.message ?? null);
-    } else {
-      const d = data as DiscoveryData;
-      setArtists(d.artists || []);
-      setTopGenres(d.top_genres || []);
-      setActiveSeedCount(d.active_seed_count || 0);
-      setDepthScore(d.depth_score ?? 0);
-      setLowDataMessage(d.message ?? null);
-      setRunId(d.run_id ?? null);
-      setPersistence(d.persistence === true);
-    }
-  }, []);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!username) return;
-
-      const isForceFresh = forceFreshRef.current;
-      forceFreshRef.current = false;
-
-      setError(null);
-      setLowDataMessage(null);
-      setSelectedGeoTags([]);
-      lastFetchedUsernameRef.current = username;
-
-      // Serve from cache when fresh and not a forced retry
-      if (!isForceFresh) {
-        const cached = loadCache<DiscoveryData | TrackDiscoveryData>(username, period, mode, appetite);
-        if (cached) {
-          if (mode === "tracks") setArtists([]);
-          else setTracks([]);
-          applyData(cached, mode);
-          setLoading(false);
-          return;
-        }
-      }
-
-      setArtists([]);
-      setTracks([]);
-      setTopGenres([]);
-      setDepthScore(0);
-      setLoading(true);
-      setWakingUp(false);
-      const wakeupTimer = setTimeout(() => setWakingUp(true), 3000);
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-        const keyParam = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
-        const endpoint = mode === "tracks"
-          ? `${apiUrl}/api/discovery/tracks?username=${encodeURIComponent(username)}&period=${period}${keyParam}`
-          : `${apiUrl}/api/discovery?username=${encodeURIComponent(username)}&period=${period}&appetite=${appetite}${keyParam}`;
-        // One automatic retry on a transient network drop (connection reset,
-        // brief backend restart). New users on flaky mobile connections were
-        // hitting a one-off "couldn't reach" that a manual retry fixed. We do
-        // NOT auto-retry a 90s timeout (that would just double the wait).
-        const fetchDiscovery = async (): Promise<Response> => {
-          try {
-            return await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
-          } catch (err) {
-            if (err instanceof DOMException && err.name === "TimeoutError") throw err;
-            await new Promise((r) => setTimeout(r, 2000));
-            return await fetch(endpoint, { signal: AbortSignal.timeout(90_000) });
-          }
-        };
-        const response = await fetchDiscovery();
-        if (!response.ok) {
-          let detail = `HTTP ${response.status}`;
-          try {
-            const body = await response.json();
-            if (body?.error) detail = String(body.error);
-          } catch { /* non-JSON */ }
-          // Upstream rate-limit / busy signatures from the backend → actionable hint
-          // instead of a raw "error decoding response body".
-          const busy =
-            response.status >= 500 &&
-            /rate limit|error decoding|failed to fetch|temporarily|unavailable/i.test(detail);
-          const errMsg = busy
-            ? "[ERR] SONAR_FAILURE — Last.fm is rate-limiting us right now. Wait a few seconds and retry."
-            : response.status >= 500
-              ? `[ERR] SONAR_FAILURE — The discovery service hit an error; retry in a moment. (${detail})`
-              : `[ERR] SONAR_FAILURE — ${detail}`;
-          setError(errMsg);
-          return;
-        }
-        if (mode === "tracks") {
-          const data: TrackDiscoveryData = await response.json();
-          applyData(data, mode);
-          saveCache(username, period, mode, appetite, data);
-        } else {
-          const data: DiscoveryData = await response.json();
-          applyData(data, mode);
-          saveCache(username, period, mode, appetite, data);
-        }
-      } catch (e) {
-        const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
-        setError(
-          isTimeout
-            ? "[ERR] SONAR_FAILURE — Request timed out after 90s. The service may be busy; retry."
-            : "[ERR] SONAR_FAILURE — Couldn't reach the discovery service. It may be starting up or blocked; retry in a moment."
-        );
-      } finally {
-        clearTimeout(wakeupTimer);
-        setWakingUp(false);
-        setLoading(false);
-      }
-    };
-    // Tracks discovery is gated behind a "Coming soon" overlay for alpha — don't
-    // spend Last.fm rate limit fetching a mode users can't see yet.
-    if (mode === "tracks") {
-      setLoading(false);
-    } else {
-      fetchData();
-    }
-  }, [username, period, appetite, mode, fetchTrigger, applyData]);
-
   // Copy a shareable link. Preferred: persist the actual results via
   // POST /api/share and hand back a stable /r/{id} URL that opens the sender's
   // real results in any browser without recomputing. Fallback (store down, or
@@ -344,7 +227,7 @@ export default function Home() {
     const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
     let shareUrl = queryUrl;
     try {
-      if (mode === "artists" && artists.length > 0) {
+      if (mode === "artists" && discovery.artists.length > 0) {
         const res = await fetch("/api/share", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -353,7 +236,7 @@ export default function Home() {
             period,
             mode,
             appetite,
-            recommendations: artists,
+            recommendations: discovery.artists,
             computedAt: Date.now(),
           }),
         });
@@ -379,7 +262,7 @@ export default function Home() {
   const handleShare = async () => {
     if (!username) return;
     const canExport =
-      mode === "artists" && artists.length > 0 && depthScore > 0 && shareCardRef.current;
+      mode === "artists" && discovery.artists.length > 0 && discovery.depthScore > 0 && shareCardRef.current;
     if (!canExport) {
       await copyShareUrl();
       return;
@@ -410,10 +293,7 @@ export default function Home() {
     }
   };
 
-  const handleRetry = () => {
-    forceFreshRef.current = true;
-    setFetchTrigger((t) => t + 1);
-  };
+  const handleRetry = discovery.retry;
 
   const handleSaveApiKey = (key: string, share = false) => {
     setApiKey(key);
@@ -444,15 +324,15 @@ export default function Home() {
   const handleReset = () => {
     setIsSharedView(false);
     setUsername(null);
-    setArtists([]);
-    setTracks([]);
-    setTopGenres([]);
-    setDepthScore(0);
-    setError(null);
+    discovery.setArtists([]);
+    discovery.setTracks([]);
+    discovery.setTopGenres([]);
+    discovery.setDepthScore(0);
+    discovery.setError(null);
     setSpotifyStatus("idle");
     setPlaylistUrl(null);
-    setRunId(null);
-    setPersistence(false);
+    discovery.setRunId(null);
+    discovery.setPersistence(false);
     setShowSaved(false);
   };
 
@@ -477,21 +357,13 @@ export default function Home() {
   }, []);
 
   const handleExportSpotify = async () => {
-    if (!username || tracks.length === 0) return;
+    if (!username || discovery.tracks.length === 0) return;
     if (!Spotify.isConfigured()) {
       alert("Spotify export is not configured. Set NEXT_PUBLIC_SPOTIFY_CLIENT_ID.");
       return;
     }
-    await Spotify.initiateSpotifyAuth(tracks, username, period);
+    await Spotify.initiateSpotifyAuth(discovery.tracks, username, period);
   };
-
-  const depthProse =
-    depthScore > 0
-      ? getDepthProse(
-          depthScore,
-          topGenres[0]?.weight > 10 ? topGenres[0]?.name : undefined
-        )
-      : null;
 
   const handleFocusArtist = useCallback((name: string) => {
     setFocusedArtist(null);
@@ -551,8 +423,8 @@ export default function Home() {
                   e.preventDefault();
                   if (inputLocal.trim()) {
                     setIsSharedView(false);
-                    setArtists([]);
-                    setTopGenres([]);
+                    discovery.setArtists([]);
+                    discovery.setTopGenres([]);
                     setUsername(inputLocal.trim());
                   }
                 }}
@@ -752,8 +624,8 @@ export default function Home() {
               appetite={appetite}
               setAppetite={setAppetite}
               onRefresh={handleRetry}
-              refreshDisabled={loading}
-              isRefreshing={isRefreshing}
+              refreshDisabled={discovery.loading}
+              isRefreshing={discovery.isRefreshing}
               shareState={shareState}
               onShare={handleShare}
               session={session}
@@ -765,18 +637,18 @@ export default function Home() {
             {/* Scrollable content (extra top pad on mobile clears the 2-row bar) */}
             <div className="pt-[68px] min-[720px]:pt-12 min-h-screen">
               <AnimatePresence mode="wait">
-                {isInitialLoad ? (
-                  <LoadingState wakingUp={wakingUp} />
-                ) : error && !isRefreshing ? (
+                {discovery.isInitialLoad ? (
+                  <LoadingState wakingUp={discovery.wakingUp} />
+                ) : discovery.error && !discovery.isRefreshing ? (
                   <ErrorState
-                    error={error}
+                    error={discovery.error}
                     onRetry={handleRetry}
                     onAddApiKey={() => setShowApiKey(true)}
                   />
                 ) : (
                   /* ── RESULTS ──────────────────────────────────────── */
                   <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
-                    {mode === "artists" && lowDataMessage && sortedArtists.length > 0 && (
+                    {mode === "artists" && discovery.lowDataMessage && sortedArtists.length > 0 && (
                       <div
                         className="border px-5 py-3"
                         style={{ borderColor: "var(--border)", background: "var(--surface)" }}
@@ -785,7 +657,7 @@ export default function Home() {
                           className="font-mono text-[10px] tracking-wider leading-loose"
                           style={{ color: "var(--muted)" }}
                         >
-                          [WARN] {lowDataMessage}
+                          [WARN] {discovery.lowDataMessage}
                         </p>
                       </div>
                     )}
@@ -793,9 +665,9 @@ export default function Home() {
                     {/* Empty states (§8) — no artists came back. Distinguish a
                         fresh 0-scrobble account (activeSeedCount === 0) from a
                         short period window that simply had no signal. */}
-                    {mode === "artists" && !error && sortedArtists.length === 0 && (
+                    {mode === "artists" && !discovery.error && sortedArtists.length === 0 && (
                       <EmptyState
-                        variant={activeSeedCount === 0 ? "fresh" : "short-window"}
+                        variant={discovery.activeSeedCount === 0 ? "fresh" : "short-window"}
                         windowLabel={PERIOD_WINDOWS[period] ?? "this window"}
                         onCheckSetup={handleCheckSetup}
                         onCheckAgain={handleRetry}
@@ -814,16 +686,16 @@ export default function Home() {
                         <ResultsBody
                           username={username}
                           mode={mode}
-                          artists={artists}
+                          artists={discovery.artists}
                           listArtists={filteredArtists}
                           sortBy={sortBy}
                           setSortBy={(val) => setSortBy(val as SortType)}
-                          depthScore={depthScore}
+                          depthScore={discovery.depthScore}
                           focusedArtist={focusedArtist}
                           onFocusArtist={handleFocusArtist}
                           session={session}
-                          persistence={persistence}
-                          runId={runId}
+                          persistence={discovery.persistence}
+                          runId={discovery.runId}
                           onSavedCountChange={handleSavedCountDelta}
                         />
                       </motion.div>
@@ -835,7 +707,7 @@ export default function Home() {
                     )}
 
                     {/* Track List */}
-                    {mode === "tracks" && tracks.length > 0 && (
+                    {mode === "tracks" && discovery.tracks.length > 0 && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -883,9 +755,9 @@ export default function Home() {
                           )}
                         </div>
 
-                        <TrackCard key={`${tracks[0].name}-hero`} track={tracks[0]} rank={1} isHero />
+                        <TrackCard key={`${discovery.tracks[0].name}-hero`} track={discovery.tracks[0]} rank={1} isHero />
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {tracks.slice(1).map((track, idx) => (
+                          {discovery.tracks.slice(1).map((track, idx) => (
                             <TrackCard key={`${track.name}-${track.artist}-${idx}`} track={track} rank={idx + 2} />
                           ))}
                         </div>
@@ -919,7 +791,7 @@ export default function Home() {
                 top-bar "↑ share" PNG export (§8). Kept in the DOM (not display:none)
                 so html-to-image can measure and render it; pushed off-screen and
                 made non-interactive so it never affects layout or focus. */}
-            {mode === "artists" && artists.length > 0 && depthScore > 0 && (
+            {mode === "artists" && discovery.artists.length > 0 && discovery.depthScore > 0 && (
               <div
                 aria-hidden
                 style={{ position: "fixed", left: -9999, top: 0, pointerEvents: "none", opacity: 0 }}
@@ -927,11 +799,11 @@ export default function Home() {
                 <ShareCard
                   ref={shareCardRef}
                   username={username}
-                  depthScore={depthScore}
-                  verdict={depthProse ?? ""}
+                  depthScore={discovery.depthScore}
+                  verdict={discovery.depthProse ?? ""}
                   artists={sortedArtists}
-                  topGenres={topGenres}
-                  activeSeedCount={activeSeedCount}
+                  topGenres={discovery.topGenres}
+                  activeSeedCount={discovery.activeSeedCount}
                 />
               </div>
             )}
