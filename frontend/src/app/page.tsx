@@ -15,10 +15,11 @@ import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import * as Spotify from "../lib/spotify";
 import OnboardingGuide from "../components/OnboardingGuide";
 import SavedView from "../components/SavedView";
-import { getSession, buildLoginUrl, isLoginConfigured, logout as sessionLogout, type Session } from "../lib/session";
+import { buildLoginUrl, isLoginConfigured, logout as sessionLogout } from "../lib/session";
 import { fetchSaved } from "../lib/me";
 import { useDiscovery } from "../lib/useDiscovery";
 import { usePersistedPrefs } from "../lib/usePersistedPrefs";
+import { useUrlModes } from "../lib/useUrlModes";
 import {
   PERIOD_WINDOWS,
   PERIOD_LABELS,
@@ -48,13 +49,10 @@ export default function Home() {
   const [sortBy, setSortBy] = useState<SortType>("composite");
   const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
   const [isSharedView, setIsSharedView] = useState(false);
-  const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [shareKey, setShareKey] = useState(false);  // opt-in: contribute key to the shared pool
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
-  const [session, setSessionState] = useState<Session | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [showSaved, setShowSaved] = useState(false);
 
@@ -74,77 +72,35 @@ export default function Home() {
   const prefs = usePersistedPrefs(isSharedView);
 
   // NOTE on hook-call order: useDiscovery and usePersistedPrefs are called
-  // here, ahead of the mount/session/url-mode effect below, so their
-  // setters (setTracks, setPeriod, setAppetite, setApiKey, setApiKeyInput)
-  // are available to that effect's closure. This registers their internal
-  // effects BEFORE the mount effect, the reverse of the original page.tsx's
-  // source order (mount effect was declared first, fetch/persist effects
-  // last). This re-ordering is safe: React defers all setState calls made
-  // during an effect to the *next* render/commit, so within any given
-  // commit every effect closes over the same pre-commit state regardless of
-  // call order, and none of these effects share a mutable ref with each
-  // other. Verified against the full 144-test suite post-refactor.
+  // here, ahead of useUrlModes' mount/session/url-mode effect below, so
+  // their setters (setTracks, setPeriod, setAppetite, setApiKey,
+  // setApiKeyInput) are available to that effect's closure. This registers
+  // their internal effects BEFORE the mount effect, the reverse of the
+  // original page.tsx's source order (mount effect was declared first,
+  // fetch/persist effects last). This re-ordering is safe: React defers all
+  // setState calls made during an effect to the *next* render/commit, so
+  // within any given commit every effect closes over the same pre-commit
+  // state regardless of call order, and none of these effects share a
+  // mutable ref with each other. Verified against the full 144-test suite
+  // post-refactor.
   const discovery = useDiscovery(username, prefs.period, prefs.appetite, mode, prefs.apiKey, resetSelectedGeoTags);
 
-  useEffect(() => {
-    // Last.fm session, if one was minted by a previous /auth/lastfm exchange.
-    // Independent of the shared-view (?u=) branch below — a visitor can be
-    // both viewing someone's shared results and logged in as themselves.
-    setSessionState(getSession());
-
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const state = params.get("state");
-
-    // Handle Spotify OAuth callback
-    if (code && state) {
-      window.history.replaceState({}, "", window.location.pathname);
-      const storedTracks = Spotify.getStoredTracks();
-      const meta = Spotify.getStoredMeta();
-      if (storedTracks && meta) {
-        setUsername(meta.username);
-        setInputLocal(meta.username);
-        setMode("tracks");
-        discovery.setTracks(storedTracks);
-        setSpotifyStatus("loading");
-        (async () => {
-          try {
-            const token = await Spotify.exchangeCode(code, state);
-            if (!token) { setSpotifyStatus("error"); return; }
-            const url = await Spotify.createPlaylist(token, storedTracks, meta.username, meta.period);
-            Spotify.clearSpotifySession();
-            if (url) { setPlaylistUrl(url); setSpotifyStatus("success"); }
-            else setSpotifyStatus("error");
-          } catch {
-            setSpotifyStatus("error");
-          }
-        })();
-      }
-      return;
-    }
-
-    const urlUser = params.get("u");
-    const urlPeriod = params.get("p");
-    const urlMode = params.get("m");
-    if (urlUser) {
-      setUsername(urlUser);
-      setInputLocal(urlUser);
-      setIsSharedView(true);
-      if (urlPeriod && PERIOD_LABELS[urlPeriod]) prefs.setPeriod(urlPeriod);
-      const urlAppetite = params.get("a");
-      if (urlAppetite && APPETITE_STOPS.some((s) => s.val === urlAppetite)) prefs.setAppetite(urlAppetite);
-      if (urlMode === "tracks" || urlMode === "artists") setMode(urlMode as DiscoveryMode);
-    } else {
-      const saved = localStorage.getItem("obscurity_username");
-      if (saved) setInputLocal(saved); // pre-fill input but don't auto-fetch; user submits
-      const savedPeriod = localStorage.getItem("obscurity_period");
-      if (savedPeriod && PERIOD_LABELS[savedPeriod]) prefs.setPeriod(savedPeriod);
-      const savedAppetite = localStorage.getItem("obscurity_appetite");
-      if (savedAppetite && APPETITE_STOPS.some((s) => s.val === savedAppetite)) prefs.setAppetite(savedAppetite);
-      const savedKey = localStorage.getItem("obscurity_api_key");
-      if (savedKey) { prefs.setApiKey(savedKey); prefs.setApiKeyInput(savedKey); }
-    }
-  }, []);
+  // isSharedView stays owned here (not inside useUrlModes) — see the
+  // comment on useUrlModes' setIsSharedView param for why. The mount/
+  // session/url-mode-callback effect itself (session read + Spotify OAuth
+  // callback + ?u= shared-view vs. localStorage-restore, in that exact
+  // load-bearing precedence order) moved verbatim into useUrlModes.
+  const urlModes = useUrlModes({
+    setUsername,
+    setInputLocal,
+    setMode,
+    setTracks: discovery.setTracks,
+    setIsSharedView,
+    setPeriod: prefs.setPeriod,
+    setAppetite: prefs.setAppetite,
+    setApiKey: prefs.setApiKey,
+    setApiKeyInput: prefs.setApiKeyInput,
+  });
 
   useEffect(() => {
     if (username && !isSharedView) localStorage.setItem("obscurity_username", username);
@@ -155,13 +111,13 @@ export default function Home() {
   // user has >=1 save. Local optimistic save/unsave clicks adjust this
   // count directly via handleSavedCountDelta without a refetch.
   useEffect(() => {
-    if (!session) { setSavedCount(0); return; }
+    if (!urlModes.session) { setSavedCount(0); return; }
     let cancelled = false;
     fetchSaved()
       .then((list) => { if (!cancelled) setSavedCount(list.length); })
       .catch(() => { /* best-effort — nav item just stays hidden until a save succeeds */ });
     return () => { cancelled = true; };
-  }, [session]);
+  }, [urlModes.session]);
 
   // stickinessThreshold/availableGeoTags are computed but not consumed
   // anywhere (pre-existing dead code, preserved verbatim — see refactor
@@ -315,8 +271,8 @@ export default function Home() {
     discovery.setTopGenres([]);
     discovery.setDepthScore(0);
     discovery.setError(null);
-    setSpotifyStatus("idle");
-    setPlaylistUrl(null);
+    urlModes.setSpotifyStatus("idle");
+    urlModes.setPlaylistUrl(null);
     discovery.setRunId(null);
     discovery.setPersistence(false);
     setShowSaved(false);
@@ -331,7 +287,7 @@ export default function Home() {
 
   const handleLogout = async () => {
     await sessionLogout();
-    setSessionState(null);
+    urlModes.setSessionState(null);
     setSavedCount(0);
     setShowSaved(false);
   };
@@ -450,9 +406,9 @@ export default function Home() {
                   text near the input, hidden entirely (not disabled) unless
                   NEXT_PUBLIC_LASTFM_API_KEY is configured. Once a session
                   exists this becomes a "connected as" line instead. */}
-              {session ? (
+              {urlModes.session ? (
                 <p className="font-mono text-[11px] tracking-wide" style={{ color: "var(--muted)" }}>
-                  connected as {session.username} ·{" "}
+                  connected as {urlModes.session.username} ·{" "}
                   <button
                     type="button"
                     onClick={handleLogout}
@@ -614,7 +570,7 @@ export default function Home() {
               isRefreshing={discovery.isRefreshing}
               shareState={shareState}
               onShare={handleShare}
-              session={session}
+              session={urlModes.session}
               savedCount={savedCount}
               onShowSaved={() => setShowSaved(true)}
               onLogout={handleLogout}
@@ -679,7 +635,7 @@ export default function Home() {
                           depthScore={discovery.depthScore}
                           focusedArtist={focusedArtist}
                           onFocusArtist={handleFocusArtist}
-                          session={session}
+                          session={urlModes.session}
                           persistence={discovery.persistence}
                           runId={discovery.runId}
                           onSavedCountChange={handleSavedCountDelta}
@@ -702,7 +658,7 @@ export default function Home() {
                       >
                         {/* Spotify playlist */}
                         <div className="flex items-center gap-4">
-                          {spotifyStatus === "idle" && (
+                          {urlModes.spotifyStatus === "idle" && (
                             <button
                               onClick={handleExportSpotify}
                               className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
@@ -711,14 +667,14 @@ export default function Home() {
                               <span style={{ color: "#1DB954" }}>♫</span> add to spotify
                             </button>
                           )}
-                          {spotifyStatus === "loading" && (
+                          {urlModes.spotifyStatus === "loading" && (
                             <span className="font-mono text-[10px] tracking-widest animate-pulse" style={{ color: "var(--dim)" }}>
                               creating playlist...
                             </span>
                           )}
-                          {spotifyStatus === "success" && playlistUrl && (
+                          {urlModes.spotifyStatus === "success" && urlModes.playlistUrl && (
                             <a
-                              href={playlistUrl}
+                              href={urlModes.playlistUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
@@ -727,11 +683,11 @@ export default function Home() {
                               <span>♫</span> open playlist ↗
                             </a>
                           )}
-                          {spotifyStatus === "error" && (
+                          {urlModes.spotifyStatus === "error" && (
                             <span className="font-mono text-[10px] tracking-widest" style={{ color: "var(--muted)" }}>
                               spotify export failed —{" "}
                               <button
-                                onClick={() => setSpotifyStatus("idle")}
+                                onClick={() => urlModes.setSpotifyStatus("idle")}
                                 className="transition-opacity hover:opacity-60"
                                 style={{ color: "var(--accent)" }}
                               >
@@ -768,7 +724,7 @@ export default function Home() {
 
             {/* Saved view — reachable via the quiet top-bar "saved" item. */}
             <AnimatePresence>
-              {showSaved && session && (
+              {showSaved && urlModes.session && (
                 <SavedView onClose={() => setShowSaved(false)} onCountChange={setSavedCount} />
               )}
             </AnimatePresence>

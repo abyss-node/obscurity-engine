@@ -12,6 +12,13 @@ interface UseUrlModesSetters {
   setInputLocal: (v: string) => void;
   setMode: (v: DiscoveryMode) => void;
   setTracks: (v: TrackItem[]) => void;
+  // isSharedView itself stays owned by the coordinator (Home), not this hook:
+  // usePersistedPrefs needs isSharedView's *value* to gate its own write-back
+  // effects, and usePersistedPrefs must be called before this hook (so this
+  // hook can reach its setters below) — so this hook can only ever see
+  // isSharedView via a setter, never own the state itself without creating a
+  // circular hook-call dependency.
+  setIsSharedView: (v: boolean) => void;
   setPeriod: (v: string) => void;
   setAppetite: (v: string) => void;
   setApiKey: (v: string) => void;
@@ -19,10 +26,11 @@ interface UseUrlModesSetters {
 }
 
 /**
- * Owns session/isSharedView/spotifyStatus/playlistUrl and the single
- * mount-only bootstrap effect, moved VERBATIM out of app/page.tsx (only the
- * direct `set*` calls were rewritten to go through the `setters` param so
- * this hook can still reach state owned by other hooks/the coordinator).
+ * Owns session/spotifyStatus/playlistUrl and the single mount-only bootstrap
+ * effect, moved VERBATIM out of app/page.tsx (only the direct `set*` calls
+ * were rewritten to go through the `setters` param so this hook can still
+ * reach state owned by other hooks/the coordinator — isSharedView stays
+ * owned by Home itself, see the comment on `setIsSharedView` above).
  *
  * CAREFUL, per the original comments: this effect handles three
  * mutually-exclusive-in-practice branches in one exact precedence order —
@@ -35,7 +43,6 @@ interface UseUrlModesSetters {
  * a behavior change (see the refactor notes in the top-level handoff doc).
  */
 export function useUrlModes(setters: UseUrlModesSetters) {
-  const [isSharedView, setIsSharedView] = useState(false);
   const [spotifyStatus, setSpotifyStatus] = useState<SpotifyStatus>("idle");
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [session, setSessionState] = useState<Session | null>(null);
@@ -83,7 +90,7 @@ export function useUrlModes(setters: UseUrlModesSetters) {
     if (urlUser) {
       setters.setUsername(urlUser);
       setters.setInputLocal(urlUser);
-      setIsSharedView(true);
+      setters.setIsSharedView(true);
       if (urlPeriod && PERIOD_LABELS[urlPeriod]) setters.setPeriod(urlPeriod);
       const urlAppetite = params.get("a");
       if (urlAppetite && APPETITE_STOPS.some((s) => s.val === urlAppetite)) setters.setAppetite(urlAppetite);
@@ -104,8 +111,6 @@ export function useUrlModes(setters: UseUrlModesSetters) {
   return {
     session,
     setSessionState,
-    isSharedView,
-    setIsSharedView,
     spotifyStatus,
     setSpotifyStatus,
     playlistUrl,
