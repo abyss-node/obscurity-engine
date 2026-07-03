@@ -87,6 +87,10 @@ describe("anonymous events (click_listen / share) — sendBeacon path", () => {
     expect(url).toContain("/api/events");
     expect(init.keepalive).toBe(true);
     expect(init.headers.Authorization).toBeUndefined();
+    // F1: no cookies are used anywhere (auth is Bearer-only) — credentials
+    // must never be "include", or the backend's credential-less CORS layer
+    // silently blocks every beacon in prod.
+    expect(init.credentials).toBe("omit");
   });
 
   it("falls back to fetch when sendBeacon queues the request and returns false", async () => {
@@ -126,6 +130,8 @@ describe("authed events (save / unsave / dismiss / undo_dismiss) — always fetc
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer tok-1");
     expect(JSON.parse(init.body)).toEqual({ rec_id: "rec-1", type: "save" });
+    // F1: Bearer carries auth — cookies must stay opted out even here.
+    expect(init.credentials).toBe("omit");
   });
 
   it("omits the Authorization header when logged out (backend rejects; client never throws)", async () => {

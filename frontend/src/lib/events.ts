@@ -35,6 +35,13 @@ function apiUrl(): string {
  * - `save` / `unsave` / `dismiss` / `undo_dismiss`: always `fetch` with the
  *   Bearer header (sendBeacon cannot carry custom headers) and the caller
  *   awaits the boolean result to drive optimistic-UI rollback.
+ *
+ * No cookies are used anywhere in this app — auth is exclusively the Bearer
+ * header above — so `credentials` is explicitly "omit" here rather than left
+ * on fetch's "same-origin" default. The backend's CORS layer never sends
+ * `Access-Control-Allow-Credentials`, so a stray `credentials: "include"`
+ * would silently CORS-block every beacon in prod; pinning "omit" makes that
+ * class of regression impossible regardless of future refactors here.
  */
 export async function postEvent(payload: EventPayload): Promise<boolean> {
   if (!payload.rec_id && !payload.run_id) return false; // contract: at least one id required
@@ -57,7 +64,7 @@ export async function postEvent(payload: EventPayload): Promise<boolean> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (needsAuth) Object.assign(headers, authHeader());
 
-    const res = await fetch(url, { method: "POST", headers, body, keepalive: true });
+    const res = await fetch(url, { method: "POST", headers, body, keepalive: true, credentials: "omit" });
     return res.ok;
   } catch {
     return false;
