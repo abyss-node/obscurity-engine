@@ -121,8 +121,16 @@ export default function ArtistList({
           <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>artist</span>
           <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre</span>
           <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>country</span>
-          <span className="font-mono text-[8px] tracking-widest uppercase text-center" style={{ color: "var(--dim)" }}>conviction</span>
-          <span className="font-mono text-[8px] tracking-widest uppercase text-center" style={{ color: "var(--dim)" }}>listeners</span>
+          {/* Mobile (<720px): the 40px/46px columns are narrower than these
+              labels at tracking-widest, so "CONVICTION" and "LISTENERS" were
+              overflowing their cells and running together with no gap
+              (F6). tracking-normal shrinks each label enough to mostly fit,
+              and aligning the overflow away from each other (right / left
+              instead of both centered-inward) guarantees they never touch.
+              Desktop columns (104px/74px) have room to spare, so
+              tracking-widest + text-center is restored unchanged ≥720px. */}
+          <span className="font-mono text-[8px] tracking-normal min-[720px]:tracking-widest uppercase text-right min-[720px]:text-center" style={{ color: "var(--dim)" }}>conviction</span>
+          <span className="font-mono text-[8px] tracking-normal min-[720px]:tracking-widest uppercase text-left min-[720px]:text-center" style={{ color: "var(--dim)" }}>listeners</span>
           <span />
         </div>
 
