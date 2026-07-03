@@ -1,20 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import TrackCard from "../components/TrackCard";
-import ResultsTopBar from "../components/ResultsTopBar";
-import ResultsBody from "../components/ResultsBody";
-import TracksComingSoon from "../components/TracksComingSoon";
-import ApiKeyModal from "../components/ApiKeyModal";
-import LoadingState from "../components/LoadingState";
-import ErrorState from "../components/ErrorState";
-import EmptyState from "../components/EmptyState";
-import ShareCard from "../components/ShareCard";
+import { AnimatePresence } from "framer-motion";
+import LandingView from "../components/LandingView";
+import ResultsView from "../components/ResultsView";
 import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import * as Spotify from "../lib/spotify";
-import OnboardingGuide from "../components/OnboardingGuide";
-import SavedView from "../components/SavedView";
 import { buildLoginUrl, isLoginConfigured, logout as sessionLogout } from "../lib/session";
 import { fetchSaved } from "../lib/me";
 import { useDiscovery } from "../lib/useDiscovery";
@@ -57,37 +48,25 @@ export default function Home() {
   const [savedCount, setSavedCount] = useState(0);
   const [showSaved, setShowSaved] = useState(false);
 
-  // selectedGeoTags lives here (feeds the geo-tag filter memo below, never
-  // actually driven by any UI control today — see refactor notes) but the
-  // discovery fetch effect resets it on every fetch; resetSelectedGeoTags
-  // must stay referentially stable (empty dep array) so passing it into
-  // useDiscovery doesn't change when that effect re-runs.
+  // selectedGeoTags: feeds the geo-tag filter memo below (never actually
+  // driven by any UI control today, see refactor notes); reset on every
+  // discovery fetch, so this callback must stay referentially stable.
   const resetSelectedGeoTags = useCallback(() => setSelectedGeoTags([]), []);
 
-  // period/appetite/apiKey(+Input) now live in usePersistedPrefs. Its
-  // localStorage write-back effects for period/appetite are gated on
-  // isSharedView, same as before the move.
+  // --- Hook-call-order note (applies to prefs/discovery/urlModes below) ---
+  // usePersistedPrefs and useDiscovery are called ahead of useUrlModes'
+  // mount effect so it can receive their setters (setPeriod, setApiKey,
+  // setTracks, ...). That registers their internal effects BEFORE the mount
+  // effect — the reverse of the original page.tsx source order (mount
+  // effect was declared first). Safe: React defers effect setState to the
+  // *next* commit, so every effect in a given commit closes over that
+  // commit's pre-existing state regardless of call order, and none of these
+  // effects share a mutable ref. isSharedView itself stays owned here (not
+  // inside useUrlModes) to break what would otherwise be a circular
+  // hook-call dependency (prefs needs isSharedView; useUrlModes needs
+  // prefs' setters). Verified against the full 144-test suite.
   const prefs = usePersistedPrefs(isSharedView);
-
-  // NOTE on hook-call order: useDiscovery and usePersistedPrefs are called
-  // here, ahead of useUrlModes' mount/session/url-mode effect below, so
-  // their setters (setTracks, setPeriod, setAppetite, setApiKey,
-  // setApiKeyInput) are available to that effect's closure. This registers
-  // their internal effects BEFORE the mount effect, the reverse of the
-  // original page.tsx's source order (mount effect was declared first,
-  // fetch/persist effects last). This re-ordering is safe: React defers all
-  // setState calls made during an effect to the *next* render/commit, so
-  // within any given commit every effect closes over the same pre-commit
-  // state regardless of call order, and none of these effects share a
-  // mutable ref with each other. Verified against the full 144-test suite
-  // post-refactor.
   const discovery = useDiscovery(username, prefs.period, prefs.appetite, mode, prefs.apiKey, resetSelectedGeoTags);
-
-  // isSharedView stays owned here (not inside useUrlModes) — see the
-  // comment on useUrlModes' setIsSharedView param for why. The mount/
-  // session/url-mode-callback effect itself (session read + Spotify OAuth
-  // callback + ?u= shared-view vs. localStorage-restore, in that exact
-  // load-bearing precedence order) moved verbatim into useUrlModes.
   const urlModes = useUrlModes({
     setUsername,
     setInputLocal,
@@ -100,10 +79,9 @@ export default function Home() {
     setApiKeyInput: prefs.setApiKeyInput,
   });
 
-  // No internal effects (just state/refs + async click handlers), so unlike
-  // the hooks above there's no hook-call-order concern with useShare.
-  // Destructured (not `const share = ...`) to avoid shadowing the `share`
-  // boolean parameter in handleSaveApiKey below.
+  // useShare has no internal effects, so no call-order concern. Destructured
+  // (not `const share = ...`) to avoid shadowing the `share` boolean
+  // parameter in handleSaveApiKey below.
   const { shareCardRef, shareState, handleShare } = useShare(
     username, mode, discovery.artists, discovery.depthScore, prefs.period, prefs.appetite
   );
@@ -125,9 +103,8 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [urlModes.session]);
 
-  // stickinessThreshold/availableGeoTags are computed but not consumed
-  // anywhere (pre-existing dead code, preserved verbatim — see refactor
-  // report; not fixed here per the "no logic edits" rule).
+  // stickinessThreshold/availableGeoTags: computed but never consumed
+  // anywhere (pre-existing dead code, preserved verbatim, not fixed here).
   const stickinessThreshold = useMemo(() => {
     if (discovery.artists.length < 1) return Infinity;
     const scores = discovery.artists.map((a) => a.stickiness_score).sort((a, b) => b - a);
@@ -175,11 +152,8 @@ export default function Home() {
 
   const handleRetry = discovery.retry;
 
-  // localStorage write + optional shared-pool POST live in usePersistedPrefs;
-  // setShowApiKey(false) is UI-modal state owned here, so this thin wrapper
-  // just sequences the two — same net effect as the original single function
-  // (the fire-and-forget /api/keys POST is unaffected by this reordering,
-  // since it's already async/non-blocking either way).
+  // Persistence + shared-pool POST live in usePersistedPrefs; setShowApiKey
+  // is UI-modal state owned here — this wrapper just sequences the two.
   const handleSaveApiKey = (key: string, share = false) => {
     prefs.handleSaveApiKey(key, share);
     setShowApiKey(false);
@@ -242,6 +216,15 @@ export default function Home() {
     setTimeout(() => setFocusedArtist(name), 0);
   }, []);
 
+  // LandingView gates this call on inputLocal.trim() itself (same guard as
+  // the original inline form handler).
+  const handleSubmitUsername = () => {
+    setIsSharedView(false);
+    discovery.setArtists([]);
+    discovery.setTopGenres([]);
+    setUsername(inputLocal.trim());
+  };
+
   return (
     <>
       {/* Fixed wordmark — landing view only. In the results view the
@@ -262,424 +245,85 @@ export default function Home() {
 
       <AnimatePresence mode="wait">
         {!username ? (
-          /* ── LANDING ─────────────────────────────────────────────── */
-          <motion.div
+          // key on the AnimatePresence child itself (not just the nested
+          // motion.div inside LandingView) preserves mode="wait" exit/enter
+          // tracking exactly as when that motion.div was the direct child.
+          <LandingView
             key="landing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, y: -16 }}
-            transition={{ duration: 0.35 }}
-            className="min-h-screen flex items-start justify-center px-6 py-[15vh]"
-          >
-            <div className="w-full max-w-md flex flex-col items-center gap-8">
-              {/* Headline */}
-              <div className="flex flex-col items-center gap-3 text-center">
-                <h1
-                  className="font-serif text-4xl md:text-5xl font-bold italic leading-tight"
-                  style={{ color: "var(--text)" }}
-                >
-                  Find your new<br />favorite artist.
-                </h1>
-                <p
-                  className="font-body text-sm font-light max-w-xs leading-relaxed"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Connects to your Last.fm history. Surfaces artists and tracks
-                  that match your taste but haven&apos;t broken through yet.
-                </p>
-              </div>
-
-              {/* Input */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (inputLocal.trim()) {
-                    setIsSharedView(false);
-                    discovery.setArtists([]);
-                    discovery.setTopGenres([]);
-                    setUsername(inputLocal.trim());
-                  }
-                }}
-                className="w-full flex flex-col items-center gap-6"
-              >
-                <input
-                  autoFocus
-                  type="text"
-                  value={inputLocal}
-                  onChange={(e) => setInputLocal(e.target.value)}
-                  placeholder="last.fm username"
-                  className="obs-input w-full bg-transparent border-b-2 py-3 text-2xl font-mono outline-none text-center transition-colors duration-200"
-                  style={{
-                    borderColor: "var(--border)",
-                    color: "var(--text)",
-                    caretColor: "var(--accent)",
-                  }}
-                />
-                <AnimatePresence>
-                  {inputLocal.trim() && (
-                    <motion.button
-                      type="submit"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="font-mono text-[11px] tracking-widest transition-opacity duration-200 hover:opacity-60"
-                      style={{ color: "var(--muted)" }}
-                    >
-                      analyse →
-                    </motion.button>
-                  )}
-                </AnimatePresence>
-              </form>
-
-              {/* Identity primitive entry point (Surface spec): quiet mono
-                  text near the input, hidden entirely (not disabled) unless
-                  NEXT_PUBLIC_LASTFM_API_KEY is configured. Once a session
-                  exists this becomes a "connected as" line instead. */}
-              {urlModes.session ? (
-                <p className="font-mono text-[11px] tracking-wide" style={{ color: "var(--muted)" }}>
-                  connected as {urlModes.session.username} ·{" "}
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: "var(--dim)" }}
-                  >
-                    log out
-                  </button>
-                </p>
-              ) : (
-                isLoginConfigured() && (
-                  <button
-                    type="button"
-                    onClick={handleConnectLastfm}
-                    className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: "var(--muted)" }}
-                  >
-                    connect last.fm
-                  </button>
-                )
-              )}
-
-              {/* Onboarding links */}
-              <div className="w-full flex flex-col items-center gap-5">
-                <div className="flex items-center gap-4">
-                  <a
-                    href="https://www.last.fm/join"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    new to last.fm? create account →
-                  </a>
-                  <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
-                  <button
-                    onClick={() => { setShowSetup((s) => !s); setShowApiKey(false); }}
-                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: "var(--dim)" }}
-                  >
-                    connect your music {showSetup ? "▲" : "▼"}
-                  </button>
-                  <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
-                  <button
-                    onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
-                    className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: prefs.apiKey ? "var(--accent)" : "var(--dim)" }}
-                  >
-                    {prefs.apiKey ? "api key active ▼" : `api key ${showApiKey ? "▲" : "▼"}`}
-                  </button>
-                </div>
-
-                <AnimatePresence>
-                  {showSetup && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.25 }}
-                      className="w-full"
-                    >
-                      <OnboardingGuide />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                  {showApiKey && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.25 }}
-                      className="w-full flex flex-col gap-3"
-                    >
-                      <div className="border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
-                        <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--muted)" }}>
-                          your own key avoids shared rate limits — saved to this browser permanently
-                        </p>
-                        <ol className="flex flex-col gap-1.5">
-                          {[
-                            <>go to <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" className="transition-opacity hover:opacity-60" style={{ color: "var(--accent)" }}>last.fm/api/account/create</a></>,
-                            <>application name: anything (e.g. <span style={{ color: "var(--muted)" }}>my music tool</span>)</>,
-                            <>description: anything (e.g. <span style={{ color: "var(--muted)" }}>personal use</span>)</>,
-                            <>callback url: <span style={{ color: "var(--muted)" }}>leave blank</span></>,
-                            <>submit → copy the 32-character api key</>,
-                          ].map((step, i) => (
-                            <li key={i} className="flex gap-2 font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
-                              <span style={{ color: "var(--border)" }}>{i + 1}.</span>
-                              <span>{step}</span>
-                            </li>
-                          ))}
-                        </ol>
-                        <div className="flex gap-2">
-                          <input
-                            type="password"
-                            value={prefs.apiKeyInput}
-                            onChange={(e) => prefs.setApiKeyInput(e.target.value)}
-                            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                            className="flex-1 bg-transparent border-b py-1 font-mono text-[11px] outline-none transition-colors duration-200"
-                            style={{ borderColor: "var(--border)", color: "var(--text)", caretColor: "var(--accent)" }}
-                          />
-                          <button
-                            onClick={() => handleSaveApiKey(prefs.apiKeyInput.trim(), shareKey)}
-                            className="font-mono text-[10px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
-                            style={{ color: "var(--muted)" }}
-                          >
-                            {prefs.apiKeyInput.trim() ? "save" : "clear"}
-                          </button>
-                        </div>
-                        {/* Opt-in: contribute the key to the shared rotation pool. */}
-                        <button
-                          type="button"
-                          onClick={() => setShareKey((s) => !s)}
-                          className="flex items-start gap-2 text-left transition-opacity hover:opacity-80"
-                        >
-                          <span
-                            className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[9px]"
-                            style={{
-                              width: 14, height: 14, border: "1px solid var(--accent2)",
-                              color: "var(--accent)",
-                              background: shareKey ? "var(--accent)" : "transparent",
-                            }}
-                            aria-hidden
-                          >
-                            {shareKey ? "✓" : ""}
-                          </span>
-                          <span className="font-mono text-[9px] leading-relaxed tracking-wider" style={{ color: "var(--dim)" }}>
-                            also share to the pool to speed up discovery for everyone (read-only app key, no account access)
-                          </span>
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </motion.div>
+            inputLocal={inputLocal}
+            setInputLocal={setInputLocal}
+            onSubmitUsername={handleSubmitUsername}
+            session={urlModes.session}
+            onLogout={handleLogout}
+            isLoginConfigured={isLoginConfigured()}
+            onConnectLastfm={handleConnectLastfm}
+            showSetup={showSetup}
+            setShowSetup={setShowSetup}
+            showApiKey={showApiKey}
+            setShowApiKey={setShowApiKey}
+            apiKey={prefs.apiKey}
+            apiKeyInput={prefs.apiKeyInput}
+            setApiKeyInput={prefs.setApiKeyInput}
+            shareKey={shareKey}
+            setShareKey={setShareKey}
+            onSaveApiKey={handleSaveApiKey}
+          />
         ) : (
-          /* ── RESULTS VIEW ────────────────────────────────────────── */
-          <motion.div
+          <ResultsView
             key="results-shell"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-          >
-            {/* Fixed top bar — single-row, contained (results-redesign §1) */}
-            <ResultsTopBar
-              username={username}
-              onReset={handleReset}
-              mode={mode}
-              setMode={setMode}
-              period={prefs.period}
-              setPeriod={prefs.setPeriod}
-              appetite={prefs.appetite}
-              setAppetite={prefs.setAppetite}
-              onRefresh={handleRetry}
-              refreshDisabled={discovery.loading}
-              isRefreshing={discovery.isRefreshing}
-              shareState={shareState}
-              onShare={handleShare}
-              session={urlModes.session}
-              savedCount={savedCount}
-              onShowSaved={() => setShowSaved(true)}
-              onLogout={handleLogout}
-            />
-
-            {/* Scrollable content (extra top pad on mobile clears the 2-row bar) */}
-            <div className="pt-[68px] min-[720px]:pt-12 min-h-screen">
-              <AnimatePresence mode="wait">
-                {discovery.isInitialLoad ? (
-                  <LoadingState wakingUp={discovery.wakingUp} />
-                ) : discovery.error && !discovery.isRefreshing ? (
-                  <ErrorState
-                    error={discovery.error}
-                    onRetry={handleRetry}
-                    onAddApiKey={() => setShowApiKey(true)}
-                  />
-                ) : (
-                  /* ── RESULTS ──────────────────────────────────────── */
-                  <div className="max-w-4xl mx-auto px-4 sm:px-8 py-16 flex flex-col gap-16">
-                    {mode === "artists" && discovery.lowDataMessage && sortedArtists.length > 0 && (
-                      <div
-                        className="border px-5 py-3"
-                        style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-                      >
-                        <p
-                          className="font-mono text-[10px] tracking-wider leading-loose"
-                          style={{ color: "var(--muted)" }}
-                        >
-                          [WARN] {discovery.lowDataMessage}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Empty states (§8) — no artists came back. Distinguish a
-                        fresh 0-scrobble account (activeSeedCount === 0) from a
-                        short period window that simply had no signal. */}
-                    {mode === "artists" && !discovery.error && sortedArtists.length === 0 && (
-                      <EmptyState
-                        variant={discovery.activeSeedCount === 0 ? "fresh" : "short-window"}
-                        windowLabel={PERIOD_WINDOWS[prefs.period] ?? "this window"}
-                        onCheckSetup={handleCheckSetup}
-                        onCheckAgain={handleRetry}
-                      />
-                    )}
-
-                    {/* Hero picks + Suggestions/Analytics tabs (results-redesign §2–3).
-                        Analytics carries the Obscurity Index block + Discovery Matrix
-                        that used to render unconditionally in the scroll flow. */}
-                    {mode === "artists" && sortedArtists.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.6 }}
-                      >
-                        <ResultsBody
-                          username={username}
-                          mode={mode}
-                          artists={discovery.artists}
-                          listArtists={filteredArtists}
-                          sortBy={sortBy}
-                          setSortBy={(val) => setSortBy(val as SortType)}
-                          depthScore={discovery.depthScore}
-                          focusedArtist={focusedArtist}
-                          onFocusArtist={handleFocusArtist}
-                          session={urlModes.session}
-                          persistence={discovery.persistence}
-                          runId={discovery.runId}
-                          onSavedCountChange={handleSavedCountDelta}
-                        />
-                      </motion.div>
-                    )}
-
-                    {/* Tracks — gated behind a "Coming soon" overlay for alpha (§6) */}
-                    {mode === "tracks" && (
-                      <TracksComingSoon onBack={() => setMode("artists")} />
-                    )}
-
-                    {/* Track List */}
-                    {mode === "tracks" && discovery.tracks.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.4, duration: 0.6 }}
-                        className="flex flex-col gap-6"
-                      >
-                        {/* Spotify playlist */}
-                        <div className="flex items-center gap-4">
-                          {urlModes.spotifyStatus === "idle" && (
-                            <button
-                              onClick={handleExportSpotify}
-                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
-                              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-                            >
-                              <span style={{ color: "#1DB954" }}>♫</span> add to spotify
-                            </button>
-                          )}
-                          {urlModes.spotifyStatus === "loading" && (
-                            <span className="font-mono text-[10px] tracking-widest animate-pulse" style={{ color: "var(--dim)" }}>
-                              creating playlist...
-                            </span>
-                          )}
-                          {urlModes.spotifyStatus === "success" && urlModes.playlistUrl && (
-                            <a
-                              href={urlModes.playlistUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
-                              style={{ borderColor: "#1DB954", color: "#1DB954" }}
-                            >
-                              <span>♫</span> open playlist ↗
-                            </a>
-                          )}
-                          {urlModes.spotifyStatus === "error" && (
-                            <span className="font-mono text-[10px] tracking-widest" style={{ color: "var(--muted)" }}>
-                              spotify export failed —{" "}
-                              <button
-                                onClick={() => urlModes.setSpotifyStatus("idle")}
-                                className="transition-opacity hover:opacity-60"
-                                style={{ color: "var(--accent)" }}
-                              >
-                                try again
-                              </button>
-                            </span>
-                          )}
-                        </div>
-
-                        <TrackCard key={`${discovery.tracks[0].name}-hero`} track={discovery.tracks[0]} rank={1} isHero />
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {discovery.tracks.slice(1).map((track, idx) => (
-                            <TrackCard key={`${track.name}-${track.artist}-${idx}`} track={track} rank={idx + 2} />
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* API-key modal — rate-limit escape hatch (§8) */}
-            <AnimatePresence>
-              {showApiKey && (
-                <ApiKeyModal
-                  initialValue={prefs.apiKey}
-                  onSave={handleSaveApiKey}
-                  onClose={() => setShowApiKey(false)}
-                />
-              )}
-            </AnimatePresence>
-
-            {/* Saved view — reachable via the quiet top-bar "saved" item. */}
-            <AnimatePresence>
-              {showSaved && urlModes.session && (
-                <SavedView onClose={() => setShowSaved(false)} onCountChange={setSavedCount} />
-              )}
-            </AnimatePresence>
-
-            {/* Off-screen 660×860 result card — the snapshot source for the
-                top-bar "↑ share" PNG export (§8). Kept in the DOM (not display:none)
-                so html-to-image can measure and render it; pushed off-screen and
-                made non-interactive so it never affects layout or focus. */}
-            {mode === "artists" && discovery.artists.length > 0 && discovery.depthScore > 0 && (
-              <div
-                aria-hidden
-                style={{ position: "fixed", left: -9999, top: 0, pointerEvents: "none", opacity: 0 }}
-              >
-                <ShareCard
-                  ref={shareCardRef}
-                  username={username}
-                  depthScore={discovery.depthScore}
-                  verdict={discovery.depthProse ?? ""}
-                  artists={sortedArtists}
-                  topGenres={discovery.topGenres}
-                  activeSeedCount={discovery.activeSeedCount}
-                />
-              </div>
-            )}
-          </motion.div>
+            username={username}
+            mode={mode}
+            setMode={setMode}
+            period={prefs.period}
+            setPeriod={prefs.setPeriod}
+            appetite={prefs.appetite}
+            setAppetite={prefs.setAppetite}
+            onReset={handleReset}
+            onRefresh={handleRetry}
+            refreshDisabled={discovery.loading}
+            isRefreshing={discovery.isRefreshing}
+            shareState={shareState}
+            onShare={handleShare}
+            session={urlModes.session}
+            savedCount={savedCount}
+            onShowSaved={() => setShowSaved(true)}
+            onLogout={handleLogout}
+            isInitialLoad={discovery.isInitialLoad}
+            wakingUp={discovery.wakingUp}
+            error={discovery.error}
+            onRetry={handleRetry}
+            onAddApiKey={() => setShowApiKey(true)}
+            lowDataMessage={discovery.lowDataMessage}
+            sortedArtists={sortedArtists}
+            activeSeedCount={discovery.activeSeedCount}
+            windowLabel={PERIOD_WINDOWS[prefs.period] ?? "this window"}
+            onCheckSetup={handleCheckSetup}
+            artists={discovery.artists}
+            listArtists={filteredArtists}
+            sortBy={sortBy}
+            setSortBy={(val) => setSortBy(val as SortType)}
+            depthScore={discovery.depthScore}
+            focusedArtist={focusedArtist}
+            onFocusArtist={handleFocusArtist}
+            persistence={discovery.persistence}
+            runId={discovery.runId}
+            onSavedCountChange={handleSavedCountDelta}
+            tracks={discovery.tracks}
+            spotifyStatus={urlModes.spotifyStatus}
+            onExportSpotify={handleExportSpotify}
+            playlistUrl={urlModes.playlistUrl}
+            onSpotifyStatusReset={() => urlModes.setSpotifyStatus("idle")}
+            showApiKey={showApiKey}
+            apiKey={prefs.apiKey}
+            onSaveApiKey={handleSaveApiKey}
+            onCloseApiKey={() => setShowApiKey(false)}
+            showSaved={showSaved}
+            onCloseSaved={() => setShowSaved(false)}
+            onSavedCountSet={setSavedCount}
+            depthProse={discovery.depthProse}
+            topGenres={discovery.topGenres}
+            shareCardRef={shareCardRef}
+          />
         )}
       </AnimatePresence>
     </>
