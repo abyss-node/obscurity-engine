@@ -1,5 +1,5 @@
 import { getShare } from "@/lib/shareStore";
-import { ReadonlyResults } from "@/app/page";
+import { ReadonlyResults } from "@/components/ReadonlyResults";
 
 // In-memory fallback state lives in a per-process singleton; force Node runtime
 // and dynamic rendering so this page reads the same store the writer wrote to.
