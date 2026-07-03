@@ -22,7 +22,7 @@ function makeArtists(count: number): Artist[] {
 function noop() {}
 
 describe("ResultsBody — tab switching splits content correctly", () => {
-  it("shows the ArtistList in Suggestions and the index+matrix in Analytics, never both", () => {
+  it("shows the ArtistList in Suggestions and only the matrix in Analytics, never both", () => {
     const artists = makeArtists(5);
     render(
       <ResultsBody
@@ -33,8 +33,6 @@ describe("ResultsBody — tab switching splits content correctly", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse="devoted listener"
-        activeSeedCount={12}
       />
     );
 
@@ -45,12 +43,57 @@ describe("ResultsBody — tab switching splits content correctly", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "analytics" }));
 
-    // Analytics: index block + matrix visible, the ledger's sort control gone.
-    // (The hero's own compact "obscurity index" readout also renders — it's
-    // above the tabs, outside either tab's content — so there are 2 matches.)
+    // Analytics: matrix visible, ledger's sort control gone. The Obscurity
+    // Index block was removed from this tab entirely — the hero's compact
+    // "obscurity index" readout (above the tabs) is now the only place the
+    // score renders, so there's exactly one match, not two.
     expect(screen.getByText("discovery matrix")).toBeInTheDocument();
-    expect(screen.getAllByText("obscurity index").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("obscurity index").length).toBe(1);
     expect(screen.queryByText("sort by")).not.toBeInTheDocument();
+  });
+});
+
+describe("ResultsBody — Obscurity Index block removed from Analytics", () => {
+  it("does not render the removed index block's seeds/candidates line or prose in Analytics", () => {
+    const artists = makeArtists(5);
+    render(
+      <ResultsBody
+        username="alice"
+        mode="artists"
+        artists={artists}
+        listArtists={artists}
+        sortBy="composite"
+        setSortBy={noop}
+        depthScore={74}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "analytics" }));
+
+    // The matrix is present...
+    expect(screen.getByText("discovery matrix")).toBeInTheDocument();
+    // ...but the "{N} seeds · {M} candidates" line — unique to the removed
+    // block, never rendered by the hero's compact readout — is gone.
+    expect(screen.queryByText(/seeds ·/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+ candidates/)).not.toBeInTheDocument();
+  });
+
+  it("renders the obscurity index exactly once (hero only), even in Analytics", () => {
+    const artists = makeArtists(5);
+    render(
+      <ResultsBody
+        username="alice"
+        mode="artists"
+        artists={artists}
+        listArtists={artists}
+        sortBy="composite"
+        setSortBy={noop}
+        depthScore={74}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "analytics" }));
+    expect(screen.getAllByText("obscurity index")).toHaveLength(1);
   });
 });
 
@@ -66,8 +109,6 @@ describe("ResultsBody — tab resets on identity change", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
 
@@ -83,8 +124,6 @@ describe("ResultsBody — tab resets on identity change", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
 
@@ -106,8 +145,6 @@ describe("ResultsBody — matrix dot click", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
         onFocusArtist={onFocusArtist}
       />
     );
@@ -133,8 +170,6 @@ describe("ResultsBody — Discovery Matrix shows the full result set", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
 
@@ -156,8 +191,6 @@ describe("ResultsBody — Discovery Matrix shows the full result set", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
 
@@ -180,8 +213,6 @@ describe("ResultsBody — hero gating", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
     expect(screen.queryByTestId("hero-picks")).not.toBeInTheDocument();
@@ -198,8 +229,6 @@ describe("ResultsBody — hero gating", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
     expect(screen.getByTestId("hero-picks")).toBeInTheDocument();
@@ -216,8 +245,6 @@ describe("ResultsBody — hero gating", () => {
         sortBy="composite"
         setSortBy={noop}
         depthScore={74}
-        depthProse={null}
-        activeSeedCount={12}
       />
     );
     expect(screen.queryByTestId("hero-picks")).not.toBeInTheDocument();

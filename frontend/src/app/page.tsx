@@ -893,8 +893,6 @@ export default function Home() {
                           sortBy={sortBy}
                           setSortBy={(val) => setSortBy(val as SortType)}
                           depthScore={depthScore}
-                          depthProse={depthProse}
-                          activeSeedCount={activeSeedCount}
                           focusedArtist={focusedArtist}
                           onFocusArtist={handleFocusArtist}
                           session={session}
@@ -1092,8 +1090,6 @@ export function ReadonlyResults({ payload }: { payload: SharePayload }) {
             sortBy={sortBy}
             setSortBy={(val) => setSortBy(val as SortType)}
             depthScore={0}
-            depthProse={null}
-            activeSeedCount={0}
           />
         )}
       </div>

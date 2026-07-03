@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import ArtistList from "./ArtistList";
 import DiscoveryMatrix from "./DiscoveryMatrix";
 import HeroPicks from "./HeroPicks";
-import Tooltip from "./Tooltip";
 import type { Artist } from "../app/page";
 import type { Session } from "../lib/session";
 
@@ -24,9 +23,10 @@ interface ResultsBodyProps {
   listArtists: Artist[];
   sortBy: string;
   setSortBy: (val: string) => void;
+  /** Feeds only the compact "obscurity index" readout in the hero header —
+   *  the Analytics tab no longer has its own index block (Discovery Matrix
+   *  is the tab's sole content). */
   depthScore: number;
-  depthProse: string | null;
-  activeSeedCount: number;
   focusedArtist?: string | null;
   onFocusArtist?: (name: string) => void;
   // Phase 1-B persistence — optional so the read-only shared view (no
@@ -51,8 +51,6 @@ export default function ResultsBody({
   sortBy,
   setSortBy,
   depthScore,
-  depthProse,
-  activeSeedCount,
   focusedArtist = null,
   onFocusArtist,
   session = null,
@@ -134,48 +132,10 @@ export default function ResultsBody({
           transition={{ duration: 0.25 }}
           className="pt-7 flex flex-col gap-9"
         >
-          {/* Obscurity Index — the depth-assessment block, unchanged, moved here.
-              Guarded on depthScore > 0 exactly as the original inline block was
-              (e.g. the read-only share payload doesn't carry a depth score). */}
-          {depthScore > 0 && (
-            <div
-              className="flex flex-col gap-3 pb-7 border-b"
-              style={{ borderColor: "var(--border)" }}
-            >
-              <Tooltip text="0–100. Measures how far below the mainstream your results sit. Weighted by how strongly each artist was recommended — not just a simple average.">
-                <span
-                  className="font-mono text-[10px] tracking-widest uppercase"
-                  style={{ color: "var(--dim)" }}
-                >
-                  obscurity index
-                </span>
-              </Tooltip>
-              <div className="flex items-baseline gap-3">
-                <span
-                  className="font-serif text-7xl sm:text-8xl font-bold italic leading-none"
-                  style={{ color: "var(--accent)" }}
-                >
-                  {depthScore.toFixed(0)}
-                </span>
-                <span className="font-mono text-sm" style={{ color: "var(--dim)" }}>
-                  / 100
-                </span>
-              </div>
-              {depthProse && (
-                <p className="font-body text-lg font-light italic" style={{ color: "var(--muted)" }}>
-                  {depthProse}
-                </p>
-              )}
-              <Tooltip text="Seeds: artists pulled from your listening history to drive the search. Candidates: the final count after scoring, filtering, and diversity enforcement.">
-                <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
-                  {activeSeedCount} seeds · {artists.length} candidates
-                </p>
-              </Tooltip>
-            </div>
-          )}
-
-          {/* Discovery Matrix — unchanged component; dot click switches
-              back to Suggestions and focuses/expands that row. */}
+          {/* Discovery Matrix — the Analytics tab's sole content. The
+              Obscurity Index block that used to live here was removed; the
+              compact "obscurity index" readout in the hero header (above the
+              tabs) is now the only place the score is displayed. */}
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-3 flex-wrap">
               <span
