@@ -16,3 +16,27 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+  # Phase 1 identity/events persistence. Optional: the backend runs with
+  # byte-identical behavior when DATABASE_URL is unset, so this service is
+  # opt-in — start it with `docker compose up -d postgres` and point
+  # backend/.env's DATABASE_URL at localhost:5433 (see backend/.env.example).
+  # Not wired into `backend`'s `environment`/`depends_on` here on purpose:
+  # the graceful-fallback contract requires the server to also boot cleanly
+  # with no Postgres present at all.
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_PASSWORD=dev
+    volumes:
+      - obscurity_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  obscurity_postgres_data:
