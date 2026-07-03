@@ -174,6 +174,15 @@ class Config:
     underexplored_mult: float = 1.0  # threshold = mean_plays_per_artist × mult
     adaptive_bound_mult: float = 4.0  # adaptive mode: generous bound defining light/deep + GT
 
+    # ── candidate source (T-C spike, eval-only — no Rust backend equivalent) ──
+    # "lastfm" (default, faithful to prod): artist.getsimilar candidates, as
+    # above. "listenbrainz": labs.api.listenbrainz.org similar-artists instead
+    # (MBID-keyed, session-co-occurrence based — a structurally different
+    # graph). "blend": union of both sources (see eval/listenbrainz.py). This
+    # is purely additive — anything other than "lastfm" is off by default and
+    # touches no scoring behavior when unused.
+    candidate_source: str = "lastfm"  # "lastfm" | "listenbrainz" | "blend"
+
     # ── eval ──────────────────────────────────────────────────────────────────
     k: int = 20                   # evaluate top-K recommendations
     concurrency: int = 5          # parallel Last.fm requests
