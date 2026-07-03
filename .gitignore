@@ -14,3 +14,13 @@ __pycache__/
 .env.production.local
 screenshot_*.png
 .gstack/
+
+# session artifacts (QA evidence, design handoffs, previews) - local only
+design-after*/
+design-docs-*/
+design_handoff*/
+qa-*/
+design-*.html
+frontend-bundle.md
+obscurity-frontend.zip
+screenshot_*.png
