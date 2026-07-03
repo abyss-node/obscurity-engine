@@ -31,6 +31,15 @@ pub struct Metrics {
     clicks: AtomicU64,
     /// `share` events accepted.
     shares: AtomicU64,
+    // ── ListenBrainz blend counters (candidate-source seam) ─────────────────
+    /// Discovery requests that attempted the ListenBrainz blend arm (source is
+    /// `listenbrainz` or `blend`).
+    lb_requests: AtomicU64,
+    /// LB cache hits (similar-artists + MBID resolutions served from cache).
+    lb_cache_hits: AtomicU64,
+    /// Requests where the LB arm hit its time budget and degraded to whatever
+    /// (possibly nothing) it managed within budget — the fail-open signal.
+    lb_degraded: AtomicU64,
 }
 
 impl Metrics {
@@ -72,6 +81,23 @@ impl Metrics {
         }
     }
 
+    /// Record one discovery request that ran the ListenBrainz blend arm.
+    pub fn record_lb_request(&self) {
+        self.lb_requests.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record one LB cache hit (similar-artists or MBID resolution). Called from
+    /// concurrent futures — a plain relaxed atomic add, never on a response path.
+    pub fn record_lb_cache_hit(&self) {
+        self.lb_cache_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record one request whose LB arm degraded (hit the time budget). Fail-open:
+    /// the request still succeeded on Last.fm-only (+ whatever LB managed).
+    pub fn record_lb_degraded(&self) {
+        self.lb_degraded.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Immutable snapshot of the current counters.
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
@@ -84,6 +110,9 @@ impl Metrics {
             dismisses: self.dismisses.load(Ordering::Relaxed),
             clicks: self.clicks.load(Ordering::Relaxed),
             shares: self.shares.load(Ordering::Relaxed),
+            lb_requests: self.lb_requests.load(Ordering::Relaxed),
+            lb_cache_hits: self.lb_cache_hits.load(Ordering::Relaxed),
+            lb_degraded: self.lb_degraded.load(Ordering::Relaxed),
         }
     }
 
@@ -109,6 +138,9 @@ pub struct MetricsSnapshot {
     pub dismisses: u64,
     pub clicks: u64,
     pub shares: u64,
+    pub lb_requests: u64,
+    pub lb_cache_hits: u64,
+    pub lb_degraded: u64,
 }
 
 impl MetricsSnapshot {
@@ -125,7 +157,8 @@ impl MetricsSnapshot {
     pub fn summary_line(&self) -> String {
         format!(
             "metrics discovery={} tracks={} pool_used={} custom_key={} key_pool_share={:.3} \
-             events={} saves={} dismisses={} clicks={} shares={}",
+             events={} saves={} dismisses={} clicks={} shares={} \
+             lb_requests={} lb_cache_hits={} lb_degraded={}",
             self.discovery,
             self.tracks,
             self.pool_used,
@@ -136,6 +169,9 @@ impl MetricsSnapshot {
             self.dismisses,
             self.clicks,
             self.shares,
+            self.lb_requests,
+            self.lb_cache_hits,
+            self.lb_degraded,
         )
     }
 }
@@ -168,7 +204,7 @@ mod tests {
         assert_eq!(m.snapshot().key_pool_share(), 0.0);
         assert_eq!(
             m.summary_line(),
-            "metrics discovery=0 tracks=0 pool_used=0 custom_key=0 key_pool_share=0.000 events=0 saves=0 dismisses=0 clicks=0 shares=0"
+            "metrics discovery=0 tracks=0 pool_used=0 custom_key=0 key_pool_share=0.000 events=0 saves=0 dismisses=0 clicks=0 shares=0 lb_requests=0 lb_cache_hits=0 lb_degraded=0"
         );
     }
 
@@ -184,8 +220,26 @@ mod tests {
         assert_eq!(snap.key_pool_share(), 0.75);
         assert_eq!(
             m.summary_line(),
-            "metrics discovery=3 tracks=1 pool_used=3 custom_key=1 key_pool_share=0.750 events=0 saves=0 dismisses=0 clicks=0 shares=0"
+            "metrics discovery=3 tracks=1 pool_used=3 custom_key=1 key_pool_share=0.750 events=0 saves=0 dismisses=0 clicks=0 shares=0 lb_requests=0 lb_cache_hits=0 lb_degraded=0"
         );
+    }
+
+    #[test]
+    fn lb_counters_increment_independently() {
+        let m = Metrics::new();
+        m.record_lb_request();
+        m.record_lb_request();
+        m.record_lb_cache_hit();
+        m.record_lb_cache_hit();
+        m.record_lb_cache_hit();
+        m.record_lb_degraded();
+        let s = m.snapshot();
+        assert_eq!(s.lb_requests, 2);
+        assert_eq!(s.lb_cache_hits, 3);
+        assert_eq!(s.lb_degraded, 1);
+        // LB counters never touch the request/key counters.
+        assert_eq!(s.discovery, 0);
+        assert_eq!(s.pool_used, 0);
     }
 
     #[test]

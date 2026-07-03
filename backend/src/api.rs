@@ -403,6 +403,17 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
     };
     let spotify = if state.spotify.is_some() { "ok" } else { "disabled" };
     let lastfm_auth = if state.lastfm_secret.is_some() { "ok" } else { "disabled" };
+    // listenbrainz: disabled (source=lastfm) / ok (blend arm live) / error (blend
+    // arm selected but LB currently failing). Reflects the client health flag,
+    // which is set by real discovery calls — no LB request is made from here.
+    let listenbrainz = if !state.candidate_source.uses_listenbrainz() {
+        "disabled"
+    } else {
+        match &state.listenbrainz {
+            Some(lb) if lb.healthy() => "ok",
+            _ => "error",
+        }
+    };
 
     (
         StatusCode::OK,
@@ -411,6 +422,7 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
             "redis": redis,
             "spotify": spotify,
             "lastfm_auth": lastfm_auth,
+            "listenbrainz": listenbrainz,
             "key_pool": { "keys": state.client.key_count() },
             "version": env!("CARGO_PKG_VERSION"),
         })),
