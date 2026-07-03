@@ -2,16 +2,15 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import ArtistList from "../components/ArtistList";
 import TrackCard from "../components/TrackCard";
-import DiscoveryMatrix from "../components/DiscoveryMatrix";
+import ResultsTopBar from "../components/ResultsTopBar";
+import ResultsBody from "../components/ResultsBody";
 import TracksComingSoon from "../components/TracksComingSoon";
 import ApiKeyModal from "../components/ApiKeyModal";
 import LoadingState from "../components/LoadingState";
 import ErrorState from "../components/ErrorState";
 import EmptyState from "../components/EmptyState";
 import ShareCard from "../components/ShareCard";
-import Tooltip from "../components/Tooltip";
 import { isGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import { getDepthProse } from "../lib/scoring";
 import * as Spotify from "../lib/spotify";
@@ -83,9 +82,9 @@ export type TrackDiscoveryData = {
 };
 
 type SortType = "composite" | "conviction" | "stickiness" | "listeners";
-type DiscoveryMode = "artists" | "tracks";
+export type DiscoveryMode = "artists" | "tracks";
 
-const PERIOD_LABELS: Record<string, string> = {
+export const PERIOD_LABELS: Record<string, string> = {
   blend: "MIX",
   "7day": "7D",
   "1month": "1M",
@@ -98,7 +97,7 @@ const PERIOD_LABELS: Record<string, string> = {
 // Discovery-appetite slider stops: how much re-engagement (resurfacing obscure
 // artists you've only lightly played) to mix into pure discovery. Maps to the
 // backend's underexplored-novelty multiplier. Ordered new → rediscover.
-const APPETITE_STOPS: { val: string; label: string; blurb: string }[] = [
+export const APPETITE_STOPS: { val: string; label: string; blurb: string }[] = [
   { val: "new", label: "Only new", blurb: "Brand-new artists only" },
   { val: "low", label: "Mostly new", blurb: "Mostly new, a few rediscoveries" },
   { val: "balanced", label: "Balanced", blurb: "Even mix of new and rediscovered gems" },
@@ -134,7 +133,6 @@ export default function Home() {
   const [fetchTrigger, setFetchTrigger] = useState(0);
   const [sortBy, setSortBy] = useState<SortType>("composite");
   const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
-  const [icebergOpen, setIcebergOpen] = useState(true);
   const [isSharedView, setIsSharedView] = useState(false);
   const [spotifyStatus, setSpotifyStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
@@ -569,23 +567,28 @@ export default function Home() {
         )
       : null;
 
+  const handleFocusArtist = useCallback((name: string) => {
+    setFocusedArtist(null);
+    setTimeout(() => setFocusedArtist(name), 0);
+  }, []);
+
   return (
     <>
-      {/* Fixed wordmark. On mobile it's hidden in the results view (the top bar
-          needs that space); the landing view keeps it. Always shown ≥720px. */}
-      <div
-        className={`fixed top-0 left-0 z-50 px-6 h-12 items-center pointer-events-none ${
-          username ? "hidden min-[720px]:flex" : "flex"
-        }`}
-      >
-        <span
-          className="font-serif text-[13px] font-semibold tracking-wide cursor-pointer pointer-events-auto transition-opacity duration-200 hover:opacity-70"
-          style={{ color: "var(--accent)" }}
-          onClick={handleReset}
-        >
-          OBSCURITY ENGINE
-        </span>
-      </div>
+      {/* Fixed wordmark — landing view only. In the results view the
+          wordmark now lives inside ResultsTopBar (contained in the single-
+          row bar, not floating over it) so it never overlaps the bar's
+          other controls at any width. */}
+      {!username && (
+        <div className="fixed top-0 left-0 z-50 px-6 h-12 flex items-center pointer-events-none">
+          <span
+            className="font-serif text-[13px] font-semibold tracking-wide cursor-pointer pointer-events-auto transition-opacity duration-200 hover:opacity-70"
+            style={{ color: "var(--accent)" }}
+            onClick={handleReset}
+          >
+            OBSCURITY ENGINE
+          </span>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {!username ? (
@@ -812,145 +815,26 @@ export default function Home() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {/* Fixed top bar */}
-            <div
-              className="fixed top-0 left-0 right-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b min-[720px]:flex-nowrap min-[720px]:h-12 min-[720px]:py-0 min-[720px]:px-6 min-[720px]:gap-4"
-              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-            >
-              {/* Wordmark spacer (desktop only — the floating wordmark is hidden on mobile) */}
-              <div className="w-40 shrink-0 hidden min-[720px]:block" />
-
-              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
-                |
-              </span>
-
-              {/* Username */}
-              <button
-                onClick={handleReset}
-                className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-50 shrink-0"
-                style={{ color: "var(--muted)" }}
-              >
-                {username}
-              </button>
-
-              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
-                |
-              </span>
-
-              {/* Mode toggle */}
-              <div className="flex gap-1 shrink-0">
-                {(["artists", "tracks"] as DiscoveryMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
-                    style={{
-                      borderColor: mode === m ? "var(--accent)" : "var(--border)",
-                      color: mode === m ? "var(--accent)" : "var(--dim)",
-                    }}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-
-              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
-
-              {/* Period pills — own full-width row on mobile, inline on desktop */}
-              <div className="flex flex-wrap gap-1 order-last basis-full min-[720px]:order-none min-[720px]:basis-auto min-[720px]:flex-1 min-[720px]:min-w-0">
-                {Object.entries(PERIOD_LABELS).map(([val, label]) => (
-                  <button
-                    key={val}
-                    onClick={() => setPeriod(val)}
-                    className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
-                    style={{
-                      borderColor: period === val ? "var(--accent)" : "var(--border)",
-                      color: period === val ? "var(--accent)" : "var(--dim)",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Discovery appetite slider — own full-width row, mixes re-engagement into discovery */}
-              <div className="flex items-center gap-2 order-last basis-full">
-                <span className="font-mono text-[10px] tracking-wider shrink-0" style={{ color: "var(--dim)" }}>
-                  appetite
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={APPETITE_STOPS.length - 1}
-                  step={1}
-                  value={Math.max(0, APPETITE_STOPS.findIndex((s) => s.val === appetite))}
-                  onChange={(e) => setAppetite(APPETITE_STOPS[Number(e.target.value)].val)}
-                  className="flex-1 min-w-0 max-w-[220px] cursor-pointer"
-                  style={{ accentColor: "var(--accent)" }}
-                  aria-label="Discovery appetite"
-                  title={APPETITE_STOPS.find((s) => s.val === appetite)?.blurb}
-                />
-                <span className="font-mono text-[10px] tracking-wider shrink-0" style={{ color: "var(--accent)" }}>
-                  {APPETITE_STOPS.find((s) => s.val === appetite)?.label}
-                </span>
-                <span className="font-mono text-[9px] shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>
-                  {APPETITE_STOPS.find((s) => s.val === appetite)?.blurb}
-                </span>
-              </div>
-
-              {/* Refresh */}
-              <button
-                onClick={handleRetry}
-                disabled={loading}
-                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-30"
-                style={{ color: "var(--dim)" }}
-              >
-                {isRefreshing ? "..." : "↺ refresh"}
-              </button>
-
-              {/* Session display (Surface spec: quiet top-bar entry) + the
-                  "saved" nav item, shown only once the user has >=1 save. */}
-              {session && (
-                <>
-                  <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
-                  <button
-                    onClick={handleLogout}
-                    className="font-mono text-[10px] tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: "var(--dim)" }}
-                    title="log out"
-                  >
-                    {session.username}
-                  </button>
-                  {savedCount > 0 && (
-                    <button
-                      onClick={() => setShowSaved(true)}
-                      className="font-mono text-[10px] tracking-wider shrink-0 transition-opacity duration-150 hover:opacity-60"
-                      style={{ color: "var(--dim)" }}
-                    >
-                      saved
-                    </button>
-                  )}
-                </>
-              )}
-
-              <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
-
-              {/* Share */}
-              <button
-                onClick={handleShare}
-                disabled={shareState === "rendering"}
-                className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-40"
-                style={{ color: "var(--dim)" }}
-              >
-                {shareState === "rendering"
-                  ? "rendering…"
-                  : shareState === "saved"
-                    ? "saved ✓"
-                    : shareState === "copied"
-                      ? "copied"
-                      : "↑ share"}
-              </button>
-            </div>
+            {/* Fixed top bar — single-row, contained (results-redesign §1) */}
+            <ResultsTopBar
+              username={username}
+              onReset={handleReset}
+              mode={mode}
+              setMode={setMode}
+              period={period}
+              setPeriod={setPeriod}
+              appetite={appetite}
+              setAppetite={setAppetite}
+              onRefresh={handleRetry}
+              refreshDisabled={loading}
+              isRefreshing={isRefreshing}
+              shareState={shareState}
+              onShare={handleShare}
+              session={session}
+              savedCount={savedCount}
+              onShowSaved={() => setShowSaved(true)}
+              onLogout={handleLogout}
+            />
 
             {/* Scrollable content (extra top pad on mobile clears the 2-row bar) */}
             <div className="pt-[68px] min-[720px]:pt-12 min-h-screen">
@@ -992,109 +876,27 @@ export default function Home() {
                       />
                     )}
 
-                    {/* Depth Assessment */}
-                    {mode === "artists" && depthScore > 0 && (
+                    {/* Hero picks + Suggestions/Analytics tabs (results-redesign §2–3).
+                        Analytics carries the Obscurity Index block + Discovery Matrix
+                        that used to render unconditionally in the scroll flow. */}
+                    {mode === "artists" && sortedArtists.length > 0 && (
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.6 }}
-                        className="flex flex-col gap-3 pb-8 border-b"
-                        style={{ borderColor: "var(--border)" }}
                       >
-                        <Tooltip text="0–100. Measures how far below the mainstream your results sit. Weighted by how strongly each artist was recommended — not just a simple average.">
-                          <span
-                            className="font-mono text-[10px] tracking-widest uppercase"
-                            style={{ color: "var(--dim)" }}
-                          >
-                            obscurity index
-                          </span>
-                        </Tooltip>
-                        <div className="flex items-baseline gap-3">
-                          <span
-                            className="font-serif text-7xl sm:text-8xl font-bold italic leading-none"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            {depthScore.toFixed(0)}
-                          </span>
-                          <span className="font-mono text-sm" style={{ color: "var(--dim)" }}>
-                            / 100
-                          </span>
-                        </div>
-                        {depthProse && (
-                          <p
-                            className="font-body text-lg font-light italic"
-                            style={{ color: "var(--muted)" }}
-                          >
-                            {depthProse}
-                          </p>
-                        )}
-                        <Tooltip text="Seeds: artists pulled from your listening history to drive the search. Candidates: the final count after scoring, filtering, and diversity enforcement.">
-                          <p
-                            className="font-mono text-[10px] tracking-wider"
-                            style={{ color: "var(--dim)" }}
-                          >
-                            {activeSeedCount} seeds · {artists.length} candidates
-                          </p>
-                        </Tooltip>
-                      </motion.div>
-                    )}
-
-                    {/* Discovery Matrix */}
-                    {mode === "artists" && sortedArtists.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.2, duration: 0.6 }}
-                        className="flex flex-col gap-3"
-                      >
-                        <div className="flex items-baseline gap-3 flex-wrap">
-                          <Tooltip text="Two axes that decide what you actually play: conviction (how strongly your seeds point here) on X, stickiness (how dedicated the fanbase is) on Y. Obscurity rides along as dot size — bigger = deeper cut.">
-                            <button
-                              onClick={() => setIcebergOpen((o) => !o)}
-                              className="font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
-                              style={{ color: "var(--dim)" }}
-                            >
-                              {icebergOpen ? "▼" : "▶"} discovery matrix
-                            </button>
-                          </Tooltip>
-                          <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)", opacity: 0.7 }}>
-                            conviction × stickiness · dot size = obscurity
-                          </span>
-                        </div>
-                        <AnimatePresence>
-                          {icebergOpen && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.35 }}
-                              className="overflow-hidden"
-                            >
-                              <DiscoveryMatrix
-                                artists={artists.slice(0, 10)}
-                                onArtistClick={(name) => {
-                                  setFocusedArtist(null);
-                                  setTimeout(() => setFocusedArtist(name), 0);
-                                }}
-                              />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    )}
-
-                    {/* Artist List */}
-                    {mode === "artists" && sortedArtists.length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.4, duration: 0.6 }}
-                      >
-                        <ArtistList
-                          artists={filteredArtists}
+                        <ResultsBody
+                          username={username}
+                          mode={mode}
+                          artists={artists}
+                          listArtists={filteredArtists}
                           sortBy={sortBy}
                           setSortBy={(val) => setSortBy(val as SortType)}
+                          depthScore={depthScore}
+                          depthProse={depthProse}
+                          activeSeedCount={activeSeedCount}
                           focusedArtist={focusedArtist}
+                          onFocusArtist={handleFocusArtist}
                           session={session}
                           persistence={persistence}
                           runId={runId}
@@ -1218,9 +1020,12 @@ export default function Home() {
 
 /**
  * Read-only rendering of a persisted share payload, used by the `/r/[id]` route.
- * Reuses the existing DiscoveryMatrix and ArtistList unchanged; the sort control
- * stays live (local state) but there is no input, refresh, or share action — a
- * viewer sees exactly the sender's computed results, then a "get your own" CTA.
+ * Reuses the shared ResultsBody (hero + Suggestions/Analytics tabs) exactly as
+ * the logged-in view does; the sort control stays live (local state) but there
+ * is no input, refresh, share, or top bar — a viewer sees exactly the sender's
+ * computed results, then a "get your own" CTA. Personal UI (save/dismiss,
+ * session) stays hidden because no session/persistence/runId is passed —
+ * ArtistCard's existing capability gate takes care of that, unchanged.
  * Exported from the client module so the `/r/[id]` server component can render
  * it (and SSR the artist names into the initial HTML) after fetching the store.
  */
@@ -1278,22 +1083,19 @@ export function ReadonlyResults({ payload }: { payload: SharePayload }) {
           </a>
         </div>
 
-        {/* Discovery Matrix (top 10) */}
         {recommendations.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
-              discovery matrix
-            </span>
-            <DiscoveryMatrix artists={recommendations.slice(0, 10)} />
-          </div>
+          <ResultsBody
+            username={username}
+            mode="artists"
+            artists={recommendations}
+            listArtists={sortedArtists}
+            sortBy={sortBy}
+            setSortBy={(val) => setSortBy(val as SortType)}
+            depthScore={0}
+            depthProse={null}
+            activeSeedCount={0}
+          />
         )}
-
-        {/* Artist list (read-only; sort stays interactive) */}
-        <ArtistList
-          artists={sortedArtists}
-          sortBy={sortBy}
-          setSortBy={(val) => setSortBy(val as SortType)}
-        />
       </div>
     </>
   );

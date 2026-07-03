@@ -35,6 +35,18 @@ export function obscurityDotSize(listeners: number): number {
 }
 
 /**
+ * Formats a raw Last.fm listener count into a compact label (e.g. "14K").
+ * Shared by the ledger, the expanded card, and the hero picks so every
+ * surface renders the exact same digits.
+ */
+export function formatListeners(n: number): string {
+  if (!n) return "—";
+  if (n < 1000) return `${n}`;
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}K`;
+  return `${Math.round(n / 1000)}K`;
+}
+
+/**
  * Returns a human-readable depth tier label for a given obscurity score (0–100).
  * Optionally appends the user's dominant genre when it has significant weight.
  */
