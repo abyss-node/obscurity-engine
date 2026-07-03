@@ -5,6 +5,7 @@ COPY Cargo.toml Cargo.lock ./
 # Cache deps before copying source
 RUN mkdir src && echo "fn main(){}" > src/main.rs && cargo build --release && rm -rf src
 COPY src ./src
+COPY migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
 FROM debian:bookworm-slim
