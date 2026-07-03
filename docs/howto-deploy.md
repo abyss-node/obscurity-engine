@@ -180,12 +180,46 @@ username end to end.
 | `KEY_STORE_PATH` | backend | no | file path on a persistent disk where opt-in user-contributed keys are saved/reloaded |
 | `SPOTIFY_CLIENT_ID` | backend | no | direct Spotify artist links + preview |
 | `SPOTIFY_CLIENT_SECRET` | backend | no | same |
+| `CANDIDATE_SOURCE` | backend | no | candidate-generation source: `lastfm` (default) / `listenbrainz` / `blend`; unset or invalid → `lastfm` (today's behavior). See below |
 | `REDIS_URL` | backend | no | Redis-backed result cache; unset → in-memory (graceful fallback) |
 | `DATABASE_URL` | backend | no | Postgres persistence (identity, events, saved/dismissed, observations); unset → every persistence endpoint hides or `503`s (graceful fallback) |
 | `LASTFM_API_SECRET` | backend | no | enables Last.fm login (`POST /api/auth/session`); unset → the endpoint `503`s and the frontend hides login |
 | `NEXT_PUBLIC_BACKEND_URL` | frontend | yes | points the browser at the backend |
 | `KV_REST_API_URL` | frontend | no | Vercel KV REST endpoint for persistent share links |
 | `KV_REST_API_TOKEN` | frontend | no | Vercel KV REST token; both `KV_REST_API_URL` + this must be set together, else in-memory fallback (graceful fallback) |
+
+### Candidate source (`CANDIDATE_SOURCE`) — the ListenBrainz blend
+
+Discovery candidates come from Last.fm's similar-artists graph by default. Set
+`CANDIDATE_SOURCE` on the backend service to change that:
+
+- `lastfm` (default; also what unset or any unrecognized value gives) — exactly
+  today's behavior, byte-identical responses. **Leave it unset to keep today's
+  behavior.**
+- `blend` — union Last.fm with ListenBrainz's community-listening similar-artists
+  graph. This is the offline-validated win (`docs/blend-n348-2026-07-03.md`:
+  +9.5% relative reach at n=348, significant in all three anchors). Additive:
+  every Last.fm candidate is still there, plus the ones ListenBrainz surfaces.
+- `listenbrainz` — ListenBrainz only (the structurally-different graph on its
+  own; mainly for parity with the eval harness, not a recommended prod setting).
+
+**Fail-open + caching (why `blend` is safe to flip).** The ListenBrainz arm is
+additive and fail-open: it has an 8-second per-request time budget, and if
+ListenBrainz is slow or down the request silently degrades to Last.fm-only
+candidates — it never errors or meaningfully delays a discovery (this is the
+opposite of the Last.fm arm, which stays fail-closed for pool determinism).
+ListenBrainz similar-artists lookups and MusicBrainz ID resolutions are cached
+through the same store as the result cache (in-memory by default, Redis when
+`REDIS_URL` is set) with a **7-day TTL**, so after warm-up the blend adds little
+latency. For production it is strongly recommended to run `blend` **with
+`REDIS_URL` set** so the LB cache is shared across instances and survives
+redeploys.
+
+**Rollout.** Flip to `blend` only after reviewing the verdict doc. Watch the
+`/api/status` `listenbrainz` field (`ok`/`error`) and the hourly metrics line
+(`lb_requests`, `lb_cache_hits`, `lb_degraded`) after enabling. To roll back,
+set `CANDIDATE_SOURCE=lastfm` (or unset it) and redeploy — no code change, and
+the response shape is unchanged either way.
 
 ### Persisting the user-contributed key pool
 
