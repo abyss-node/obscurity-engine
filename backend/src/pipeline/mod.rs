@@ -22,6 +22,13 @@ use std::sync::Arc;
 use crate::lastfm::LastfmClient;
 use crate::models::{DiscoveryResponse, DiscoveryResponseItem, TrackDiscoveryResponse};
 
+/// Shared listener-count ceiling: candidates (artist- or track-level) above this
+/// are considered too mainstream to surface, and it's also the denominator in
+/// both depth-score obscurity curves (see scoring.rs / track_scoring.rs
+/// `compute_depth_score`). Previously defined twice (25_000 in both files);
+/// unified here so the two pipelines can never drift apart. Value unchanged.
+pub const MAX_LISTENER_CEILING: u64 = 25_000;
+
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
     username: String,

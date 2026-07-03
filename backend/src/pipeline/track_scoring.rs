@@ -20,8 +20,9 @@ use crate::models::{GenreWeight, TrackDiscoveryItem, TrackDiscoveryResponse};
 use super::track_candidates::TrackCandidateMap;
 use super::track_seeds::TrackSeeds;
 
+use super::MAX_LISTENER_CEILING;
+
 const INFO_CONCURRENCY: usize = 10;
-const MAX_LISTENER_CEILING: u64 = 25_000;
 const DIVERSITY_SLOTS_PER_GENRE: usize = 6;
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 300;
 const MAX_RESULTS: usize = 30;

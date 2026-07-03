@@ -25,8 +25,9 @@ use super::candidates::CandidateMap;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+use super::MAX_LISTENER_CEILING;
+
 const INFO_CONCURRENCY: usize = 12;
-const MAX_LISTENER_CEILING: u64 = 25_000;
 /// Cap each seed's contribution to conviction so one dominant artist
 /// doesn't flood the ranking at the expense of multi-seed agreement
 const CONVICTION_CAP: f64 = 3.0;
