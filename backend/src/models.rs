@@ -88,10 +88,6 @@ pub struct Artist {
     pub tags: Option<Tags>,
     #[serde(default)]
     pub stickiness_score: Option<f64>,
-    #[serde(default)]
-    pub recommended_by: Vec<String>,
-    #[serde(default)]
-    pub conviction_score: Option<usize>,
 }
 
 impl Artist {
