@@ -17,6 +17,7 @@ mod cache;
 mod db;
 mod handlers;
 mod lastfm;
+mod listenbrainz;
 mod metrics;
 mod models;
 mod pipeline;
@@ -25,11 +26,18 @@ mod spotify;
 mod utils;
 
 use lastfm::LastfmClient;
+use listenbrainz::{CandidateSource, ListenBrainzClient};
 use spotify::SpotifyClient;
 
 pub struct AppState {
     pub client: Arc<LastfmClient>,
     pub spotify: Option<Arc<SpotifyClient>>,
+    // Candidate-generation source (CANDIDATE_SOURCE env). Default `Lastfm` —
+    // exactly today's behavior. The lever is flipped in prod only after review.
+    pub candidate_source: CandidateSource,
+    // ListenBrainz client, wired only when `candidate_source` needs it. `None`
+    // for the default `lastfm` source (the blend arm is never constructed).
+    pub listenbrainz: Option<Arc<ListenBrainzClient>>,
     // Result cache — in-memory by default, Redis-backed when REDIS_URL is set.
     // Keys are namespaced by the callers (`reverse_scrobble:…`, `tracks:…`).
     pub cache: cache::CacheStore,
@@ -153,11 +161,28 @@ async fn main() {
         }
     };
 
+    // Candidate source: default `lastfm` (byte-identical to today). Only build
+    // the ListenBrainz client when the lever actually selects it, so the default
+    // path never constructs the blend arm.
+    let candidate_source = CandidateSource::from_env();
+    let listenbrainz = if candidate_source.uses_listenbrainz() {
+        println!(
+            "Candidate source: {} (ListenBrainz blend arm enabled, fail-open, 7-day cache)",
+            candidate_source.as_str()
+        );
+        Some(Arc::new(ListenBrainzClient::new()))
+    } else {
+        println!("Candidate source: lastfm (default — ListenBrainz not used)");
+        None
+    };
+
     let metrics = Arc::new(metrics::Metrics::new());
     let rate_limiter = Arc::new(ratelimit::RateLimiter::new());
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::with_keys(api_keys, key_store)),
         spotify,
+        candidate_source,
+        listenbrainz,
         cache: cache_store,
         metrics: Arc::clone(&metrics),
         db,
@@ -258,6 +283,8 @@ mod integration_tests {
         Arc::new(AppState {
             client: Arc::new(LastfmClient::with_keys(vec!["TESTKEY".to_string()], None)),
             spotify: None,
+            candidate_source: CandidateSource::Lastfm,
+            listenbrainz: None,
             cache: cache::CacheStore::InMemory(cache::InMemoryStore::new()),
             metrics: Arc::new(metrics::Metrics::new()),
             db,
@@ -305,6 +332,8 @@ mod integration_tests {
         assert_eq!(json["redis"], "disabled");
         assert_eq!(json["spotify"], "disabled");
         assert_eq!(json["lastfm_auth"], "disabled");
+        // Default candidate source is lastfm → LB reports "disabled".
+        assert_eq!(json["listenbrainz"], "disabled");
         assert_eq!(json["key_pool"]["keys"], 1);
         assert!(json["version"].is_string());
     }

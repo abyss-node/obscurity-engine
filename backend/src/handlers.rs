@@ -18,7 +18,7 @@ use crate::api;
 use crate::cache;
 use crate::lastfm::LastfmClient;
 use crate::models::{self, DiscoveryResponseItem};
-use crate::pipeline::{discover_obscure_artists, discover_obscure_tracks};
+use crate::pipeline::{discover_obscure_artists, discover_obscure_tracks, BlendConfig};
 use crate::spotify::SpotifyClient;
 use crate::AppState;
 
@@ -102,6 +102,15 @@ pub async fn discovery_handler(
     let appetite = query.appetite.as_deref().unwrap_or("balanced");
     let appetite_mult = appetite_to_mult(query.appetite.as_deref());
 
+    // Candidate-source blend config — `None` (default `lastfm`) runs today's
+    // path unchanged. `Copy`, so both the custom-key and pool call sites reuse it.
+    let blend: Option<BlendConfig> = state.listenbrainz.as_ref().map(|lb| BlendConfig {
+        source: state.candidate_source,
+        listenbrainz: lb.as_ref(),
+        cache: &state.cache,
+        metrics: &state.metrics,
+    });
+
     // Resolve the (optional) authenticated user once. Anonymous requests never
     // touch the DB (bearer is checked first inside resolve_auth).
     let authed = api::resolve_auth(&headers, &state.db).await;
@@ -109,7 +118,7 @@ pub async fn discovery_handler(
     // Custom-key requests skip the cache and persistence — results aren't
     // stored server-side (unchanged behavior).
     if let Some(_) = custom_key {
-        return match discover_obscure_artists(client, query.username, query.period, appetite_mult).await {
+        return match discover_obscure_artists(client, query.username, query.period, appetite_mult, blend).await {
             Ok((result, _reserve)) => {
                 let result = annotate_sparse_artists(result);
                 let result = attach_listen_links(&state.spotify, result).await;
@@ -154,7 +163,7 @@ pub async fn discovery_handler(
 
     // ── Cache miss ───────────────────────────────────────────────────────────
     println!("Cache miss: {}", cache_key);
-    match discover_obscure_artists(client, query.username.clone(), query.period.clone(), appetite_mult).await {
+    match discover_obscure_artists(client, query.username.clone(), query.period.clone(), appetite_mult, blend).await {
         Ok((result, mut reserve)) => {
             let mut result = annotate_sparse_artists(result);
             result = attach_listen_links(&state.spotify, result).await;
