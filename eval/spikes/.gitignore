@@ -1,0 +1,3 @@
+# Raw MusicBrainz responses (regenerable proxy cache) — do not commit
+.mbcache/
+__pycache__/
