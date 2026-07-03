@@ -299,6 +299,49 @@ mod integration_tests {
         base_state(None, false, None, Arc::new(ratelimit::RateLimiter::new()))
     }
 
+    /// A no-DB state with the ListenBrainz blend arm wired (candidate source
+    /// `blend`), optionally forced unhealthy — for the `/api/status` LB states.
+    fn blend_state(healthy: bool) -> Arc<AppState> {
+        let lb = ListenBrainzClient::new();
+        if !healthy {
+            lb.mark_unhealthy();
+        }
+        Arc::new(AppState {
+            client: Arc::new(LastfmClient::with_keys(vec!["TESTKEY".to_string()], None)),
+            spotify: None,
+            candidate_source: CandidateSource::Blend,
+            listenbrainz: Some(Arc::new(lb)),
+            cache: cache::CacheStore::InMemory(cache::InMemoryStore::new()),
+            metrics: Arc::new(metrics::Metrics::new()),
+            db: None,
+            db_configured: false,
+            redis_configured: false,
+            lastfm_secret: None,
+            rate_limiter: Arc::new(ratelimit::RateLimiter::new()),
+        })
+    }
+
+    #[tokio::test]
+    async fn status_listenbrainz_ok_when_blend_healthy() {
+        let (status, json) = status_of(
+            build_router(blend_state(true)),
+            Request::builder().uri("/api/status").body(Body::empty()).unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["listenbrainz"], "ok");
+    }
+
+    #[tokio::test]
+    async fn status_listenbrainz_error_when_blend_unhealthy() {
+        let (_status, json) = status_of(
+            build_router(blend_state(false)),
+            Request::builder().uri("/api/status").body(Body::empty()).unwrap(),
+        )
+        .await;
+        assert_eq!(json["listenbrainz"], "error");
+    }
+
     async fn status_of(app: Router, req: Request<Body>) -> (StatusCode, serde_json::Value) {
         let resp = app.oneshot(req).await.unwrap();
         let status = resp.status();

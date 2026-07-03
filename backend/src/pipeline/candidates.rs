@@ -196,7 +196,18 @@ async fn build_listenbrainz_prov(
     seed_names: &[String],
     b: &BlendConfig<'_>,
 ) -> (ProvMap, bool) {
-    let deadline = Instant::now() + LB_TIME_BUDGET;
+    build_listenbrainz_prov_budgeted(client, seed_names, b, LB_TIME_BUDGET).await
+}
+
+/// Budget-parameterized inner of `build_listenbrainz_prov` (the budget is a const
+/// in production; tests inject a short one to exercise the fail-open deadline).
+async fn build_listenbrainz_prov_budgeted(
+    client: &Arc<LastfmClient>,
+    seed_names: &[String],
+    b: &BlendConfig<'_>,
+    budget: Duration,
+) -> (ProvMap, bool) {
+    let deadline = Instant::now() + budget;
     let lb = b.listenbrainz;
     let cache = b.cache;
     let metrics = b.metrics;
@@ -376,5 +387,104 @@ mod tests {
         let (display, seeds) = map.get("codeine").unwrap();
         assert_eq!(display, "Codeine");
         assert_eq!(seeds.len(), 2);
+    }
+
+    // ── Budget / fail-open tests for the ListenBrainz arm (mock LB server) ────
+
+    use crate::cache::{CacheStore, InMemoryStore};
+    use crate::listenbrainz::ListenBrainzClient;
+    use crate::metrics::Metrics;
+    use crate::pipeline::BlendConfig;
+    use axum::{extract::Query, routing::get, Json, Router};
+
+    /// Spin a similar-artists mock that optionally sleeps `delay_ms` before
+    /// answering (to force the fail-open time budget to trip).
+    async fn spawn_lb_similar_mock(delay_ms: u64) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/",
+            get(move |Query(_q): Query<std::collections::HashMap<String, String>>| async move {
+                if delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+                Json(serde_json::json!([
+                    { "name": "MockNeighbour", "score": 10 },
+                ]))
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        format!("http://{}/", addr)
+    }
+
+    /// Seed the mbid cache so `resolve_mbid` short-circuits tier-1 (no Last.fm
+    /// call in the test) — each seed resolves to a fixed mbid straight from cache.
+    async fn preseed_mbids(cache: &CacheStore, seeds: &[&str]) {
+        for s in seeds {
+            let key = format!("lb:mbid:{}", normalize_artist_name(s));
+            cache
+                .put_json(&key, &serde_json::json!({ "mbid": format!("mbid-{}", s) }), Duration::from_secs(3600))
+                .await;
+        }
+    }
+
+    // Fail-open: a slow LB (500ms) under a tiny 100ms budget yields NO blend
+    // candidates, is flagged degraded, and — critically — returns fast.
+    #[tokio::test]
+    async fn lb_arm_fails_open_on_budget_timeout() {
+        let url = spawn_lb_similar_mock(500).await;
+        let lb = ListenBrainzClient::with_urls(url, "unused".into());
+        let cache = CacheStore::InMemory(InMemoryStore::new());
+        let metrics = Metrics::new();
+        preseed_mbids(&cache, &["SeedA", "SeedB"]).await;
+
+        let b = BlendConfig {
+            source: CandidateSource::Blend,
+            listenbrainz: &lb,
+            cache: &cache,
+            metrics: &metrics,
+        };
+        let dummy_lastfm = Arc::new(LastfmClient::new("TESTKEY".into()));
+        let seeds = vec!["SeedA".to_string(), "SeedB".to_string()];
+
+        let start = Instant::now();
+        let (prov, degraded) =
+            build_listenbrainz_prov_budgeted(&dummy_lastfm, &seeds, &b, Duration::from_millis(100)).await;
+        let elapsed = start.elapsed();
+
+        assert!(degraded, "LB exceeding the budget must be flagged degraded");
+        assert!(prov.is_empty(), "nothing completed within the 100ms budget");
+        assert!(
+            elapsed < Duration::from_millis(400),
+            "fail-open must return near the budget, not wait for slow LB (took {:?})",
+            elapsed
+        );
+    }
+
+    // Happy path: a fast LB within budget blends its candidates and is NOT
+    // degraded; the mbid cache short-circuits Last.fm entirely.
+    #[tokio::test]
+    async fn lb_arm_blends_within_budget() {
+        let url = spawn_lb_similar_mock(0).await;
+        let lb = ListenBrainzClient::with_urls(url, "unused".into());
+        let cache = CacheStore::InMemory(InMemoryStore::new());
+        let metrics = Metrics::new();
+        preseed_mbids(&cache, &["SeedA"]).await;
+
+        let b = BlendConfig {
+            source: CandidateSource::Blend,
+            listenbrainz: &lb,
+            cache: &cache,
+            metrics: &metrics,
+        };
+        let dummy_lastfm = Arc::new(LastfmClient::new("TESTKEY".into()));
+        let seeds = vec!["SeedA".to_string()];
+
+        let (prov, degraded) =
+            build_listenbrainz_prov_budgeted(&dummy_lastfm, &seeds, &b, Duration::from_secs(5)).await;
+
+        assert!(!degraded, "fast LB within budget is not degraded");
+        let cand = prov.get("mockneighbour").expect("LB candidate blended in");
+        assert!(cand.recs.get("SeedA").unwrap().listenbrainz);
     }
 }

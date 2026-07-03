@@ -169,6 +169,10 @@ pub struct ListenBrainzClient {
     /// (unknown mbid) is a legitimate miss and does NOT flip this. Starts true so
     /// a fresh process with no traffic reads "ok".
     healthy: AtomicBool,
+    /// Endpoints — the real hosts in production; injectable so unit tests can
+    /// point at a local mock server (no live ListenBrainz/MusicBrainz in tests).
+    similar_url: String,
+    mb_url: String,
 }
 
 impl Default for ListenBrainzClient {
@@ -179,6 +183,12 @@ impl Default for ListenBrainzClient {
 
 impl ListenBrainzClient {
     pub fn new() -> Self {
+        Self::with_urls(LB_SIMILAR_URL.to_string(), MB_SEARCH_URL.to_string())
+    }
+
+    /// Construct with explicit endpoints (production uses `new`; tests point
+    /// these at a local mock server).
+    pub fn with_urls(similar_url: String, mb_url: String) -> Self {
         let http = Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5))
@@ -191,12 +201,21 @@ impl ListenBrainzClient {
             mb_sem: Semaphore::new(1),
             mb_pacer: Pacer::new(MB_MIN_INTERVAL),
             healthy: AtomicBool::new(true),
+            similar_url,
+            mb_url,
         }
     }
 
     /// For `/api/status`. True when the last LB fetch succeeded (or none yet).
     pub fn healthy(&self) -> bool {
         self.healthy.load(Ordering::Relaxed)
+    }
+
+    /// Test-only: force the health flag (to exercise the `/api/status` "error"
+    /// state without needing a real transport failure).
+    #[cfg(test)]
+    pub fn mark_unhealthy(&self) {
+        self.healthy.store(false, Ordering::Relaxed);
     }
 
     // ── MBID resolution: Last.fm mbid (free) → MusicBrainz search ────────────
@@ -239,7 +258,7 @@ impl ListenBrainzClient {
         let query = format!("artist:\"{}\"", name);
         let resp = match self
             .http
-            .get(MB_SEARCH_URL)
+            .get(&self.mb_url)
             .query(&[("query", query.as_str()), ("fmt", "json"), ("limit", "3")])
             .send()
             .await
@@ -296,7 +315,7 @@ impl ListenBrainzClient {
 
         let resp = match self
             .http
-            .get(LB_SIMILAR_URL)
+            .get(&self.similar_url)
             .query(&[("artist_mbids", mbid), ("algorithm", LB_ALGORITHM)])
             .send()
             .await
@@ -411,5 +430,110 @@ mod tests {
     fn normalize_similar_empty_and_nonarray() {
         assert!(normalize_similar(&serde_json::json!([])).is_empty());
         assert!(normalize_similar(&serde_json::json!({ "not": "an array" })).is_empty());
+    }
+
+    // ── Mock-server tests: cache hit/miss/negative, fail-open, MB score gate ──
+    // No live ListenBrainz/MusicBrainz — a local axum server stands in.
+
+    use crate::cache::{CacheStore, InMemoryStore};
+    use crate::metrics::Metrics;
+    use axum::{extract::{Query, State}, routing::get, Json, Router};
+    use std::collections::HashMap;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+
+    fn mem_cache() -> CacheStore {
+        CacheStore::InMemory(InMemoryStore::new())
+    }
+
+    /// Spin a mock similar-artists server on an ephemeral port. It counts the
+    /// requests it actually serves (so tests can prove a second call was a cache
+    /// hit) and returns canned neighbours keyed by the `artist_mbids` query.
+    async fn spawn_similar_mock() -> (String, Arc<AtomicUsize>) {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route(
+                "/",
+                get(|Query(q): Query<HashMap<String, String>>, State(h): State<Arc<AtomicUsize>>| async move {
+                    h.fetch_add(1, Ordering::Relaxed);
+                    let mbid = q.get("artist_mbids").cloned().unwrap_or_default();
+                    if mbid == "empty" {
+                        Json(serde_json::json!([]))
+                    } else {
+                        Json(serde_json::json!([
+                            { "name": "Alpha", "score": 10 },
+                            { "name": "Beta", "score": 5 },
+                        ]))
+                    }
+                }),
+            )
+            .with_state(Arc::clone(&hits));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        (format!("http://{}/", addr), hits)
+    }
+
+    #[tokio::test]
+    async fn similar_cache_hit_miss_and_negative_cache() {
+        let (url, hits) = spawn_similar_mock().await;
+        let client = ListenBrainzClient::with_urls(url, "unused".into());
+        let cache = mem_cache();
+        let metrics = Metrics::new();
+
+        // Miss → fetches, normalizes, caches. Server sees exactly one request.
+        let first = client.similar("mbid1", 20, &cache, &metrics).await;
+        assert_eq!(first, vec![("Alpha".into(), 1.0), ("Beta".into(), 0.5)]);
+        assert_eq!(hits.load(Ordering::Relaxed), 1);
+        assert_eq!(metrics.snapshot().lb_cache_hits, 0);
+
+        // Hit → identical result, NO new server request, cache-hit counted.
+        let second = client.similar("mbid1", 20, &cache, &metrics).await;
+        assert_eq!(second, first);
+        assert_eq!(hits.load(Ordering::Relaxed), 1, "second call served from cache");
+        assert_eq!(metrics.snapshot().lb_cache_hits, 1);
+
+        // Negative cache: an empty neighbour list is cached, not re-fetched.
+        let empty1 = client.similar("empty", 20, &cache, &metrics).await;
+        assert!(empty1.is_empty());
+        assert_eq!(hits.load(Ordering::Relaxed), 2);
+        let empty2 = client.similar("empty", 20, &cache, &metrics).await;
+        assert!(empty2.is_empty());
+        assert_eq!(hits.load(Ordering::Relaxed), 2, "empty result negative-cached");
+        assert_eq!(metrics.snapshot().lb_cache_hits, 2);
+    }
+
+    #[tokio::test]
+    async fn similar_fail_open_on_transport_error() {
+        // Port 9 (discard) is expected closed → connection refused fast. The
+        // client must degrade to [] and flip its health flag, never hang/panic.
+        let client = ListenBrainzClient::with_urls("http://127.0.0.1:9/".into(), "unused".into());
+        let cache = mem_cache();
+        let metrics = Metrics::new();
+        assert!(client.healthy(), "starts healthy");
+        let out = client.similar("mbid1", 20, &cache, &metrics).await;
+        assert!(out.is_empty(), "transport error degrades to no candidates (fail-open)");
+        assert!(!client.healthy(), "transport failure flips health to error");
+    }
+
+    #[tokio::test]
+    async fn mb_search_accepts_strong_rejects_weak() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/",
+            get(|Query(q): Query<HashMap<String, String>>| async move {
+                let query = q.get("query").cloned().unwrap_or_default();
+                // Weak match for names containing "weak", strong otherwise.
+                let score = if query.to_lowercase().contains("weak") { 50 } else { 95 };
+                Json(serde_json::json!({ "artists": [ { "id": "resolved-id", "score": score } ] }))
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        let url = format!("http://{}/", addr);
+        let client = ListenBrainzClient::with_urls("unused".into(), url);
+
+        assert_eq!(client.mb_search("StrongMatch").await, Some("resolved-id".into()));
+        assert_eq!(client.mb_search("WeakMatch").await, None, "score < 80 rejected");
     }
 }
