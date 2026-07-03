@@ -4,17 +4,10 @@ import { useEffect, useRef } from "react";
 import { Artist } from "../app/page";
 import { motion, AnimatePresence } from "framer-motion";
 import { firstGenreTag, isGeoTag, formatGeoTag, GEO_CANONICAL } from "../lib/geoTags";
-import { normConviction, normStickiness } from "../lib/scoring";
+import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent, canPersistActions } from "../lib/capability";
 import { postEvent } from "../lib/events";
 import type { Session } from "../lib/session";
-
-function formatListeners(n: number): string {
-  if (!n) return "—";
-  if (n < 1000) return `${n}`;
-  if (n < 10_000) return `${(n / 1000).toFixed(1)}K`;
-  return `${Math.round(n / 1000)}K`;
-}
 
 interface ArtistCardProps {
   artist: Artist;
