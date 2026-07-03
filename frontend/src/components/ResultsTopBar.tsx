@@ -69,28 +69,40 @@ export default function ResultsTopBar({
     >
       {/* Wordmark — contained in the bar (desktop only; mobile keeps the
           existing username-only "go back" affordance, no wordmark there
-          today either — this removes the old floating/overlapping copy). */}
+          today either — this removes the old floating/overlapping copy).
+          Hidden through the 720–849px dead zone (7 period pills + mode
+          toggle + slider don't fit alongside it at that width — verified
+          empirically, single row resumes cleanly at 850px); reappears at
+          ≥850px, comfortably inside the intended ≥720px desktop design. */}
       <button
         type="button"
         onClick={onReset}
-        className="hidden min-[720px]:inline-block font-serif text-[13px] font-semibold tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-70"
+        className="hidden min-[850px]:inline-block font-serif text-[13px] font-semibold tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-70"
         style={{ color: "var(--accent)" }}
       >
         OBSCURITY ENGINE
       </button>
-      {SEP()}
+      <span
+        className="font-mono text-xs shrink-0 hidden min-[850px]:inline"
+        style={{ color: "var(--border)" }}
+      >
+        |
+      </span>
 
       {/* Username — reset on click. Always visible on mobile (unchanged);
-          hidden 720–999px per the degradation spec, back at ≥1000px. */}
+          hidden 720–1029px per the degradation spec, back at ≥1030px.
+          (Was ≥1000px, which collided with the refresh-label reveal at the
+          same breakpoint and tipped the row into a wrap right at 1000px —
+          verified empirically; 1030px carries enough margin.) */}
       <button
         onClick={onReset}
-        className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-50 shrink-0 min-[720px]:hidden min-[1000px]:inline-block"
+        className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-50 shrink-0 min-[720px]:hidden min-[1030px]:inline-block"
         style={{ color: "var(--muted)" }}
       >
         {username}
       </button>
       <span
-        className="font-mono text-xs shrink-0 hidden min-[1000px]:inline"
+        className="font-mono text-xs shrink-0 hidden min-[1030px]:inline"
         style={{ color: "var(--border)" }}
       >
         |
@@ -178,7 +190,7 @@ export default function ResultsTopBar({
         ) : (
           <>
             <span aria-hidden>↺</span>
-            <span className="min-[720px]:hidden min-[1000px]:inline"> refresh</span>
+            <span className="min-[720px]:hidden min-[1030px]:inline"> refresh</span>
           </>
         )}
       </button>
