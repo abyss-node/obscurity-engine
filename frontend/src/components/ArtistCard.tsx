@@ -5,6 +5,9 @@ import { Artist } from "../app/page";
 import { motion, AnimatePresence } from "framer-motion";
 import { firstGenreTag, isGeoTag, formatGeoTag, GEO_CANONICAL } from "../lib/geoTags";
 import { normConviction, normStickiness } from "../lib/scoring";
+import { canFireRecEvent, canPersistActions } from "../lib/capability";
+import { postEvent } from "../lib/events";
+import type { Session } from "../lib/session";
 
 function formatListeners(n: number): string {
   if (!n) return "—";
@@ -19,11 +22,26 @@ interface ArtistCardProps {
   expanded: boolean;
   onToggle: () => void;
   isFocused?: boolean;
+  // Persistence capability + session (Phase 1-B). All optional so existing
+  // callers (e.g. the read-only /r/[id] view) keep working with save/dismiss
+  // fully hidden.
+  session?: Session | null;
+  persistence?: boolean;
+  runId?: string | null;
+  saved?: boolean;
+  onSave?: () => void;
+  onUnsave?: () => void;
+  onDismiss?: () => void;
 }
 
 /** A resolved listen/find destination. Last.fm + Spotify always render; the
  *  others only when the backend resolver confirmed they exist. */
-type LinkDef = { label: string; href: string; share?: boolean };
+type LinkDef = {
+  label: string;
+  href: string;
+  share?: boolean;
+  target?: "lastfm" | "spotify" | "bandcamp" | "thisis";
+};
 
 const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
   <div className="flex flex-col gap-1.5">
@@ -37,7 +55,20 @@ const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
 const ledgerCols =
   "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
-export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused }: ArtistCardProps) {
+export default function ArtistCard({
+  artist,
+  rank,
+  expanded,
+  onToggle,
+  isFocused,
+  session = null,
+  persistence = false,
+  runId = null,
+  saved = false,
+  onSave,
+  onUnsave,
+  onDismiss,
+}: ArtistCardProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,24 +107,38 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
 
   // Last.fm + Spotify + Bandcamp always; "This Is" only when the resolver confirms it.
   const links: LinkDef[] = [
-    { label: "Last.fm", href: lastfmUrl },
-    { label: "Spotify", href: spotifyUrl },
-    { label: "Bandcamp", href: bandcampUrl },
-    ...(artist.this_is_url ? [{ label: '"This Is" playlist', href: artist.this_is_url }] : []),
+    { label: "Last.fm", href: lastfmUrl, target: "lastfm" },
+    { label: "Spotify", href: spotifyUrl, target: "spotify" },
+    { label: "Bandcamp", href: bandcampUrl, target: "bandcamp" },
+    ...(artist.this_is_url ? [{ label: '"This Is" playlist', href: artist.this_is_url, target: "thisis" as const }] : []),
     { label: "WhatsApp", href: whatsappUrl, share: true },
   ];
+
+  // click_listen/share fire whenever a rec_id exists — no auth needed, never
+  // blocks the link's default navigation.
+  const handleLinkClick = (l: LinkDef) => {
+    if (!canFireRecEvent(artist.rec_id)) return;
+    void postEvent({
+      rec_id: artist.rec_id,
+      run_id: runId ?? undefined,
+      type: l.share ? "share" : "click_listen",
+      target: l.share ? undefined : l.target,
+    });
+  };
+
+  const canPersist = canPersistActions(session, persistence, artist.rec_id);
 
   return (
     <div
       ref={rowRef}
-      className="border-b"
+      className="group border-b"
       style={{ borderColor: isFocused ? "var(--accent)" : "var(--border)" }}
     >
       {/* Row */}
       <button
         type="button"
         onClick={onToggle}
-        className={`group grid w-full items-center gap-2.5 min-[720px]:gap-4 px-3 py-3.5 text-left transition-colors duration-150 ${ledgerCols}`}
+        className={`grid w-full items-center gap-2.5 min-[720px]:gap-4 px-3 py-3.5 text-left transition-colors duration-150 ${ledgerCols}`}
         style={{ background: expanded ? "var(--surface)" : "transparent" }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = expanded ? "var(--surface)" : "transparent")}
@@ -108,6 +153,11 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
           {artist.cross_validated && (
             <span className="shrink-0 text-[12px] leading-none" style={{ color: "var(--accent)" }} aria-label="dual-signal">
               ✦
+            </span>
+          )}
+          {saved && (
+            <span className="shrink-0 text-[10px] leading-none" style={{ color: "var(--text)" }} aria-label="saved">
+              ●
             </span>
           )}
           <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
@@ -192,6 +242,46 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                     </div>
                   </div>
                 )}
+
+                {/* Save / dismiss — mono 10px text actions, hover-reveal on
+                    desktop (the whole card is the hover target). Hidden
+                    entirely (not disabled) unless persistence + session +
+                    rec_id all check out — a hidden button never silently
+                    no-ops. */}
+                {canPersist && (
+                  <div
+                    className="flex items-center gap-5 min-[720px]:opacity-0 min-[720px]:group-hover:opacity-100 transition-opacity duration-150"
+                    data-testid="persist-actions"
+                  >
+                    {saved ? (
+                      <button
+                        type="button"
+                        onClick={onUnsave}
+                        className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                        style={{ color: "var(--text)" }}
+                      >
+                        <span aria-hidden>●</span> saved
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onSave}
+                        className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                        style={{ color: "var(--muted)" }}
+                      >
+                        save
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onDismiss}
+                      className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                      style={{ color: "var(--muted)" }}
+                    >
+                      dismiss
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Right: listen / find */}
@@ -204,6 +294,7 @@ export default function ArtistCard({ artist, rank, expanded, onToggle, isFocused
                       href={l.href}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => handleLinkClick(l)}
                       className="flex items-center justify-between px-3 py-2.5 border font-mono text-[10px] tracking-wider transition-colors duration-150"
                       style={{ color: "var(--accent)", borderColor: "var(--border)" }}
                       onMouseEnter={(e) => {

@@ -5,7 +5,8 @@ import { motion } from "framer-motion";
 interface EmptyStateProps {
   // "fresh" = account exists but has 0 scrobbles (activeSeedCount === 0).
   // "short-window" = there's history, but the selected period had no signal.
-  variant: "fresh" | "short-window";
+  // "saved-empty" = logged in, Saved view, zero saved artists yet.
+  variant: "fresh" | "short-window" | "saved-empty";
   // Human-readable window phrase for short-window ("7-day window", "all-time").
   windowLabel?: string;
   // fresh-account actions
@@ -19,6 +20,30 @@ export default function EmptyState({
   onCheckSetup,
   onCheckAgain,
 }: EmptyStateProps) {
+  if (variant === "saved-empty") {
+    return (
+      <motion.div
+        key="empty-saved"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center gap-4 pt-24 px-8 text-center"
+      >
+        <span
+          className="font-mono text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: "var(--dim)" }}
+        >
+          nothing saved yet
+        </span>
+        <p
+          className="font-body text-[18px] italic leading-[1.4] max-w-[34ch]"
+          style={{ color: "var(--muted)" }}
+        >
+          Expand an artist card and use &ldquo;save&rdquo; to keep it here.
+        </p>
+      </motion.div>
+    );
+  }
+
   if (variant === "fresh") {
     return (
       <motion.div
