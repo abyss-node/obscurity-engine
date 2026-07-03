@@ -121,6 +121,53 @@ describe("ResultsBody — matrix dot click", () => {
   });
 });
 
+describe("ResultsBody — Discovery Matrix shows the full result set", () => {
+  it("plots all 25 artists, not just the first 10", () => {
+    const artists = makeArtists(25);
+    render(
+      <ResultsBody
+        username="alice"
+        mode="artists"
+        artists={artists}
+        listArtists={artists}
+        sortBy="composite"
+        setSortBy={noop}
+        depthScore={74}
+        depthProse={null}
+        activeSeedCount={12}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "analytics" }));
+
+    for (let i = 0; i < 25; i++) {
+      expect(screen.getByLabelText(`Artist ${i}`)).toBeInTheDocument();
+    }
+  });
+
+  it("caps the matrix at 25 even if more candidates come back", () => {
+    const artists = makeArtists(30);
+    render(
+      <ResultsBody
+        username="alice"
+        mode="artists"
+        artists={artists}
+        listArtists={artists}
+        sortBy="composite"
+        setSortBy={noop}
+        depthScore={74}
+        depthProse={null}
+        activeSeedCount={12}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "analytics" }));
+
+    expect(screen.getByLabelText("Artist 24")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Artist 25")).not.toBeInTheDocument();
+  });
+});
+
 describe("ResultsBody — hero gating", () => {
   it("does not render hero picks in tracks mode", () => {
     const artists = makeArtists(5);

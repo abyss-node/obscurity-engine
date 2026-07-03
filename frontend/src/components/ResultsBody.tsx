@@ -17,8 +17,8 @@ interface ResultsBodyProps {
   username: string;
   mode: "artists" | "tracks";
   /** Raw candidate set (unsorted/unfiltered) — feeds the hero top-3
-   *  selection and the Discovery Matrix's top-10 slice, matching the
-   *  pre-redesign behavior of both. */
+   *  selection and the Discovery Matrix, which plots the full set (capped
+   *  defensively at 25, the backend's own result ceiling). */
   artists: Artist[];
   /** Sorted + filtered set rendered in the Suggestions tab's ArtistList. */
   listArtists: Artist[];
@@ -188,7 +188,7 @@ export default function ResultsBody({
                 conviction × stickiness · dot size = obscurity · click a dot to open its row
               </span>
             </div>
-            <DiscoveryMatrix artists={artists.slice(0, 10)} onArtistClick={handleMatrixClick} />
+            <DiscoveryMatrix artists={artists.slice(0, 25)} onArtistClick={handleMatrixClick} />
           </div>
         </motion.div>
       )}
