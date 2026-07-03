@@ -11,6 +11,17 @@ pub struct DiscoveryResponse {
     pub depth_score: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    // ── Phase 1 additive fields (pinned contract) ──────────────────────────
+    // `run_id` identifies the persisted run this response came from (events
+    // attach to it); null when persistence is off. Always serialized (null,
+    // not omitted) so the frontend can branch on presence.
+    #[serde(default)]
+    pub run_id: Option<String>,
+    // Capability flag: true when the backend has a database and this response's
+    // items carry rec_ids that events can reference. False → the frontend hides
+    // save/dismiss so buttons never silently no-op.
+    #[serde(default)]
+    pub persistence: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -58,6 +69,10 @@ pub struct DiscoveryResponseItem {
     pub bandcamp_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub this_is_url: Option<String>,
+    // Phase 1: capability-style UUIDv4 rec id (pinned contract). Null when
+    // persistence is off; always serialized so the frontend branches on it.
+    #[serde(default)]
+    pub rec_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -198,6 +213,68 @@ pub struct TrackInfoArtist {
 pub struct TrackTags {
     #[serde(default)]
     pub tag: Vec<Tag>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Graceful-fallback contract: with no DB the response carries the additive
+    // fields as explicit nulls/false (not omitted), and per-item rec_id is null.
+    #[test]
+    fn discovery_response_serializes_additive_nulls() {
+        let item = DiscoveryResponseItem {
+            name: "X".into(),
+            stickiness_score: 0.0,
+            conviction_score: 0,
+            composite_score: 0.0,
+            total_listeners: 0,
+            top_tags: vec![],
+            source_seeds: vec![],
+            cross_validated: false,
+            taste_alignment: 0.0,
+            velocity: None,
+            user_playcount: 0,
+            reengagement: false,
+            spotify_url: None,
+            bandcamp_url: None,
+            this_is_url: None,
+            rec_id: None,
+        };
+        let resp = DiscoveryResponse {
+            artists: vec![item],
+            top_genres: vec![],
+            deepest_date: None,
+            active_seed_count: 0,
+            depth_score: 0.0,
+            message: None,
+            run_id: None,
+            persistence: false,
+        };
+        let v: serde_json::Value = serde_json::to_value(&resp).unwrap();
+        assert!(v.get("run_id").is_some(), "run_id present");
+        assert!(v["run_id"].is_null(), "run_id serialized as null when absent");
+        assert_eq!(v["persistence"], serde_json::json!(false));
+        assert!(v["artists"][0].get("rec_id").is_some(), "rec_id present");
+        assert!(v["artists"][0]["rec_id"].is_null(), "rec_id null when absent");
+        // Round-trips (readers ignore/accept the nulls).
+        let back: DiscoveryResponse = serde_json::from_value(v).unwrap();
+        assert!(!back.persistence);
+        assert!(back.run_id.is_none());
+    }
+
+    // Old cached payloads (no additive fields) still deserialize — serde defaults.
+    #[test]
+    fn discovery_response_accepts_legacy_payload_without_additive_fields() {
+        let legacy = serde_json::json!({
+            "artists": [],
+            "top_genres": [],
+            "deepest_date": null
+        });
+        let r: DiscoveryResponse = serde_json::from_value(legacy).unwrap();
+        assert!(!r.persistence);
+        assert!(r.run_id.is_none());
+    }
 }
 
 /// Parses Last.fm's string-encoded counts into u64 during deserialization

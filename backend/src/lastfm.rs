@@ -120,6 +120,34 @@ pub struct TrackArtistRef {
 
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
+/// A resolved Last.fm web-auth session (from `auth.getSession`).
+#[derive(Debug, Clone)]
+pub struct LastfmSession {
+    /// Canonical-cased username as Last.fm returns it.
+    pub username: String,
+    /// Long-lived Last.fm session key (stored opaquely; not currently used for
+    /// authenticated Last.fm calls, but kept so future features don't re-auth).
+    pub session_key: String,
+}
+
+/// Build a Last.fm `api_sig`: sort the params by name, concatenate each
+/// `name+value` with no separators, append the shared secret, and MD5-hex the
+/// result (lowercase). `format`/`callback` are excluded by the caller. This is
+/// the exact scheme documented at last.fm/api/webauth and is pure/unit-tested.
+pub fn sign_params(params: &[(&str, &str)], secret: &str) -> String {
+    use md5::{Digest, Md5};
+    let mut sorted: Vec<&(&str, &str)> = params.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    let mut buf = String::new();
+    for (k, v) in sorted {
+        buf.push_str(k);
+        buf.push_str(v);
+    }
+    buf.push_str(secret);
+    let digest = Md5::digest(buf.as_bytes());
+    hex::encode(digest)
+}
+
 /// Max attempts in get_with_retry (1 initial + retries).
 const MAX_REQUEST_ATTEMPTS: u32 = 4;
 
@@ -572,6 +600,63 @@ impl LastfmClient {
             .unwrap_or_default())
     }
 
+    /// Fetch a Last.fm web-auth session for a callback `token` (see the pinned
+    /// auth flow). Requires the shared secret to build the MD5 `api_sig`. Returns
+    /// the (canonical-cased) username and the Last.fm session key. `base_url` is
+    /// injectable so tests can point at a mock server; production passes the real
+    /// endpoint via `get_session`.
+    pub async fn get_session_at(
+        &self,
+        base_url: &str,
+        token: &str,
+        secret: &str,
+    ) -> Result<LastfmSession, LastfmError> {
+        // Signed params (format/callback excluded from the signature per spec).
+        let params: Vec<(&str, &str)> = vec![
+            ("api_key", self.api_key.as_str()),
+            ("method", "auth.getSession"),
+            ("token", token),
+        ];
+        let api_sig = sign_params(&params, secret);
+        let url = format!(
+            "{}?method=auth.getSession&api_key={}&token={}&api_sig={}&format=json",
+            base_url,
+            urlencoding::encode(&self.api_key),
+            urlencoding::encode(token),
+            api_sig,
+        );
+        let text = self.get_with_retry(&url).await?;
+        let json: Value = serde_json::from_str(&text)
+            .map_err(|e| LastfmError::Permanent(format!("auth.getSession parse error: {e}")))?;
+        if let Some(code) = json.get("error").and_then(|e| e.as_u64()) {
+            let msg = json.get("message").and_then(|m| m.as_str()).unwrap_or("").to_string();
+            // Auth errors (invalid/expired token = 4/14/15) are permanent for this token.
+            return Err(LastfmError::Permanent(format!("Last.fm auth error {code}: {msg}")));
+        }
+        let name = json
+            .get("session")
+            .and_then(|s| s.get("name"))
+            .and_then(|n| n.as_str())
+            .ok_or_else(|| LastfmError::Permanent("auth.getSession missing session.name".into()))?
+            .to_string();
+        let key = json
+            .get("session")
+            .and_then(|s| s.get("key"))
+            .and_then(|k| k.as_str())
+            .unwrap_or_default()
+            .to_string();
+        Ok(LastfmSession { username: name, session_key: key })
+    }
+
+    /// Production entry point for `get_session_at` — hits the real Last.fm API.
+    /// `LASTFM_API_BASE` overrides the endpoint (used only by integration tests
+    /// to point the auth flow at a local mock server); unset → the real API.
+    pub async fn get_session(&self, token: &str, secret: &str) -> Result<LastfmSession, LastfmError> {
+        let base = std::env::var("LASTFM_API_BASE").ok().filter(|s| !s.is_empty());
+        let base = base.as_deref().unwrap_or(LASTFM_API_URL);
+        self.get_session_at(base, token, secret).await
+    }
+
     pub async fn fetch_tag_top_artists(
         &self,
         tag: &str,
@@ -593,5 +678,35 @@ impl LastfmClient {
         let resp_text = self.get_with_retry(&url).await?;
         let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;
         Ok(response.topartists.artist)
+    }
+}
+
+#[cfg(test)]
+mod auth_sign_tests {
+    use super::*;
+
+    // Known-answer vector: params sorted → "api_keyKEYmethodauth.getSessiontokenTOK"
+    // + secret "SEC", MD5-hex. Precomputed independently.
+    #[test]
+    fn api_sig_matches_lastfm_scheme() {
+        let params = vec![
+            ("api_key", "KEY"),
+            ("method", "auth.getSession"),
+            ("token", "TOK"),
+        ];
+        let sig = sign_params(&params, "SEC");
+        // md5("api_keyKEYmethodauth.getSessiontokenTOKSEC")
+        assert_eq!(sig, "35187b6f9d029664a2b1650902ea3d54");
+        // 32 lowercase hex chars.
+        assert_eq!(sig.len(), 32);
+        assert!(sig.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+
+    #[test]
+    fn api_sig_is_order_independent() {
+        // Same params, different input order → identical signature (params sorted).
+        let a = sign_params(&[("b", "2"), ("a", "1")], "s");
+        let b = sign_params(&[("a", "1"), ("b", "2")], "s");
+        assert_eq!(a, b);
     }
 }

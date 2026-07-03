@@ -54,7 +54,7 @@ pub async fn score_and_rank(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
     under_threshold: Option<u64>,
-) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
     let seed_tag_profile = build_seed_tag_profile(client, seeds).await?;
     let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, &seed_tag_profile, under_threshold).await?;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
@@ -327,10 +327,18 @@ fn score_candidate(
         spotify_url: None,
         bandcamp_url: None,
         this_is_url: None,
+        rec_id: None,
     })
 }
 
-fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed_tag_profile: HashMap<String, f64>) -> DiscoveryResponse {
+/// Returns the response (top `MAX_RECOMMENDATIONS`, exactly as always) plus the
+/// post-diversity *reserve* — ranked candidates ranked 26+ that were previously
+/// discarded by the truncate. The reserve is used only to backfill the
+/// authenticated dismissal filter so a dismissed artist can be replaced and the
+/// response still carries up to 25 items. No scoring math changes: the same
+/// items are scored, ranked, diversified, and the same top-25 (and top-10 depth
+/// score) are returned; the extras are simply no longer thrown away.
+fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed_tag_profile: HashMap<String, f64>) -> (DiscoveryResponse, Vec<DiscoveryResponseItem>) {
     let top_genres = aggregate_genres(&artists);
 
     // taste_alignment: how well this candidate's tags match the user's actual seed artists.
@@ -355,14 +363,20 @@ fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed
         .map(|g| (g.name.to_lowercase(), g.weight / 100.0))
         .collect();
     let mut diverse_artists = enforce_diversity(artists, &genre_weight_map);
-    // Keep only the strongest N. `diverse_artists` is already ranked best-first, so
-    // this is the top N; the depth score below then reflects exactly what's shown.
-    diverse_artists.truncate(MAX_RECOMMENDATIONS);
+    // Split off the strongest N (the response) from the reserve (26+). Both are
+    // already ranked best-first. The reserve was previously discarded by
+    // `truncate`; it now backfills the dismissal filter. The depth score below
+    // reflects exactly the top slice that's shown — unchanged.
+    let reserve = if diverse_artists.len() > MAX_RECOMMENDATIONS {
+        diverse_artists.split_off(MAX_RECOMMENDATIONS)
+    } else {
+        Vec::new()
+    };
     // Obscurity index describes the default top slice (what's shown before
     // "view more"), so the headline number is stable whether or not the user expands.
     let depth_score = compute_depth_score(&diverse_artists[..diverse_artists.len().min(DEFAULT_SHOWN)]);
 
-    println!("DONE: {} artists after diversity + cap ({} seeds)", diverse_artists.len(), seed_count);
+    println!("DONE: {} artists after diversity + cap ({} seeds), {} reserve", diverse_artists.len(), seed_count, reserve.len());
 
     let low_data_message = if seed_count < 20 {
         Some("Your scrobble history is limited — results may include artists you already know. Deeper listening history improves accuracy.".to_string())
@@ -370,14 +384,19 @@ fn post_process(mut artists: Vec<DiscoveryResponseItem>, seed_count: usize, seed
         None
     };
 
-    DiscoveryResponse {
-        artists: diverse_artists,
-        top_genres,
-        deepest_date: None,
-        active_seed_count: seed_count,
-        depth_score,
-        message: low_data_message,
-    }
+    (
+        DiscoveryResponse {
+            artists: diverse_artists,
+            top_genres,
+            deepest_date: None,
+            active_seed_count: seed_count,
+            depth_score,
+            message: low_data_message,
+            run_id: None,
+            persistence: false,
+        },
+        reserve,
+    )
 }
 
 fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
