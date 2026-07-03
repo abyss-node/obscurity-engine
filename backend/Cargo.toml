@@ -19,3 +19,18 @@ chrono = { version = "0.4", features = ["serde"] }
 # Redis-backed cache path. When REDIS_URL is unset the in-memory store is used
 # and Redis is never contacted.
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+# Postgres persistence (Phase 1). Runtime queries only (no `query!` macros), so
+# `cargo build`/`cargo test` are green with NO DATABASE_URL set — nothing here
+# is contacted until DATABASE_URL is present at runtime. rustls (not native-tls)
+# to avoid an OpenSSL system dependency on Windows/Railway.
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+md-5 = "0.10"
+rand = "0.8"
+hex = "0.4"
+
+[dev-dependencies]
+# Router-level tests (oneshot) for the no-DB paths (400/429/anonymous/status).
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"

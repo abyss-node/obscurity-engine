@@ -53,6 +53,16 @@ impl CacheStore {
         }
     }
 
+    /// Status probe for `/api/status`. `None` when this is the in-memory store
+    /// (Redis not in use); `Some(true|false)` when Redis-backed and reachable or
+    /// not. Never affects request handling.
+    pub async fn redis_status(&self) -> Option<bool> {
+        match self {
+            CacheStore::InMemory(_) => None,
+            CacheStore::Redis(s) => Some(s.ping().await),
+        }
+    }
+
     /// Typed convenience: deserialize a cached JSON payload. A deserialization
     /// failure is treated as a miss (logged), never an error to the caller.
     pub async fn get_json<T: DeserializeOwned>(&self, key: &str) -> Option<T> {

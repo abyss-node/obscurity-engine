@@ -20,7 +20,7 @@ mod track_seeds;
 
 use std::sync::Arc;
 use crate::lastfm::LastfmClient;
-use crate::models::{DiscoveryResponse, TrackDiscoveryResponse};
+use crate::models::{DiscoveryResponse, DiscoveryResponseItem, TrackDiscoveryResponse};
 
 pub async fn discover_obscure_artists(
     client: Arc<LastfmClient>,
@@ -33,7 +33,9 @@ pub async fn discover_obscure_artists(
     // Eval (de-biased n=54, 2026-06-21): obscW rises monotonically with m, all of it
     // re-engagement; new discovery is reach-capped by Last.fm's graph (see roadmap).
     appetite_mult: Option<f64>,
-) -> Result<DiscoveryResponse, Box<dyn std::error::Error + Send + Sync>> {
+    // Returns the response (top 25, unchanged) plus the post-diversity reserve
+    // (26+) used only to backfill the authenticated dismissal filter.
+) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
     let seeds = seeds::collect(&client, &username, &period_str).await?;
 
     // Underexplored-novelty threshold: lifetime mean plays-per-artist × mult.
