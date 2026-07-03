@@ -204,6 +204,25 @@ def build_seeds(plays: dict[str, list], cfg: Config, plays_recent=None):
 async def build_candidates(client: LastfmClient, names: list[str], cfg: Config) -> dict:
     """norm -> {"display": str, "recs": {seed_name: match}, "hop": 1|2}
 
+    Dispatches on cfg.candidate_source (T-C spike lever, default "lastfm" =
+    unchanged faithful behavior in `_build_candidates_lastfm` below).
+    "listenbrainz" and "blend" delegate to eval/listenbrainz.py and are never
+    reached unless the lever is explicitly flipped off its default.
+    """
+    if cfg.candidate_source == "listenbrainz":
+        import listenbrainz
+        return await listenbrainz.build_candidates_lb(client, names, cfg)
+    if cfg.candidate_source == "blend":
+        import listenbrainz
+        lf_map = await _build_candidates_lastfm(client, names, cfg)
+        lb_map = await listenbrainz.build_candidates_lb(client, names, cfg)
+        return listenbrainz.merge_candidate_maps(lf_map, lb_map)
+    return await _build_candidates_lastfm(client, names, cfg)
+
+
+async def _build_candidates_lastfm(client: LastfmClient, names: list[str], cfg: Config) -> dict:
+    """norm -> {"display": str, "recs": {seed_name: match}, "hop": 1|2}
+
     1-hop: similar artists of each seed (recommender = the seed).
     2-hop (cfg.two_hop): expand the most-corroborated 1-hop candidates one more
     hop. A 2-hop candidate inherits its intermediary's seeds, with match

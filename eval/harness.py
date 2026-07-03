@@ -69,6 +69,7 @@ async def main_async(args) -> None:
         velocity_cap=args.velocity_cap,
         velocity_min_genre_n=args.velocity_min_genre_n,
         concurrency=args.concurrency,
+        candidate_source=args.candidate_source,
     )
     anchor_strs = [a.strip() for a in (args.anchors or args.anchor).split(",") if a.strip()]
     cohort = load_cohort(args)
@@ -76,6 +77,7 @@ async def main_async(args) -> None:
 
     print(f"\n  cohort: {len(cohort)} users | k={cfg.k} | threshold={cfg.threshold_model} | "
           f"novelty={cfg.novelty_model} | mult={cfg.underexplored_mult} | "
+          f"source={cfg.candidate_source} | "
           f"keys={len(API_KEYS)} | cache={'off' if args.no_cache else 'on'}")
     print(f"  anchors: {', '.join(anchor_strs)} | split: seeds=[-{cfg.past_days}d] holdout=[{cfg.future_days}d]\n")
 
@@ -103,6 +105,13 @@ async def main_async(args) -> None:
                 if single:
                     rows.append((res["user"], m, None))
             per_anchor[astr] = am
+
+    lb_stats = None
+    if cfg.candidate_source != "lastfm":
+        import listenbrainz
+        client_lb = await listenbrainz.get_client()
+        lb_stats = client_lb.resolution_stats()
+        await listenbrainz.close_client()
 
     # ── report: funnel (adopted→eligible→in_pool→hit) then ranking metrics ─────
     hdr = (f"  {'user':<16} {'adopt':>5} {'elig':>5} {'pool':>5} {'hit':>4} "
@@ -145,6 +154,15 @@ async def main_async(args) -> None:
             print(f"    {k:<22} {agg[k]:>8.4f}  [{lo:.4f}, {hi:.4f}]")
     print(f"\n  cache entries: {cache.stats()}\n")
 
+    if lb_stats:
+        print(f"  ListenBrainz resolution: {lb_stats['total_resolution_attempts']} seeds attempted | "
+              f"{lb_stats['resolved_via_lastfm']} via Last.fm mbid | "
+              f"{lb_stats['resolved_via_musicbrainz']} via MusicBrainz search | "
+              f"{lb_stats['unresolved']} unresolved | "
+              f"miss-rate={lb_stats['miss_rate']:.1%}")
+        print(f"  similar-artists calls: {lb_stats['similar_calls']} "
+              f"({lb_stats['similar_empty']} returned empty)\n")
+
     if args.json:
         out = {
             "config": vars(cfg),
@@ -156,6 +174,7 @@ async def main_async(args) -> None:
             "samples": samples,
             "aggregate": agg,
             "ci": {k: list(v) for k, v in cis.items()},
+            "listenbrainz_resolution": lb_stats,
         }
         pathlib.Path(args.json).write_text(json.dumps(out, indent=2), encoding="utf-8")
         print(f"  wrote {args.json}\n")
@@ -245,6 +264,11 @@ def main() -> None:
                    help="clamp on the velocity deviation term (±)")
     p.add_argument("--velocity-min-genre-n", type=int, default=_d.velocity_min_genre_n,
                    help="min pool artists in a genre to trust its median devotion")
+    p.add_argument("--candidate-source", choices=["lastfm", "listenbrainz", "blend"],
+                   default=_d0.candidate_source,
+                   help="T-C spike: candidate generator — lastfm (default, faithful) | "
+                        "listenbrainz (labs.api.listenbrainz.org similar-artists) | "
+                        "blend (union of both)")
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--json", help="write full results to this path")
     args = p.parse_args()
