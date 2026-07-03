@@ -49,6 +49,9 @@ One-time:
    - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` = optional, enable direct
      Spotify artist links + the preview endpoint
    - `REDIS_URL` = optional, enable the Redis-backed result cache (see below)
+   - `DATABASE_URL` = optional, enable Phase 1 identity/events persistence
+     (see below)
+   - `LASTFM_API_SECRET` = optional, enable Last.fm login (see below)
 
 **Deploying a backend change** (every time backend code changes):
 
@@ -86,6 +89,43 @@ code change needed to keep the old behavior. If `REDIS_URL` is set but
 malformed, or Redis is unreachable (at boot or mid-request), the backend logs
 a warning and degrades to a cache miss — it never fails a request or crashes
 the process.
+
+## Postgres persistence + Last.fm login (backend, optional)
+
+Login, saves, dismisses, first-party events, and `/api/me/*` (Phase 1) are
+opt-in and off by default. Enabling them:
+
+1. **Railway Postgres addon:** in the Railway project, **New** → **Database**
+   → **Add PostgreSQL**. Railway provisions it and exposes a
+   `DATABASE_URL`-shaped connection string on the Postgres service.
+2. On the **backend** service, set `DATABASE_URL` — either reference the
+   Postgres addon's variable directly (Railway → Variables →
+   `${{Postgres.DATABASE_URL}}` reference syntax) or paste its connection
+   string.
+3. Redeploy (`railway up -d -y`). **Migrations run automatically on boot** —
+   there is no separate migrate step, and they're additive-only (new
+   columns/tables/indexes only, never a drop or rewrite), so this is safe to
+   redeploy repeatedly. Check `railway logs` for `Postgres: connected and
+   migrations applied`.
+4. To also enable login, set `LASTFM_API_SECRET` on the backend service — the
+   secret for your existing Last.fm API key, from
+   [last.fm/api/accounts](https://www.last.fm/api/accounts).
+5. Confirm with `curl https://<your-railway-url>/api/status` —
+   `"postgres"` and `"lastfm_auth"` should both read `"ok"`.
+
+**Graceful fallback:** if `DATABASE_URL` is unset, the server behaves
+byte-identically to before this feature shipped — the new endpoints `503`
+(or the frontend hides them entirely), and the discovery response's
+`run_id`/`rec_id`/`persistence` fields stay `null`/`false`. If `DATABASE_URL`
+is set but the database is temporarily unreachable, the server still boots
+(a lazy connection pool) and serves discovery normally; persistence-backed
+endpoints degrade (mostly `503`) until the database recovers, all logged
+loudly rather than silently. Same story for `LASTFM_API_SECRET`: unset →
+`POST /api/auth/session` 503s and the frontend hides the login entry.
+
+See [reference-schema.md](reference-schema.md) for what gets stored and
+[explanation-privacy.md](explanation-privacy.md) for the user-facing
+implications.
 
 ## Persistent share links via Vercel KV (frontend, optional)
 
@@ -141,6 +181,8 @@ username end to end.
 | `SPOTIFY_CLIENT_ID` | backend | no | direct Spotify artist links + preview |
 | `SPOTIFY_CLIENT_SECRET` | backend | no | same |
 | `REDIS_URL` | backend | no | Redis-backed result cache; unset → in-memory (graceful fallback) |
+| `DATABASE_URL` | backend | no | Postgres persistence (identity, events, saved/dismissed, observations); unset → every persistence endpoint hides or `503`s (graceful fallback) |
+| `LASTFM_API_SECRET` | backend | no | enables Last.fm login (`POST /api/auth/session`); unset → the endpoint `503`s and the frontend hides login |
 | `NEXT_PUBLIC_BACKEND_URL` | frontend | yes | points the browser at the backend |
 | `KV_REST_API_URL` | frontend | no | Vercel KV REST endpoint for persistent share links |
 | `KV_REST_API_TOKEN` | frontend | no | Vercel KV REST token; both `KV_REST_API_URL` + this must be set together, else in-memory fallback (graceful fallback) |
@@ -167,5 +209,7 @@ themselves; `railway up` remains a manual override. This is on the
 ## Related
 
 - [reference-api.md](reference-api.md) — what the deployed service exposes
+- [reference-schema.md](reference-schema.md) — the Postgres tables Phase 1 persistence writes
+- [explanation-privacy.md](explanation-privacy.md) — what's stored, exported, and deleted
 - [howto-run-locally.md](howto-run-locally.md) — the dev equivalent
 - [roadmap.md](roadmap.md) — pending deploy/infra work
