@@ -2,18 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { postEvent } from "./events";
 import { setSession } from "./session";
 
-// jsdom's Blob polyfill doesn't implement .text()/.arrayBuffer(), and its
-// Blob isn't recognized by Node's own Response constructor either — jsdom's
-// FileReader is the one thing that reads it reliably in this environment.
-function blobText(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(blob);
-  });
-}
-
 beforeEach(() => {
   localStorage.clear();
   vi.restoreAllMocks();
@@ -41,21 +29,43 @@ describe("postEvent guard clause", () => {
   });
 });
 
-describe("anonymous events (click_listen / share) — sendBeacon path", () => {
-  it("sends a Blob with application/json to /api/events via sendBeacon", async () => {
+describe("anonymous events (click_listen / share) — keepalive fetch, credentials omitted", () => {
+  // F1 (QA 2026-07-03): sendBeacon is spec'd to ALWAYS send credentials
+  // ("include" mode, not configurable), and its application/json Blob forces
+  // a credentialed CORS preflight that the backend (which never sends
+  // Access-Control-Allow-Credentials) rejects — so every beacon silently
+  // failed in prod. All events must therefore go through fetch with
+  // keepalive (same navigate-away survival) and credentials: "omit".
+  it("never uses sendBeacon even when it is available", async () => {
     const beacon = vi.fn().mockReturnValue(true);
     vi.stubGlobal("navigator", { sendBeacon: beacon });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const ok = await postEvent({ rec_id: "rec-1", type: "click_listen" });
+
+    expect(ok).toBe(true);
+    expect(beacon).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("POSTs the contract payload shape to /api/events with keepalive and credentials omitted", async () => {
+    vi.stubGlobal("navigator", {});
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
 
     const ok = await postEvent({ rec_id: "rec-1", run_id: "run-1", type: "click_listen", target: "spotify" });
 
     expect(ok).toBe(true);
-    expect(beacon).toHaveBeenCalledTimes(1);
-    const [url, blob] = beacon.mock.calls[0];
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/api/events");
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toBe("application/json");
-    const text = await blobText(blob);
-    expect(JSON.parse(text)).toEqual({
+    expect(init.method).toBe("POST");
+    expect(init.keepalive).toBe(true);
+    expect(init.credentials).toBe("omit");
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({
       rec_id: "rec-1",
       run_id: "run-1",
       type: "click_listen",
@@ -64,46 +74,30 @@ describe("anonymous events (click_listen / share) — sendBeacon path", () => {
   });
 
   it("fires a share event without a target field", async () => {
-    const beacon = vi.fn().mockReturnValue(true);
-    vi.stubGlobal("navigator", { sendBeacon: beacon });
-
-    await postEvent({ rec_id: "rec-1", type: "share" });
-
-    const blob = beacon.mock.calls[0][1] as Blob;
-    const parsed = JSON.parse(await blobText(blob));
-    expect(parsed.type).toBe("share");
-  });
-
-  it("falls back to fetch keepalive when sendBeacon is unavailable", async () => {
     vi.stubGlobal("navigator", {});
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
-    const ok = await postEvent({ rec_id: "rec-1", type: "click_listen" });
+    await postEvent({ rec_id: "rec-1", type: "share" });
 
-    expect(ok).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toContain("/api/events");
-    expect(init.keepalive).toBe(true);
-    expect(init.headers.Authorization).toBeUndefined();
-    // F1: no cookies are used anywhere (auth is Bearer-only) — credentials
-    // must never be "include", or the backend's credential-less CORS layer
-    // silently blocks every beacon in prod.
+    const [, init] = fetchMock.mock.calls[0];
+    const parsed = JSON.parse(init.body);
+    expect(parsed.type).toBe("share");
+    expect(parsed.target).toBeUndefined();
     expect(init.credentials).toBe("omit");
   });
 
-  it("falls back to fetch when sendBeacon queues the request and returns false", async () => {
-    const beacon = vi.fn().mockReturnValue(false);
-    vi.stubGlobal("navigator", { sendBeacon: beacon });
+  it("works when navigator is undefined entirely (SSR-adjacent environments)", async () => {
+    vi.stubGlobal("navigator", undefined);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
     const ok = await postEvent({ rec_id: "rec-1", type: "click_listen" });
 
-    expect(beacon).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.keepalive).toBe(true);
   });
 
   it("never throws — resolves false when fetch rejects", async () => {
@@ -114,8 +108,8 @@ describe("anonymous events (click_listen / share) — sendBeacon path", () => {
   });
 });
 
-describe("authed events (save / unsave / dismiss / undo_dismiss) — always fetch + Bearer", () => {
-  it("skips sendBeacon entirely (it can't carry the Authorization header)", async () => {
+describe("authed events (save / unsave / dismiss / undo_dismiss) — fetch + Bearer", () => {
+  it("carries the Bearer header, keepalive, and credentials omitted (never sendBeacon)", async () => {
     setSession({ session_token: "tok-1", username: "alice", user_id: "u-1" });
     const beacon = vi.fn().mockReturnValue(true);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -129,9 +123,10 @@ describe("authed events (save / unsave / dismiss / undo_dismiss) — always fetc
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer tok-1");
-    expect(JSON.parse(init.body)).toEqual({ rec_id: "rec-1", type: "save" });
+    expect(init.keepalive).toBe(true);
     // F1: Bearer carries auth — cookies must stay opted out even here.
     expect(init.credentials).toBe("omit");
+    expect(JSON.parse(init.body)).toEqual({ rec_id: "rec-1", type: "save" });
   });
 
   it("omits the Authorization header when logged out (backend rejects; client never throws)", async () => {
