@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import TrackCard from "../components/TrackCard";
 import ResultsTopBar from "../components/ResultsTopBar";
@@ -20,6 +20,7 @@ import { fetchSaved } from "../lib/me";
 import { useDiscovery } from "../lib/useDiscovery";
 import { usePersistedPrefs } from "../lib/usePersistedPrefs";
 import { useUrlModes } from "../lib/useUrlModes";
+import { useShare } from "../lib/useShare";
 import {
   PERIOD_WINDOWS,
   PERIOD_LABELS,
@@ -55,9 +56,6 @@ export default function Home() {
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState(0);
   const [showSaved, setShowSaved] = useState(false);
-
-  const shareCardRef = useRef<HTMLDivElement>(null);
-  const [shareState, setShareState] = useState<"idle" | "rendering" | "saved" | "copied">("idle");
 
   // selectedGeoTags lives here (feeds the geo-tag filter memo below, never
   // actually driven by any UI control today — see refactor notes) but the
@@ -101,6 +99,14 @@ export default function Home() {
     setApiKey: prefs.setApiKey,
     setApiKeyInput: prefs.setApiKeyInput,
   });
+
+  // No internal effects (just state/refs + async click handlers), so unlike
+  // the hooks above there's no hook-call-order concern with useShare.
+  // Destructured (not `const share = ...`) to avoid shadowing the `share`
+  // boolean parameter in handleSaveApiKey below.
+  const { shareCardRef, shareState, handleShare } = useShare(
+    username, mode, discovery.artists, discovery.depthScore, prefs.period, prefs.appetite
+  );
 
   useEffect(() => {
     if (username && !isSharedView) localStorage.setItem("obscurity_username", username);
@@ -166,82 +172,6 @@ export default function Home() {
       )
     );
   }, [sortedArtists, selectedGeoTags]);
-
-  // Copy a shareable link. Preferred: persist the actual results via
-  // POST /api/share and hand back a stable /r/{id} URL that opens the sender's
-  // real results in any browser without recomputing. Fallback (store down, or
-  // nothing worth persisting): today's ?u=&p=&a=&m= recompute-on-open URL.
-  const copyShareUrl = async () => {
-    if (!username) return;
-    const origin = window.location.origin;
-    const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${prefs.period}&a=${prefs.appetite}&m=${mode}`;
-    let shareUrl = queryUrl;
-    try {
-      if (mode === "artists" && discovery.artists.length > 0) {
-        const res = await fetch("/api/share", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username,
-            period: prefs.period,
-            mode,
-            appetite: prefs.appetite,
-            recommendations: discovery.artists,
-            computedAt: Date.now(),
-          }),
-        });
-        if (res.ok) {
-          const { id } = (await res.json()) as { id?: string };
-          if (typeof id === "string" && id) shareUrl = `${origin}/r/${id}`;
-        }
-      }
-    } catch {
-      /* network / store failure — keep the query-param fallback URL */
-    }
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-    } catch {
-      /* clipboard unavailable — nothing further we can do */
-    }
-    setShareState("copied");
-    setTimeout(() => setShareState("idle"), 2000);
-  };
-
-  // Export the 660×860 result card as a PNG (§8). Falls back to copying the
-  // share URL when there's no artist result to render (tracks mode / empty).
-  const handleShare = async () => {
-    if (!username) return;
-    const canExport =
-      mode === "artists" && discovery.artists.length > 0 && discovery.depthScore > 0 && shareCardRef.current;
-    if (!canExport) {
-      await copyShareUrl();
-      return;
-    }
-    try {
-      setShareState("rendering");
-      const { toPng } = await import("html-to-image");
-      // Wait for the self-hosted web fonts so Playfair/Plex render in the snapshot.
-      await document.fonts.ready;
-      const node = shareCardRef.current!;
-      const dataUrl = await toPng(node, {
-        pixelRatio: 2,
-        backgroundColor: "#080806",
-        width: node.offsetWidth,
-        height: node.offsetHeight,
-        cacheBust: true,
-      });
-      const link = document.createElement("a");
-      link.download = `obscurity-${username}-${prefs.period}.png`;
-      link.href = dataUrl;
-      link.click();
-      setShareState("saved");
-      setTimeout(() => setShareState("idle"), 2000);
-    } catch (e) {
-      console.error("Share card export failed:", e);
-      setShareState("idle");
-      await copyShareUrl(); // never leave the button dead — copy the URL instead
-    }
-  };
 
   const handleRetry = discovery.retry;
 
