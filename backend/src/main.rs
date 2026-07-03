@@ -12,6 +12,7 @@ use std::time::Duration;
 
 mod cache;
 mod lastfm;
+mod metrics;
 mod models;
 mod pipeline;
 mod spotify;
@@ -65,6 +66,9 @@ struct AppState {
     // Result cache — in-memory by default, Redis-backed when REDIS_URL is set.
     // Keys are namespaced by the callers (`reverse_scrobble:…`, `tracks:…`).
     cache: cache::CacheStore,
+    // Always-on request counters. Incremented once per handled request; never
+    // touch a response. Summarised to the log hourly and at shutdown.
+    metrics: Arc<metrics::Metrics>,
 }
 
 type ApiResult = Result<Json<models::DiscoveryResponse>, (StatusCode, Json<models::ErrorResponse>)>;
@@ -85,6 +89,9 @@ async fn discovery_handler(
     }
 
     let custom_key = query.api_key.as_deref().filter(|k| !k.is_empty());
+    // Count this discovery request; `used_pool` = it leaned on the shared server
+    // key pool (no custom key). Pure bookkeeping — the response is unaffected.
+    state.metrics.record_discovery(custom_key.is_none());
     let client: Arc<LastfmClient> = match custom_key {
         Some(key) => Arc::new(LastfmClient::new(key.to_string())),
         None => Arc::clone(&state.client),
@@ -219,6 +226,8 @@ async fn track_discovery_handler(
     }
 
     let custom_key = query.api_key.as_deref().filter(|k| !k.is_empty());
+    // Count this track-discovery request (see discovery_handler).
+    state.metrics.record_tracks(custom_key.is_none());
     let client: Arc<LastfmClient> = match custom_key {
         Some(key) => Arc::new(LastfmClient::new(key.to_string())),
         None => Arc::clone(&state.client),
@@ -407,10 +416,25 @@ async fn main() {
         }
     };
 
+    let metrics = Arc::new(metrics::Metrics::new());
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::with_keys(api_keys, key_store)),
         spotify,
         cache: cache_store,
+        metrics: Arc::clone(&metrics),
+    });
+
+    // Emit one structured metrics summary line every hour. Interval, not sleep,
+    // so ticks don't drift. First (immediate) tick is consumed so the initial
+    // all-zero line isn't logged; the shutdown path logs the final snapshot.
+    let metrics_interval = Arc::clone(&metrics);
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(3600));
+        ticker.tick().await; // consume the immediate first tick
+        loop {
+            ticker.tick().await;
+            println!("{}", metrics_interval.summary_line());
+        }
     });
 
     // B2: CORS — use FRONTEND_URL env var; fall back to any localhost in dev
@@ -445,5 +469,16 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     println!("Listening on {}", addr);
-    axum::serve(listener, app).await.unwrap();
+    // Graceful shutdown on Ctrl-C: emit the final metrics summary so the last
+    // run's totals aren't lost between hourly ticks. Falls through immediately
+    // if signal registration fails (still logs the snapshot).
+    let metrics_shutdown = Arc::clone(&metrics);
+    let shutdown = async move {
+        let _ = tokio::signal::ctrl_c().await;
+        println!("{}", metrics_shutdown.summary_line());
+    };
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+        .unwrap();
 }
