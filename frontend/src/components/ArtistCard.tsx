@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Artist } from "../app/page";
 import { motion, AnimatePresence } from "framer-motion";
-import { firstGenreTag, isGeoTag, formatGeoTag, GEO_CANONICAL } from "../lib/geoTags";
+import { firstGenreTag, isGeoTag, formatGeoTag, countryFromTags } from "../lib/geoTags";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent, canPersistActions } from "../lib/capability";
 import { postEvent } from "../lib/events";
@@ -71,13 +71,7 @@ export default function ArtistCard({
   }, [isFocused]);
 
   const primaryTag = firstGenreTag(artist.top_tags);
-  const country = (() => {
-    for (const t of artist.top_tags) {
-      if (!isGeoTag(t)) continue;
-      return GEO_CANONICAL.get(t.toLowerCase()) ?? t.toLowerCase();
-    }
-    return "";
-  })();
+  const country = countryFromTags(artist.top_tags) ?? "";
   const extraGenres = artist.top_tags
     .filter((t) => !isGeoTag(t) && t.length <= 25 && t.toLowerCase() !== (primaryTag ?? "").toLowerCase())
     .slice(0, 6);

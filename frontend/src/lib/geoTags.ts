@@ -9,6 +9,8 @@ export const GEO_TAGS = new Set([
   'israeli', 'chinese', 'korean', 'thai', 'indonesian', 'indian',
   'slovenian', 'slovak', 'latvian', 'lithuanian', 'estonian',
   'south african', 'chilean', 'colombian', 'peruvian', 'venezuelan',
+  'welsh', 'vietnamese', 'filipino', 'taiwanese',
+  'singaporean', 'malaysian',
   // Non-English country names that appear on Last.fm
   'brasil', 'deutschland', 'espana', 'sverige', 'suomi', 'norge',
   'polska', 'magyarorszag',
@@ -19,7 +21,8 @@ export const GEO_TAGS = new Set([
   'ukraine', 'argentina', 'brazil', 'mexico', 'spain', 'portugal',
   'greece', 'belgium', 'switzerland', 'austria', 'hungary', 'czechia',
   'slovenia', 'slovakia', 'serbia', 'croatia', 'latvia', 'lithuania', 'estonia',
-  'new zealand', 'singapore', 'taiwan',
+  'new zealand', 'singapore', 'taiwan', 'bulgaria', 'chile', 'colombia',
+  'peru', 'venezuela', 'wales', 'vietnam', 'philippines', 'malaysia',
   // Regions
   'scandinavian', 'nordic', 'european', 'latin american', 'north american',
   'eastern european', 'middle eastern', 'asian', 'latin',
@@ -76,6 +79,23 @@ export const GEO_CANONICAL = new Map<string, string>([
   ['latvian', 'latvia'], ['latvia', 'latvia'],
   ['lithuanian', 'lithuania'], ['lithuania', 'lithuania'],
   ['estonian', 'estonia'], ['estonia', 'estonia'],
+  // Standard country-adjective set — filled in for compound-tag token
+  // matching (e.g. "chilean folk", "bulgarian doom"). These were present
+  // in GEO_TAGS but had no canonical target before.
+  ['bulgarian', 'bulgaria'], ['bulgaria', 'bulgaria'],
+  ['chilean', 'chile'], ['chile', 'chile'],
+  ['colombian', 'colombia'], ['colombia', 'colombia'],
+  ['peruvian', 'peru'], ['peru', 'peru'],
+  ['venezuelan', 'venezuela'], ['venezuela', 'venezuela'],
+  ['magyarorszag', 'hungary'],
+  ['new zealand', 'new zealand'], ['singapore', 'singapore'], ['taiwan', 'taiwan'],
+  // A few additional common Last.fm adjectives not previously covered at all.
+  ['welsh', 'wales'], ['wales', 'wales'],
+  ['vietnamese', 'vietnam'], ['vietnam', 'vietnam'],
+  ['filipino', 'philippines'], ['philippines', 'philippines'],
+  ['taiwanese', 'taiwan'],
+  ['singaporean', 'singapore'],
+  ['malaysian', 'malaysia'], ['malaysia', 'malaysia'],
 ]);
 
 const ACRONYMS = new Set(['usa', 'uk', 'nwobhm', 'nyhc', 'us']);
@@ -91,4 +111,39 @@ export function isGeoTag(tag: string): boolean {
 
 export function firstGenreTag(tags: string[]): string {
   return tags.find(t => !isGeoTag(t)) ?? tags[0] ?? 'untagged';
+}
+
+/**
+ * Resolve a canonical country/geo key from an artist's tag list.
+ *
+ * Pass 1 (unchanged precedence): scan tags in order for a whole-tag match
+ * against GEO_TAGS — exactly the logic ArtistCard/HeroPicks used to inline.
+ *
+ * Pass 2 (new): most artists never carry a standalone geo tag, but many
+ * carry a compound tag with a country adjective embedded, e.g.
+ * "swedish death metal", "french coldwave", "japanese noise rock". Tokenize
+ * each tag on spaces/hyphens and look up each token in GEO_CANONICAL, which
+ * holds the known adjective/country-name vocabulary. Token-boundary only —
+ * a token must equal a full entry in the map, so substrings inside longer
+ * words (e.g. "britpop") never false-positive into a country.
+ *
+ * First hit wins, tags scanned in order, pass 1 before pass 2 across the
+ * whole list (so an explicit standalone geo tag anywhere always outranks a
+ * compound-tag guess).
+ */
+export function countryFromTags(tags: string[]): string | null {
+  for (const t of tags) {
+    if (isGeoTag(t)) {
+      const key = t.toLowerCase().trim();
+      return GEO_CANONICAL.get(key) ?? key;
+    }
+  }
+  for (const t of tags) {
+    const tokens = t.toLowerCase().trim().split(/[\s-]+/);
+    for (const tok of tokens) {
+      const hit = GEO_CANONICAL.get(tok);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }

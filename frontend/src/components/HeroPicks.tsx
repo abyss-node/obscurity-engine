@@ -5,7 +5,7 @@ import { Artist } from "../app/page";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent } from "../lib/capability";
 import { postEvent } from "../lib/events";
-import { firstGenreTag, isGeoTag, formatGeoTag, GEO_CANONICAL } from "../lib/geoTags";
+import { firstGenreTag, formatGeoTag, countryFromTags } from "../lib/geoTags";
 
 interface HeroPicksProps {
   artists: Artist[];
@@ -87,13 +87,8 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
           const conviction = normConviction(artist);
           const stickiness = normStickiness(artist);
           const primaryTag = firstGenreTag(artist.top_tags);
-          const country = (() => {
-            for (const t of artist.top_tags) {
-              if (!isGeoTag(t)) continue;
-              return formatGeoTag(GEO_CANONICAL.get(t.toLowerCase()) ?? t.toLowerCase());
-            }
-            return "";
-          })();
+          const countryKey = countryFromTags(artist.top_tags);
+          const country = countryKey ? formatGeoTag(countryKey) : "";
           const meta = [primaryTag, country].filter(Boolean).join(" · ");
           const links = linksFor(artist);
           const seeds = (artist.source_seeds ?? []).slice(0, 2).map((s) => s.name);
