@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Artist } from "../app/page";
 import ArtistCard from "./ArtistCard";
+import DismissedRow from "./DismissedRow";
 import Tooltip from "./Tooltip";
+import { useDismissal } from "../lib/useDismissal";
+import { useSaved } from "../lib/useSaved";
+import type { Session } from "../lib/session";
 
 // Default-visible rows; "view more" reveals the rest (engine returns up to 25).
 const DEFAULT_SHOWN = 10;
@@ -13,6 +18,13 @@ interface ArtistListProps {
   sortBy: string;
   setSortBy: (val: string) => void;
   focusedArtist?: string | null;
+  // Phase 1-B persistence capability — all optional so the read-only /r/[id]
+  // view (which doesn't pass these) renders exactly as before, save/dismiss
+  // fully hidden.
+  session?: Session | null;
+  persistence?: boolean;
+  runId?: string | null;
+  onSavedCountChange?: (delta: number) => void;
 }
 
 const SORT_OPTIONS = [
@@ -27,29 +39,45 @@ const SORT_OPTIONS = [
 const ledgerCols =
   "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
-export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }: ArtistListProps) {
+export default function ArtistList({
+  artists,
+  sortBy,
+  setSortBy,
+  focusedArtist,
+  session = null,
+  persistence = false,
+  runId = null,
+  onSavedCountChange,
+}: ArtistListProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [shown, setShown] = useState(DEFAULT_SHOWN);
 
   // Collapse back to the default slice when the result SET changes (a new
-  // discovery), but NOT on a re-sort of the same set.
+  // discovery), but NOT on a re-sort of the same set, and NOT on a dismissal.
   const setSignature = useMemo(
-    () => artists.map((a) => a.name).sort().join(""),
+    () => artists.map((a) => a.name).sort().join(""),
     [artists]
   );
   useEffect(() => { setShown(DEFAULT_SHOWN); }, [setSignature]);
+
+  // Dismiss state machine: pending items stay in `active` (rendered as the
+  // inline undo row) until their 5s window elapses, at which point they drop
+  // out and the `shown` slice naturally pulls in the next already-fetched
+  // artist — the "backfill from the returned list" behavior from the spec.
+  const { visible: activeArtists, pending, dismiss, undo } = useDismissal(artists, { runId });
+  const { save, unsave, isSaved } = useSaved(runId, onSavedCountChange);
 
   // A matrix dot click focuses an artist — open and scroll to its row.
   // Reveal the row first if it's beyond the current cut.
   useEffect(() => {
     if (!focusedArtist) return;
     setExpanded(focusedArtist);
-    const idx = artists.findIndex((a) => a.name === focusedArtist);
+    const idx = activeArtists.findIndex((a) => a.name === focusedArtist);
     if (idx >= shown) setShown(artists.length);
-  }, [focusedArtist, artists, shown]);
+  }, [focusedArtist, activeArtists, artists.length, shown]);
 
-  const visible = artists.slice(0, shown);
-  const remaining = artists.length - visible.length;
+  const visible = activeArtists.slice(0, shown);
+  const remaining = activeArtists.length - visible.length;
 
   return (
     <div className="w-full flex flex-col gap-5">
@@ -99,20 +127,32 @@ export default function ArtistList({ artists, sortBy, setSortBy, focusedArtist }
         </div>
 
         {/* Rows */}
-        {artists.length === 0 ? (
+        {activeArtists.length === 0 ? (
           <p className="font-mono text-[11px] tracking-wider px-3 py-6" style={{ color: "var(--dim)" }}>
             no artists for this period
           </p>
         ) : (
           visible.map((artist, idx) => (
-            <ArtistCard
-              key={`${artist.name}-${idx}`}
-              artist={artist}
-              rank={idx + 1}
-              expanded={expanded === artist.name}
-              onToggle={() => setExpanded((cur) => (cur === artist.name ? null : artist.name))}
-              isFocused={focusedArtist === artist.name}
-            />
+            <motion.div key={artist.name} layout transition={{ duration: 0.35 }}>
+              {pending.has(artist.name) ? (
+                <DismissedRow name={artist.name} onUndo={() => undo(artist)} />
+              ) : (
+                <ArtistCard
+                  artist={artist}
+                  rank={idx + 1}
+                  expanded={expanded === artist.name}
+                  onToggle={() => setExpanded((cur) => (cur === artist.name ? null : artist.name))}
+                  isFocused={focusedArtist === artist.name}
+                  session={session}
+                  persistence={persistence}
+                  runId={runId}
+                  saved={isSaved(artist.name)}
+                  onSave={() => save(artist)}
+                  onUnsave={() => unsave(artist)}
+                  onDismiss={() => dismiss(artist)}
+                />
+              )}
+            </motion.div>
           ))
         )}
 

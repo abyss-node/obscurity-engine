@@ -18,6 +18,9 @@ import * as Spotify from "../lib/spotify";
 import { loadCache, saveCache } from "../lib/cache";
 import type { SharePayload } from "../lib/shareStore";
 import OnboardingGuide from "../components/OnboardingGuide";
+import SavedView from "../components/SavedView";
+import { getSession, buildLoginUrl, isLoginConfigured, logout as sessionLogout, type Session } from "../lib/session";
+import { fetchSaved } from "../lib/me";
 
 export type Artist = {
   name: string;
@@ -36,6 +39,9 @@ export type Artist = {
   spotify_url?: string;
   bandcamp_url?: string;
   this_is_url?: string;
+  // Phase 1-B persistence contract: nullable capability-style id. Absent/null
+  // means save/dismiss/events UI stays hidden for this item.
+  rec_id?: string | null;
 };
 
 export type TrackItem = {
@@ -62,6 +68,10 @@ export type DiscoveryData = {
   active_seed_count?: number;
   depth_score?: number;
   message?: string;
+  // Phase 1-B persistence contract (nullable, additive): null/false with no
+  // DB configured — every save/dismiss/events affordance stays hidden then.
+  run_id?: string | null;
+  persistence?: boolean;
 };
 
 export type TrackDiscoveryData = {
@@ -134,6 +144,11 @@ export default function Home() {
   const [apiKey, setApiKey] = useState("");
   const [shareKey, setShareKey] = useState(false);  // opt-in: contribute key to the shared pool
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [persistence, setPersistence] = useState(false);
+  const [session, setSessionState] = useState<Session | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
+  const [showSaved, setShowSaved] = useState(false);
 
   const lastFetchedUsernameRef = useRef<string | null>(null);
   const forceFreshRef = useRef(false);
@@ -141,6 +156,11 @@ export default function Home() {
   const [shareState, setShareState] = useState<"idle" | "rendering" | "saved" | "copied">("idle");
 
   useEffect(() => {
+    // Last.fm session, if one was minted by a previous /auth/lastfm exchange.
+    // Independent of the shared-view (?u=) branch below — a visitor can be
+    // both viewing someone's shared results and logged in as themselves.
+    setSessionState(getSession());
+
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
@@ -207,6 +227,19 @@ export default function Home() {
     if (!isSharedView) localStorage.setItem("obscurity_appetite", appetite);
   }, [appetite, isSharedView]);
 
+  // Reconcile the top-bar "saved" nav item with the backend's saved list
+  // whenever a session appears — the quiet nav item shows only when the
+  // user has >=1 save. Local optimistic save/unsave clicks adjust this
+  // count directly via handleSavedCountDelta without a refetch.
+  useEffect(() => {
+    if (!session) { setSavedCount(0); return; }
+    let cancelled = false;
+    fetchSaved()
+      .then((list) => { if (!cancelled) setSavedCount(list.length); })
+      .catch(() => { /* best-effort — nav item just stays hidden until a save succeeds */ });
+    return () => { cancelled = true; };
+  }, [session]);
+
   const stickinessThreshold = useMemo(() => {
     if (artists.length < 1) return Infinity;
     const scores = artists.map((a) => a.stickiness_score).sort((a, b) => b - a);
@@ -271,6 +304,8 @@ export default function Home() {
       setActiveSeedCount(d.active_seed_count || 0);
       setDepthScore(d.depth_score ?? 0);
       setLowDataMessage(d.message ?? null);
+      setRunId(d.run_id ?? null);
+      setPersistence(d.persistence === true);
     }
   }, []);
 
@@ -492,7 +527,30 @@ export default function Home() {
     setError(null);
     setSpotifyStatus("idle");
     setPlaylistUrl(null);
+    setRunId(null);
+    setPersistence(false);
+    setShowSaved(false);
   };
+
+  // Quiet mono text link near the landing input (Surface spec). Hidden
+  // entirely — not disabled — when NEXT_PUBLIC_LASTFM_API_KEY is unset.
+  const handleConnectLastfm = () => {
+    const url = buildLoginUrl();
+    if (url) window.location.href = url;
+  };
+
+  const handleLogout = async () => {
+    await sessionLogout();
+    setSessionState(null);
+    setSavedCount(0);
+    setShowSaved(false);
+  };
+
+  // Bubbled up from ArtistList's useSaved hook on a confirmed save/unsave so
+  // the top-bar nav item's visibility tracks reality without a refetch.
+  const handleSavedCountDelta = useCallback((delta: number) => {
+    setSavedCount((c) => Math.max(0, c + delta));
+  }, []);
 
   const handleExportSpotify = async () => {
     if (!username || tracks.length === 0) return;
@@ -600,6 +658,35 @@ export default function Home() {
                   )}
                 </AnimatePresence>
               </form>
+
+              {/* Identity primitive entry point (Surface spec): quiet mono
+                  text near the input, hidden entirely (not disabled) unless
+                  NEXT_PUBLIC_LASTFM_API_KEY is configured. Once a session
+                  exists this becomes a "connected as" line instead. */}
+              {session ? (
+                <p className="font-mono text-[11px] tracking-wide" style={{ color: "var(--muted)" }}>
+                  connected as {session.username} ·{" "}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: "var(--dim)" }}
+                  >
+                    log out
+                  </button>
+                </p>
+              ) : (
+                isLoginConfigured() && (
+                  <button
+                    type="button"
+                    onClick={handleConnectLastfm}
+                    className="font-mono text-[11px] tracking-wide transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    connect last.fm
+                  </button>
+                )
+              )}
 
               {/* Onboarding links */}
               <div className="w-full flex flex-col items-center gap-5">
@@ -821,6 +908,31 @@ export default function Home() {
                 {isRefreshing ? "..." : "↺ refresh"}
               </button>
 
+              {/* Session display (Surface spec: quiet top-bar entry) + the
+                  "saved" nav item, shown only once the user has >=1 save. */}
+              {session && (
+                <>
+                  <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
+                  <button
+                    onClick={handleLogout}
+                    className="font-mono text-[10px] tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-60"
+                    style={{ color: "var(--dim)" }}
+                    title="log out"
+                  >
+                    {session.username}
+                  </button>
+                  {savedCount > 0 && (
+                    <button
+                      onClick={() => setShowSaved(true)}
+                      className="font-mono text-[10px] tracking-wider shrink-0 transition-opacity duration-150 hover:opacity-60"
+                      style={{ color: "var(--dim)" }}
+                    >
+                      saved
+                    </button>
+                  )}
+                </>
+              )}
+
               <span className="font-mono text-xs shrink-0 hidden min-[720px]:inline" style={{ color: "var(--border)" }}>|</span>
 
               {/* Share */}
@@ -983,6 +1095,10 @@ export default function Home() {
                           sortBy={sortBy}
                           setSortBy={(val) => setSortBy(val as SortType)}
                           focusedArtist={focusedArtist}
+                          session={session}
+                          persistence={persistence}
+                          runId={runId}
+                          onSavedCountChange={handleSavedCountDelta}
                         />
                       </motion.div>
                     )}
@@ -1063,6 +1179,13 @@ export default function Home() {
                   onSave={handleSaveApiKey}
                   onClose={() => setShowApiKey(false)}
                 />
+              )}
+            </AnimatePresence>
+
+            {/* Saved view — reachable via the quiet top-bar "saved" item. */}
+            <AnimatePresence>
+              {showSaved && session && (
+                <SavedView onClose={() => setShowSaved(false)} onCountChange={setSavedCount} />
               )}
             </AnimatePresence>
 
