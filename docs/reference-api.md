@@ -5,7 +5,7 @@ needs no login; a Phase 1 identity/events layer adds optional Last.fm login,
 first-party event capture, and a personal data endpoint on top, all behind
 graceful fallback — with no database configured, every new endpoint hides or
 `503`s rather than silently no-opping, and discovery is unaffected. CORS is
-locked to the configured `FRONTEND_URL` (any localhost in dev) across the
+locked to the configured `FRONTEND_URL` (any origin when unset — dev only) across the
 whole API, not just the new endpoints. Base URL in production:
 `https://obscurity-backend-production.up.railway.app`.
 
