@@ -20,7 +20,21 @@ mod track_seeds;
 
 use std::sync::Arc;
 use crate::lastfm::LastfmClient;
+use crate::listenbrainz::{CandidateSource, ListenBrainzClient};
 use crate::models::{DiscoveryResponse, DiscoveryResponseItem, TrackDiscoveryResponse};
+
+/// Everything the candidate seam needs to blend in the ListenBrainz source.
+/// Passed as `Some(..)` only when `CANDIDATE_SOURCE` selects a non-`lastfm`
+/// source; `None` (or `source == Lastfm`) runs the Last.fm-only path unchanged.
+/// All fields are borrows — the struct is `Copy`, so both handler call sites can
+/// pass it without cloning.
+#[derive(Clone, Copy)]
+pub struct BlendConfig<'a> {
+    pub source: CandidateSource,
+    pub listenbrainz: &'a ListenBrainzClient,
+    pub cache: &'a crate::cache::CacheStore,
+    pub metrics: &'a crate::metrics::Metrics,
+}
 
 /// Shared listener-count ceiling: candidates (artist- or track-level) above this
 /// are considered too mainstream to surface, and it's also the denominator in
@@ -40,6 +54,9 @@ pub async fn discover_obscure_artists(
     // Eval (de-biased n=54, 2026-06-21): obscW rises monotonically with m, all of it
     // re-engagement; new discovery is reach-capped by Last.fm's graph (see roadmap).
     appetite_mult: Option<f64>,
+    // Candidate-source blend config. `None` = today's Last.fm-only behavior
+    // (byte-identical). `Some(..)` blends in ListenBrainz per `CANDIDATE_SOURCE`.
+    blend: Option<BlendConfig<'_>>,
     // Returns the response (top 25, unchanged) plus the post-diversity reserve
     // (26+) used only to backfill the authenticated dismissal filter.
 ) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
@@ -81,7 +98,7 @@ pub async fn discover_obscure_artists(
     );
 
     let tag_candidates = tag_graph::fetch(&client, &username, &seeds).await?;
-    let candidate_map = candidates::build(&client, &seeds.names).await?;
+    let candidate_map = candidates::build_candidates(&client, &seeds.names, blend.as_ref()).await?;
     scoring::score_and_rank(&client, &username, candidate_map, &seeds, &tag_candidates, under_threshold).await
 }
 

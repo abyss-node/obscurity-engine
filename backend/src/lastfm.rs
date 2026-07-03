@@ -480,6 +480,31 @@ impl LastfmClient {
         Ok(serde_json::from_str(&resp_text)?)
     }
 
+    /// Resolve an artist's MusicBrainz ID via `artist.getinfo` (tier-1 of the
+    /// ListenBrainz MBID resolution). No `username` — the `mbid` field is public,
+    /// so this is cacheable/shareable across users. Returns `Ok(None)` when the
+    /// artist has no mbid on file (deterministic miss → the caller falls back to
+    /// MusicBrainz search); reuses the key pool + retry via `get_with_retry`.
+    /// A parsed `{"error":N}` body yields `Ok(None)` (no mbid), not a hard error,
+    /// so a single unresolvable seed never fails the additive LB path.
+    pub async fn fetch_artist_mbid(&self, artist_name: &str) -> Result<Option<String>, BoxError> {
+        let url = format!(
+            "{}?method=artist.getinfo&artist={}&api_key={}&format=json",
+            LASTFM_API_URL, urlencoding::encode(artist_name), self.api_key
+        );
+        let resp_text = self.get_with_retry(&url).await?;
+        let json: Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            return Ok(None);
+        }
+        Ok(json
+            .get("artist")
+            .and_then(|a| a.get("mbid"))
+            .and_then(|m| m.as_str())
+            .map(str::to_string)
+            .filter(|m| !m.is_empty()))
+    }
+
     pub async fn fetch_artist_info(
         &self,
         artist_name: &str,

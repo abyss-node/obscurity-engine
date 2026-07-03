@@ -113,6 +113,22 @@ Every similar artist becomes a **candidate**, and the engine records **which
 seeds pointed to it**. A candidate that shows up via five different seeds
 carries five "recommenders" — the raw material for conviction.
 
+**Blend (optional second source).** When `CANDIDATE_SOURCE=blend`, the engine
+also expands each seed through ListenBrainz's similar-artists graph — a
+structurally different signal built from community listening sessions rather
+than Last.fm's tag/co-listen graph (seed names are resolved to MusicBrainz IDs
+first: Last.fm's own `mbid` field, then a MusicBrainz search fallback). The two
+candidate sets are merged by the *same* normalized-name key the pipeline
+deduplicates on, so a candidate found by both sources accumulates recommenders
+from both without double-counting a shared seed — everything downstream
+(scoring, diversity) is unchanged. This is the one offline-validated reach
+improvement the project has shipped (+9.5% relative reach at n=348; see
+`docs/blend-n348-2026-07-03.md`). The ListenBrainz arm is **additive and
+fail-open** (8-second budget, 7-day cache): if it's slow or down the discovery
+degrades to Last.fm-only candidates rather than failing. It is off by default
+(`CANDIDATE_SOURCE=lastfm`), so the pipeline above is exactly what runs unless
+the lever is flipped.
+
 ## Stage 4 — Scoring (`scoring.rs`)
 
 This is where candidates become a ranked list:

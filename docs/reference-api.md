@@ -338,6 +338,7 @@ features seem to silently fail — see
   "redis": "disabled",     // "disabled" (no REDIS_URL) | "ok" | "error"
   "spotify": "ok",         // "ok" (SPOTIFY_CLIENT_ID + SECRET set) | "disabled" (no error state)
   "lastfm_auth": "ok",     // "ok" (LASTFM_API_SECRET set) | "disabled" (no error state)
+  "listenbrainz": "disabled", // "disabled" (CANDIDATE_SOURCE=lastfm/unset) | "ok" (blend arm live) | "error" (selected but LB currently failing)
   "key_pool": { "keys": 3 },
   "version": "0.1.0"       // CARGO_PKG_VERSION
 }
@@ -347,6 +348,16 @@ Always `200`. `spotify` and `lastfm_auth` are two-state (no live
 connectivity check, just "is the credential present") — a bad Spotify secret
 still reports `"ok"` here; you'd only see it fail on an actual
 `/api/spotify/track` call.
+
+`listenbrainz` is three-state and reflects the candidate-source lever
+(`CANDIDATE_SOURCE`, see [howto-deploy.md](howto-deploy.md)): `"disabled"` when
+the source is the default `lastfm` (the ListenBrainz blend arm isn't wired up),
+`"ok"` when a non-`lastfm` source is selected and the last ListenBrainz fetch
+succeeded (or none has happened yet), `"error"` when it's selected but recent
+ListenBrainz calls are failing. The status endpoint never itself calls
+ListenBrainz — the flag is updated by real discovery traffic. Because the blend
+arm is **fail-open** (see below), `"error"` here does **not** mean discovery is
+down: requests still succeed on Last.fm-only candidates, just without the blend.
 
 ## Caching
 
