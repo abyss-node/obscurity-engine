@@ -14,7 +14,7 @@ bottom with the reason — they are explicitly **not** to be attempted.
   experiments are closed (see roadmap).
 - Commit locally with clear messages. **Do NOT push to origin** — Vercel
   auto-deploys frontend on push; the user reviews in the morning and pushes.
-- **No Claude attribution anywhere** — no Co-Authored-By, no "Generated with"
+- **No AI attribution anywhere** — no co-author trailers, no "generated with"
   lines in commits, code comments, or docs. Commits are the user's.
 - Every task ends with its listed proof — a test or observable behavior that
   demonstrates it works, not just "it compiles".
