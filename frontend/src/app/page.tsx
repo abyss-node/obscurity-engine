@@ -18,6 +18,7 @@ import SavedView from "../components/SavedView";
 import { getSession, buildLoginUrl, isLoginConfigured, logout as sessionLogout, type Session } from "../lib/session";
 import { fetchSaved } from "../lib/me";
 import { useDiscovery } from "../lib/useDiscovery";
+import { usePersistedPrefs } from "../lib/usePersistedPrefs";
 import {
   PERIOD_WINDOWS,
   PERIOD_LABELS,
@@ -43,8 +44,6 @@ export { PERIOD_LABELS, APPETITE_STOPS };
 export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
   const [inputLocal, setInputLocal] = useState("");
-  const [period, setPeriod] = useState("blend");
-  const [appetite, setAppetite] = useState("balanced");
   const [mode, setMode] = useState<DiscoveryMode>("artists");
   const [sortBy, setSortBy] = useState<SortType>("composite");
   const [selectedGeoTags, setSelectedGeoTags] = useState<string[]>([]);
@@ -53,8 +52,6 @@ export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [shareKey, setShareKey] = useState(false);  // opt-in: contribute key to the shared pool
   const [focusedArtist, setFocusedArtist] = useState<string | null>(null);
   const [session, setSessionState] = useState<Session | null>(null);
@@ -71,18 +68,23 @@ export default function Home() {
   // useDiscovery doesn't change when that effect re-runs.
   const resetSelectedGeoTags = useCallback(() => setSelectedGeoTags([]), []);
 
-  // NOTE on hook-call order: useDiscovery is called here, ahead of the
-  // mount/session/url-mode effect below, so its setters (setTracks etc.)
-  // are available to that effect's closure. This registers useDiscovery's
-  // internal fetch effect BEFORE the mount effect, which is the reverse of
-  // the original page.tsx's source order (mount effect was declared first,
-  // fetch effect last). This re-ordering is safe: React defers all setState
-  // calls made during an effect to the *next* render/commit, so within any
-  // given commit every effect closes over the same pre-commit state
-  // regardless of call order, and none of these effects share a mutable ref
-  // with each other (useDiscovery's forceFreshRef/lastFetchedUsernameRef are
-  // internal-only). Verified against the full 144-test suite post-refactor.
-  const discovery = useDiscovery(username, period, appetite, mode, apiKey, resetSelectedGeoTags);
+  // period/appetite/apiKey(+Input) now live in usePersistedPrefs. Its
+  // localStorage write-back effects for period/appetite are gated on
+  // isSharedView, same as before the move.
+  const prefs = usePersistedPrefs(isSharedView);
+
+  // NOTE on hook-call order: useDiscovery and usePersistedPrefs are called
+  // here, ahead of the mount/session/url-mode effect below, so their
+  // setters (setTracks, setPeriod, setAppetite, setApiKey, setApiKeyInput)
+  // are available to that effect's closure. This registers their internal
+  // effects BEFORE the mount effect, the reverse of the original page.tsx's
+  // source order (mount effect was declared first, fetch/persist effects
+  // last). This re-ordering is safe: React defers all setState calls made
+  // during an effect to the *next* render/commit, so within any given
+  // commit every effect closes over the same pre-commit state regardless of
+  // call order, and none of these effects share a mutable ref with each
+  // other. Verified against the full 144-test suite post-refactor.
+  const discovery = useDiscovery(username, prefs.period, prefs.appetite, mode, prefs.apiKey, resetSelectedGeoTags);
 
   useEffect(() => {
     // Last.fm session, if one was minted by a previous /auth/lastfm exchange.
@@ -128,33 +130,25 @@ export default function Home() {
       setUsername(urlUser);
       setInputLocal(urlUser);
       setIsSharedView(true);
-      if (urlPeriod && PERIOD_LABELS[urlPeriod]) setPeriod(urlPeriod);
+      if (urlPeriod && PERIOD_LABELS[urlPeriod]) prefs.setPeriod(urlPeriod);
       const urlAppetite = params.get("a");
-      if (urlAppetite && APPETITE_STOPS.some((s) => s.val === urlAppetite)) setAppetite(urlAppetite);
+      if (urlAppetite && APPETITE_STOPS.some((s) => s.val === urlAppetite)) prefs.setAppetite(urlAppetite);
       if (urlMode === "tracks" || urlMode === "artists") setMode(urlMode as DiscoveryMode);
     } else {
       const saved = localStorage.getItem("obscurity_username");
       if (saved) setInputLocal(saved); // pre-fill input but don't auto-fetch; user submits
       const savedPeriod = localStorage.getItem("obscurity_period");
-      if (savedPeriod && PERIOD_LABELS[savedPeriod]) setPeriod(savedPeriod);
+      if (savedPeriod && PERIOD_LABELS[savedPeriod]) prefs.setPeriod(savedPeriod);
       const savedAppetite = localStorage.getItem("obscurity_appetite");
-      if (savedAppetite && APPETITE_STOPS.some((s) => s.val === savedAppetite)) setAppetite(savedAppetite);
+      if (savedAppetite && APPETITE_STOPS.some((s) => s.val === savedAppetite)) prefs.setAppetite(savedAppetite);
       const savedKey = localStorage.getItem("obscurity_api_key");
-      if (savedKey) { setApiKey(savedKey); setApiKeyInput(savedKey); }
+      if (savedKey) { prefs.setApiKey(savedKey); prefs.setApiKeyInput(savedKey); }
     }
   }, []);
 
   useEffect(() => {
     if (username && !isSharedView) localStorage.setItem("obscurity_username", username);
   }, [username, isSharedView]);
-
-  useEffect(() => {
-    if (!isSharedView) localStorage.setItem("obscurity_period", period);
-  }, [period, isSharedView]);
-
-  useEffect(() => {
-    if (!isSharedView) localStorage.setItem("obscurity_appetite", appetite);
-  }, [appetite, isSharedView]);
 
   // Reconcile the top-bar "saved" nav item with the backend's saved list
   // whenever a session appears — the quiet nav item shows only when the
@@ -224,7 +218,7 @@ export default function Home() {
   const copyShareUrl = async () => {
     if (!username) return;
     const origin = window.location.origin;
-    const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
+    const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${prefs.period}&a=${prefs.appetite}&m=${mode}`;
     let shareUrl = queryUrl;
     try {
       if (mode === "artists" && discovery.artists.length > 0) {
@@ -233,9 +227,9 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             username,
-            period,
+            period: prefs.period,
             mode,
-            appetite,
+            appetite: prefs.appetite,
             recommendations: discovery.artists,
             computedAt: Date.now(),
           }),
@@ -281,7 +275,7 @@ export default function Home() {
         cacheBust: true,
       });
       const link = document.createElement("a");
-      link.download = `obscurity-${username}-${period}.png`;
+      link.download = `obscurity-${username}-${prefs.period}.png`;
       link.href = dataUrl;
       link.click();
       setShareState("saved");
@@ -295,22 +289,14 @@ export default function Home() {
 
   const handleRetry = discovery.retry;
 
+  // localStorage write + optional shared-pool POST live in usePersistedPrefs;
+  // setShowApiKey(false) is UI-modal state owned here, so this thin wrapper
+  // just sequences the two — same net effect as the original single function
+  // (the fire-and-forget /api/keys POST is unaffected by this reordering,
+  // since it's already async/non-blocking either way).
   const handleSaveApiKey = (key: string, share = false) => {
-    setApiKey(key);
-    setApiKeyInput(key);
-    if (key) localStorage.setItem("obscurity_api_key", key);
-    else localStorage.removeItem("obscurity_api_key");
+    prefs.handleSaveApiKey(key, share);
     setShowApiKey(false);
-    // Opt-in: contribute the key to the shared rotation pool. Best-effort —
-    // it speeds up discovery for everyone but must never block the user.
-    if (share && key) {
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-      fetch(`${apiUrl}/api/keys`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: key }),
-      }).catch(() => {});
-    }
   };
 
   // Fresh-account empty state: drop back to the landing page with the setup
@@ -362,7 +348,7 @@ export default function Home() {
       alert("Spotify export is not configured. Set NEXT_PUBLIC_SPOTIFY_CLIENT_ID.");
       return;
     }
-    await Spotify.initiateSpotifyAuth(discovery.tracks, username, period);
+    await Spotify.initiateSpotifyAuth(discovery.tracks, username, prefs.period);
   };
 
   const handleFocusArtist = useCallback((name: string) => {
@@ -513,9 +499,9 @@ export default function Home() {
                   <button
                     onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
                     className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
-                    style={{ color: apiKey ? "var(--accent)" : "var(--dim)" }}
+                    style={{ color: prefs.apiKey ? "var(--accent)" : "var(--dim)" }}
                   >
-                    {apiKey ? "api key active ▼" : `api key ${showApiKey ? "▲" : "▼"}`}
+                    {prefs.apiKey ? "api key active ▼" : `api key ${showApiKey ? "▲" : "▼"}`}
                   </button>
                 </div>
 
@@ -563,18 +549,18 @@ export default function Home() {
                         <div className="flex gap-2">
                           <input
                             type="password"
-                            value={apiKeyInput}
-                            onChange={(e) => setApiKeyInput(e.target.value)}
+                            value={prefs.apiKeyInput}
+                            onChange={(e) => prefs.setApiKeyInput(e.target.value)}
                             placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                             className="flex-1 bg-transparent border-b py-1 font-mono text-[11px] outline-none transition-colors duration-200"
                             style={{ borderColor: "var(--border)", color: "var(--text)", caretColor: "var(--accent)" }}
                           />
                           <button
-                            onClick={() => handleSaveApiKey(apiKeyInput.trim(), shareKey)}
+                            onClick={() => handleSaveApiKey(prefs.apiKeyInput.trim(), shareKey)}
                             className="font-mono text-[10px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
                             style={{ color: "var(--muted)" }}
                           >
-                            {apiKeyInput.trim() ? "save" : "clear"}
+                            {prefs.apiKeyInput.trim() ? "save" : "clear"}
                           </button>
                         </div>
                         {/* Opt-in: contribute the key to the shared rotation pool. */}
@@ -619,10 +605,10 @@ export default function Home() {
               onReset={handleReset}
               mode={mode}
               setMode={setMode}
-              period={period}
-              setPeriod={setPeriod}
-              appetite={appetite}
-              setAppetite={setAppetite}
+              period={prefs.period}
+              setPeriod={prefs.setPeriod}
+              appetite={prefs.appetite}
+              setAppetite={prefs.setAppetite}
               onRefresh={handleRetry}
               refreshDisabled={discovery.loading}
               isRefreshing={discovery.isRefreshing}
@@ -668,7 +654,7 @@ export default function Home() {
                     {mode === "artists" && !discovery.error && sortedArtists.length === 0 && (
                       <EmptyState
                         variant={discovery.activeSeedCount === 0 ? "fresh" : "short-window"}
-                        windowLabel={PERIOD_WINDOWS[period] ?? "this window"}
+                        windowLabel={PERIOD_WINDOWS[prefs.period] ?? "this window"}
                         onCheckSetup={handleCheckSetup}
                         onCheckAgain={handleRetry}
                       />
@@ -773,7 +759,7 @@ export default function Home() {
             <AnimatePresence>
               {showApiKey && (
                 <ApiKeyModal
-                  initialValue={apiKey}
+                  initialValue={prefs.apiKey}
                   onSave={handleSaveApiKey}
                   onClose={() => setShowApiKey(false)}
                 />
