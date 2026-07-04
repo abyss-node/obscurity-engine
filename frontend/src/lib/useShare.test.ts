@@ -160,6 +160,50 @@ describe("useShare — top-bar share (PNG + persistent link together)", () => {
     await waitFor(() => expect(result.current.shareState).toBe("saved"));
   });
 
+  it("on PNG export failure, reuses the in-flight link POST instead of double-posting (link succeeded)", async () => {
+    toPngMock.mockRejectedValueOnce(new Error("canvas tainted"));
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "png0000001" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    const { result } = renderExportableShare();
+
+    await act(async () => {
+      await result.current.handleShare();
+    });
+
+    // Exactly ONE POST /api/share — no duplicate KV record from the catch path.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The already-in-flight link POST succeeded and was copied — no second
+    // (query-param) clipboard write should follow it.
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/r/png0000001"));
+    await waitFor(() => expect(result.current.shareState).toBe("copied"));
+  });
+
+  it("on PNG export failure, falls back to the query-param URL without a second POST when the link POST fails", async () => {
+    toPngMock.mockRejectedValueOnce(new Error("canvas tainted"));
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    const { result } = renderExportableShare();
+
+    await act(async () => {
+      await result.current.handleShare();
+    });
+
+    // Exactly ONE POST attempt (from the original linkPromise) — the failure
+    // path must not retry the POST via a second postShare() call.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Falls back to the query-param recompute-on-open URL, copied exactly once.
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("m=artists"));
+    await waitFor(() => expect(result.current.shareState).toBe("copied"));
+  });
+
   it("does not block the PNG download on a slow network call", async () => {
     let resolveFetch: (v: unknown) => void = () => {};
     const fetchMock = vi.fn().mockReturnValue(

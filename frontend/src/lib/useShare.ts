@@ -63,18 +63,33 @@ export function useShare(
     }
   };
 
+  // Copy today's ?u=&p=&a=&m= recompute-on-open URL — the fallback used both
+  // by `copyShareUrl` (when persistence fails/returns null) and directly by
+  // `handleShare`'s PNG-failure path once it already knows, via the
+  // in-flight `linkPromise`, that persistence didn't yield a copied link.
+  // Never issues its own POST /api/share.
+  const copyQueryUrl = async () => {
+    if (!username) return;
+    const queryUrl = `${window.location.origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
+    await writeClipboard(queryUrl);
+    setShareState("copied");
+    setTimeout(() => setShareState("idle"), 2000);
+  };
+
   // Copy a shareable link (the fallback path when there's no artist result to
   // render as a PNG — tracks mode / empty). Preferred: persist the actual
   // results via POST /api/share and hand back a stable /r/{id} URL that opens
   // the sender's real results in any browser without recomputing. Fallback
   // (store down, or nothing worth persisting): today's ?u=&p=&a=&m=
-  // recompute-on-open URL.
+  // recompute-on-open URL, via `copyQueryUrl`.
   const copyShareUrl = async () => {
     if (!username) return;
-    const origin = window.location.origin;
-    const queryUrl = `${origin}${window.location.pathname}?u=${encodeURIComponent(username)}&p=${period}&a=${appetite}&m=${mode}`;
     const persisted = await postShare();
-    await writeClipboard(persisted ?? queryUrl);
+    if (!persisted) {
+      await copyQueryUrl();
+      return;
+    }
+    await writeClipboard(persisted);
     setShareState("copied");
     setTimeout(() => setShareState("idle"), 2000);
   };
@@ -97,6 +112,10 @@ export function useShare(
       await copyShareUrl();
       return;
     }
+    // Single in-flight POST /api/share, shared by both the happy path below
+    // and the catch block on a PNG export failure — neither path may issue a
+    // second POST (that would create a duplicate KV record and race a second
+    // clipboard write against this one).
     const linkPromise = postShare().then((url) => (url ? writeClipboard(url) : false));
     try {
       setShareState("rendering");
@@ -121,7 +140,17 @@ export function useShare(
     } catch (e) {
       console.error("Share card export failed:", e);
       setShareState("idle");
-      await copyShareUrl(); // never leave the button dead — copy the URL instead
+      // Reuse the already-in-flight linkPromise's result instead of calling
+      // copyShareUrl (which would POST /api/share a second time). If it
+      // already produced a copied /r/ link, we're done; otherwise fall back
+      // to the query-param URL — still without a second POST.
+      const linkCopied = await linkPromise;
+      if (linkCopied) {
+        setShareState("copied");
+        setTimeout(() => setShareState("idle"), 2000);
+      } else {
+        await copyQueryUrl(); // never leave the button dead — copy the URL instead
+      }
     }
   };
 
