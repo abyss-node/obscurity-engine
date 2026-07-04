@@ -441,8 +441,24 @@ impl LastfmClient {
                             }
                         }
                     } else if status.is_client_error() {
-                        // 4xx — permanent, retrying won't help.
-                        return Err(LastfmError::Permanent(format!("Last.fm HTTP {}", status)));
+                        // 4xx — permanent, retrying won't help. But Last.fm serves
+                        // app errors ({"error":6,"message":"User not found"}) WITH a
+                        // 4xx status, so hand an app-shaped body back to the caller
+                        // for code-level classification (user-not-found → 404) rather
+                        // than erasing it into a bare HTTP error. Retryable codes
+                        // (e.g. 29 under HTTP 429) still back off like the 200 path.
+                        match resp.text().await {
+                            Ok(text) => match lastfm_error_code(&text) {
+                                Some(code) if is_retryable_lastfm_error(code) => {
+                                    last_err = format!("Last.fm Error {} (rate/transient)", code);
+                                    if code == 29 { self.bench(&pk); }
+                                    eprintln!("Last.fm error {} (HTTP {}) on attempt {} — backing off", code, status, attempt + 1);
+                                }
+                                Some(_) => return Ok(text),
+                                None => return Err(LastfmError::Permanent(format!("Last.fm HTTP {}", status))),
+                            },
+                            Err(_) => return Err(LastfmError::Permanent(format!("Last.fm HTTP {}", status))),
+                        }
                     } else {
                         // 5xx — log and retry
                         last_err = format!("Last.fm HTTP {}", status);

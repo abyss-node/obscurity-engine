@@ -415,10 +415,16 @@ mod integration_tests {
         // a nonexistent username now surfaces as 404 with unambiguous wording.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
+        // Real Last.fm serves error 6 WITH an HTTP 404 status (verified in prod
+        // 2026-07-04) — the tracks test below keeps the legacy 200-with-error-body
+        // shape so both transport shapes stay covered.
         let mock = Router::new().route(
             "/",
             get(|| async {
-                axum::Json(serde_json::json!({ "error": 6, "message": "User not found" }))
+                (
+                    StatusCode::NOT_FOUND,
+                    axum::Json(serde_json::json!({ "error": 6, "message": "User not found" })),
+                )
             }),
         );
         tokio::spawn(async move {

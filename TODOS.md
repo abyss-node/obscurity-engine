@@ -17,16 +17,17 @@ Deferred work with context. Format: what / why / context / effort (human → CC)
   (MAU × discoveries/user × concentration per artist) with real numbers once
   the analytics baseline (E1) produces actual MAU; decide what the listener
   app can honestly claim toward the mission. Effort S → S. P2. Depends on: E1.
-- [ ] **Competitive one-pager** — Obscurify/stats.fm/Receiptify (taste-toy),
+- [x] **Competitive one-pager** — DONE 2026-07-03, see
+  [competitive-landscape-2026-07.md](docs/competitive-landscape-2026-07.md).
+  Original scope: Obscurify/stats.fm/Receiptify (taste-toy),
   Spotify for Artists/ChartMetric/Soundcharts (artist analytics),
   ListenBrainz (open infra): who does what, why they won't do obscurity-first,
   what the durable edge is (candidate: attributed obscure-adoption data +
   artist community). Effort S → S. P2.
-- [ ] **Unify MAX_LISTENER_CEILING constants** — defined twice
-  (backend/src/pipeline/scoring.rs:29, track_scoring.rs:24); single config
-  const so "obscurity" has one definition. Also drop vestigial
-  `recommended_by`/`conviction_score` fields (models.rs:77-79, never
-  populated). Effort S → S. P3.
+- [ ] **Unify MAX_LISTENER_CEILING constants** — MOSTLY DONE 2026-07-03
+  (single const at pipeline/mod.rs:44, both scorers import it;
+  `recommended_by` dropped). Remaining sliver: vestigial `conviction_score`
+  (models.rs:49/147, hardcoded 0 at models.rs:225). Effort S → S. P3.
 - [ ] **E4: Artist self-submission v0** *(user decision 2026-07-02: DEFERRED)*
   — form + review queue + candidate-pool injection; the only candidate-source
   fix requiring no CEGE and no scraping; seeds the two-sided marketplace.
