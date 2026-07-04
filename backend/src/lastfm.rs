@@ -122,9 +122,9 @@ const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
 /// Base Last.fm API URL, overridable via `LASTFM_API_BASE` — same env var and
 /// fallback pattern as `get_session`'s `LASTFM_API_BASE` override, extended to
-/// the two methods (`fetch_user_top_artists`, `fetch_user_info`) that need a
-/// mockable endpoint for the user-not-found integration test. Unset in
-/// production, so this is a no-op there (falls back to the real URL).
+/// the methods (`fetch_user_top_artists`, `fetch_user_info`, `fetch_user_top_tracks`)
+/// that need a mockable endpoint for the user-not-found integration tests.
+/// Unset in production, so this is a no-op there (falls back to the real URL).
 fn lastfm_api_base() -> String {
     std::env::var("LASTFM_API_BASE")
         .ok()
@@ -588,12 +588,15 @@ impl LastfmClient {
     ) -> Result<TopTracksResponse, BoxError> {
         let url = format!(
             "{}?method=user.gettoptracks&user={}&api_key={}&period={}&format=json&limit={}",
-            LASTFM_API_URL, urlencoding::encode(username), self.api_key, period, limit
+            lastfm_api_base(), urlencoding::encode(username), self.api_key, period, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&resp_text)?;
         if json.get("error").is_some() {
             let err: LastfmErrorResponse = serde_json::from_value(json)?;
+            if err.error == 6 {
+                return Err(Box::new(LastfmUserNotFound(username.to_string())));
+            }
             return Err(format!("Last.fm Error {}: {}", err.error, err.message).into());
         }
         Ok(serde_json::from_str(&resp_text)?)

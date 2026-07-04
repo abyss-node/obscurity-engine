@@ -111,6 +111,10 @@ describe("ResultsTopBar — control wiring", () => {
 
     rerender(<ResultsTopBar {...baseProps} onShare={onShare} shareState="copied" />);
     expect(screen.getByTitle("share")).toHaveTextContent("copied");
+
+    // F4: PNG download + persisted link copy together — its own combined label.
+    rerender(<ResultsTopBar {...baseProps} onShare={onShare} shareState="saved-copied" />);
+    expect(screen.getByTitle("share")).toHaveTextContent("saved ✓ · link copied");
   });
 
   it("calls onShowSaved when the saved nav item is clicked", () => {

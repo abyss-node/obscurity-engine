@@ -328,6 +328,9 @@ pub async fn track_discovery_handler(
         if let Some(data) = state.cache.get_json::<models::TrackDiscoveryResponse>(&cache_key).await {
             return Ok(Json(data));
         }
+        // Cloned before the move into `discover_obscure_tracks` below — needed
+        // for the user-not-found error message (mirrors discovery_handler).
+        let username_for_err = query.username.clone();
         match discover_obscure_tracks(client, query.username, query.period).await {
             Ok(result) => {
                 // Only cache non-empty results; degraded/empty runs shouldn't stick.
@@ -343,6 +346,12 @@ pub async fn track_discovery_handler(
             {
                 Ok(Json(empty_track_discovery_response()))
             }
+            Err(e) if is_user_not_found_error(e.as_ref()) => {
+                Err((StatusCode::NOT_FOUND, Json(models::ErrorResponse {
+                    error: format!("Last.fm user \"{}\" not found. Check the spelling.", username_for_err),
+                    code: 404,
+                })))
+            }
             Err(e) => {
                 eprintln!("Track discovery error: {}", e);
                 Err((StatusCode::INTERNAL_SERVER_ERROR, Json(models::ErrorResponse {
@@ -352,12 +361,19 @@ pub async fn track_discovery_handler(
             }
         }
     } else {
+        let username_for_err = query.username.clone();
         match discover_obscure_tracks(client, query.username, query.period).await {
             Ok(result) => Ok(Json(result)),
             Err(e) if e.to_string().contains("No track history")
                 || e.to_string().contains("No listening history") =>
             {
                 Ok(Json(empty_track_discovery_response()))
+            }
+            Err(e) if is_user_not_found_error(e.as_ref()) => {
+                Err((StatusCode::NOT_FOUND, Json(models::ErrorResponse {
+                    error: format!("Last.fm user \"{}\" not found. Check the spelling.", username_for_err),
+                    code: 404,
+                })))
             }
             Err(e) => {
                 eprintln!("Track discovery error (custom key): {}", e);
