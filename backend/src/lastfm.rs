@@ -120,6 +120,18 @@ pub struct TrackArtistRef {
 
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
+/// Base Last.fm API URL, overridable via `LASTFM_API_BASE` — same env var and
+/// fallback pattern as `get_session`'s `LASTFM_API_BASE` override, extended to
+/// the two methods (`fetch_user_top_artists`, `fetch_user_info`) that need a
+/// mockable endpoint for the user-not-found integration test. Unset in
+/// production, so this is a no-op there (falls back to the real URL).
+fn lastfm_api_base() -> String {
+    std::env::var("LASTFM_API_BASE")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| LASTFM_API_URL.to_string())
+}
+
 /// A resolved Last.fm web-auth session (from `auth.getSession`).
 #[derive(Debug, Clone)]
 pub struct LastfmSession {
@@ -204,6 +216,32 @@ impl std::error::Error for LastfmError {}
 /// never wedges the request into a permanent fail-closed state.
 pub fn is_transient_error(err: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
     err.downcast_ref::<LastfmError>().map_or(false, |e| e.is_transient())
+}
+
+/// Last.fm error code 6 ("Invalid parameter" — used for "user not found" on
+/// `user.gettopartists`/`user.getinfo`) is a *permanent, user-facing* failure
+/// distinct from every other permanent error: the username itself is wrong,
+/// not the request. Marked as its own downcastable type (rather than folded
+/// into `LastfmError::Permanent`'s opaque string) so callers all the way up to
+/// the HTTP handler can distinguish "no such user" from a generic failure
+/// without parsing error text.
+#[derive(Debug, Clone)]
+pub struct LastfmUserNotFound(pub String);
+
+impl fmt::Display for LastfmUserNotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Last.fm user \"{}\" not found", self.0)
+    }
+}
+
+impl std::error::Error for LastfmUserNotFound {}
+
+/// Is this (boxed) pipeline error specifically a Last.fm "user not found"
+/// (error code 6 on `user.gettopartists`/`user.getinfo`)? Distinct from
+/// `is_transient_error`: this is permanent, but callers need to tell it apart
+/// from other permanent failures to surface a 404 instead of a generic 500.
+pub fn is_user_not_found_error(err: &(dyn std::error::Error + Send + Sync + 'static)) -> bool {
+    err.downcast_ref::<LastfmUserNotFound>().is_some()
 }
 
 /// One key in the rotation pool, with a cooldown clock. When Last.fm rate-limits
@@ -439,12 +477,15 @@ impl LastfmClient {
     ) -> Result<TopArtistsResponse, BoxError> {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
-            LASTFM_API_URL, urlencoding::encode(username), self.api_key, period, limit
+            lastfm_api_base(), urlencoding::encode(username), self.api_key, period, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
         if json.get("error").is_some() {
             let err_msg: LastfmErrorResponse = serde_json::from_value(json)?;
+            if err_msg.error == 6 {
+                return Err(Box::new(LastfmUserNotFound(username.to_string())));
+            }
             return Err(format!("Last.fm Error {}: {}", err_msg.error, err_msg.message).into());
         }
         Ok(serde_json::from_str(&resp_text)?)
@@ -456,12 +497,15 @@ impl LastfmClient {
     ) -> Result<UserInfoResponse, BoxError> {
         let url = format!(
             "{}?method=user.getinfo&user={}&api_key={}&format=json",
-            LASTFM_API_URL, urlencoding::encode(username), self.api_key
+            lastfm_api_base(), urlencoding::encode(username), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
         if json.get("error").is_some() {
             let err_msg: LastfmErrorResponse = serde_json::from_value(json)?;
+            if err_msg.error == 6 {
+                return Err(Box::new(LastfmUserNotFound(username.to_string())));
+            }
             return Err(format!("Last.fm Error {}: {}", err_msg.error, err_msg.message).into());
         }
         Ok(serde_json::from_str(&resp_text)?)
@@ -703,6 +747,40 @@ impl LastfmClient {
         let resp_text = self.get_with_retry(&url).await?;
         let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;
         Ok(response.topartists.artist)
+    }
+}
+
+#[cfg(test)]
+mod error_classification_tests {
+    use super::*;
+
+    // A full HTTP-level test of the transient (rate-limit) path would need to
+    // exhaust `get_with_retry`'s real backoff sleeps (~7s across 4 attempts) —
+    // too slow for a unit suite. This locks in the same distinction at the
+    // classifier level instead: user-not-found is permanent-and-user-facing,
+    // never transient; a transient failure is never mistaken for user-not-found.
+    #[test]
+    fn user_not_found_is_not_transient() {
+        let err = LastfmUserNotFound("someuser".to_string());
+        let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(err);
+        assert!(is_user_not_found_error(boxed.as_ref()));
+        assert!(!is_transient_error(boxed.as_ref()));
+    }
+
+    #[test]
+    fn transient_error_is_not_user_not_found() {
+        let err = LastfmError::Transient("Last.fm Error 29 (rate/transient)".to_string());
+        let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(err);
+        assert!(is_transient_error(boxed.as_ref()));
+        assert!(!is_user_not_found_error(boxed.as_ref()));
+    }
+
+    #[test]
+    fn permanent_non_user_error_is_neither() {
+        let err = LastfmError::Permanent("Last.fm HTTP 400".to_string());
+        let boxed: Box<dyn std::error::Error + Send + Sync> = Box::new(err);
+        assert!(!is_transient_error(boxed.as_ref()));
+        assert!(!is_user_not_found_error(boxed.as_ref()));
     }
 }
 

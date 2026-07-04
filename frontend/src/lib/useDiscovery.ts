@@ -138,6 +138,19 @@ export function useDiscovery(
             const body = await response.json();
             if (body?.error) detail = String(body.error);
           } catch { /* non-JSON */ }
+          // The backend's only 404 on this endpoint is "no such Last.fm user" —
+          // a permanent, non-retryable state. Must be checked before the busy
+          // heuristic below: a nonexistent username's error text can otherwise
+          // coincidentally match the rate-limit wording and get mislabeled as a
+          // transient failure (it isn't — retrying won't help).
+          if (response.status === 404) {
+            const notFoundDetail =
+              detail && detail !== `HTTP ${response.status}`
+                ? detail
+                : "That Last.fm username doesn't exist. Check the spelling and try again.";
+            setError(`[ERR] USER_NOT_FOUND — ${notFoundDetail}`);
+            return;
+          }
           // Upstream rate-limit / busy signatures from the backend → actionable hint
           // instead of a raw "error decoding response body".
           const busy =

@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::cache;
-use crate::lastfm::LastfmClient;
+use crate::lastfm::{is_user_not_found_error, LastfmClient};
 use crate::models::{self, DiscoveryResponseItem};
 use crate::pipeline::{discover_obscure_artists, discover_obscure_tracks, BlendConfig};
 use crate::spotify::SpotifyClient;
@@ -118,6 +118,9 @@ pub async fn discovery_handler(
     // Custom-key requests skip the cache and persistence — results aren't
     // stored server-side (unchanged behavior).
     if let Some(_) = custom_key {
+        // Cloned before the move into `discover_obscure_artists` below — needed
+        // for the user-not-found error message.
+        let username_for_err = query.username.clone();
         return match discover_obscure_artists(client, query.username, query.period, appetite_mult, blend).await {
             Ok((result, _reserve)) => {
                 let result = annotate_sparse_artists(result);
@@ -126,6 +129,12 @@ pub async fn discovery_handler(
             }
             Err(e) if e.to_string().contains("No listening history") => {
                 Ok(Json(empty_discovery_response()))
+            }
+            Err(e) if is_user_not_found_error(e.as_ref()) => {
+                Err((StatusCode::NOT_FOUND, Json(models::ErrorResponse {
+                    error: format!("Last.fm user \"{}\" not found. Check the spelling.", username_for_err),
+                    code: 404,
+                })))
             }
             Err(e) => {
                 eprintln!("Discovery error (custom key): {}", e);
@@ -205,6 +214,12 @@ pub async fn discovery_handler(
         }
         Err(e) if e.to_string().contains("No listening history") => {
             Ok(Json(empty_discovery_response()))
+        }
+        Err(e) if is_user_not_found_error(e.as_ref()) => {
+            Err((StatusCode::NOT_FOUND, Json(models::ErrorResponse {
+                error: format!("Last.fm user \"{}\" not found. Check the spelling.", query.username),
+                code: 404,
+            })))
         }
         Err(e) => {
             eprintln!("Discovery error: {}", e);

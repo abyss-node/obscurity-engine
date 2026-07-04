@@ -9,9 +9,18 @@ interface ErrorStateProps {
 }
 
 export default function ErrorState({ error, onRetry, onAddApiKey }: ErrorStateProps) {
-  // The app prefixes some messages with "[ERR] SONAR_FAILURE — "; strip a
-  // leading "[ERR] CODE — " token so we don't double-label under the header.
-  const prose = error.replace(/^\[ERR\]\s+[A-Z_]+\s+[—-]\s+/, "").trim();
+  // The app prefixes messages with "[ERR] CODE — "; pull the code out for the
+  // header (defaulting to REQUEST_FAILED for untagged/legacy strings) and
+  // strip the token from the prose so we don't double-label under the header.
+  const match = error.match(/^\[ERR\]\s+([A-Z_]+)\s+[—-]\s+([\s\S]*)$/);
+  const code = match ? match[1] : "REQUEST_FAILED";
+  const prose = (match ? match[2] : error).trim();
+  const isUserNotFound = code === "USER_NOT_FOUND";
+  // A nonexistent username is permanent, not transient — the fallback copy
+  // must not suggest waiting/retrying will help.
+  const fallbackProse = isUserNotFound
+    ? "That username doesn't exist. Check the spelling and try again."
+    : "Something went wrong reaching the discovery service. It may be rate-limited or waking up — wait a moment and retry.";
 
   return (
     <motion.div
@@ -21,13 +30,13 @@ export default function ErrorState({ error, onRetry, onAddApiKey }: ErrorStatePr
       className="flex flex-col items-center justify-center gap-6 pt-40 px-6 text-center"
     >
       <span className="font-mono text-[11px] tracking-widest" style={{ color: "var(--discovery)" }}>
-        [ERR] REQUEST_FAILED
+        [ERR] {code}
       </span>
       <p
         className="font-body text-[15px] leading-relaxed max-w-md"
         style={{ color: "var(--muted)" }}
       >
-        {prose || "Something went wrong reaching the discovery service. It may be rate-limited or waking up — wait a moment and retry."}
+        {prose || fallbackProse}
       </p>
       <div className="flex items-center gap-3">
         <button

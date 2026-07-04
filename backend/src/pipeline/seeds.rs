@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
-use crate::lastfm::{LastfmClient, TimePeriod, is_transient_error};
+use crate::lastfm::{LastfmClient, TimePeriod, is_transient_error, is_user_not_found_error};
 use crate::utils::parse_period;
 
 const MAX_SEEDS: usize = 100;
@@ -134,7 +134,17 @@ async fn collect_single(
     let response = client
         .fetch_user_top_artists(username, 200, period)
         .await
-        .map_err(|e| format!("Failed to fetch top artists: {}", e))?;
+        .map_err(|e| {
+            // A "user not found" error is permanent and user-facing on its own
+            // terms — propagate it unchanged (preserving downcastability) so
+            // the handler can surface a 404 instead of folding it into the
+            // generic "Failed to fetch..." string every other error gets.
+            if is_user_not_found_error(e.as_ref()) {
+                e
+            } else {
+                format!("Failed to fetch top artists: {}", e).into()
+            }
+        })?;
 
     // Read the distinct-artist total before consuming the artist vec.
     let total_artist_count = response.topartists.attr.as_ref()

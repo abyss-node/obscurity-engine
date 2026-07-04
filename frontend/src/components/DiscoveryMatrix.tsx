@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Artist } from "../app/page";
 import { normConviction, normStickiness, obscurityDotSize } from "../lib/scoring";
+import { resolveLabelCollisions, type LabelInput } from "../lib/labelLayout";
+
+// Below this measured plot width (px), the vertical-only `labelDy` stacking
+// isn't enough to keep dense clusters legible (QA'd on a 390px viewport,
+// which nets out to roughly this much plot width after the y-axis column
+// and outer padding). At/above it, behavior is unchanged from before.
+const NARROW_PLOT_WIDTH_PX = 480;
 
 type DiscoveryMatrixProps = {
   artists: Artist[];
@@ -29,6 +36,31 @@ type Dot = {
 
 export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMatrixProps) {
   const [hovered, setHovered] = useState<string | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
+  // null = not yet measured (every existing test render, since jsdom has no
+  // real layout/ResizeObserver) — while null we always fall through to the
+  // pre-existing labelDy behavior below, so desktop and the current test
+  // suite see zero change.
+  const [plotSize, setPlotSize] = useState<{ width: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = plotRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setPlotSize({ width: rect.width, height: rect.height });
+      }
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const dots = useMemo<Dot[]>(
     () =>
@@ -66,6 +98,26 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
     return out;
   }, [dots]);
 
+  // Once we have a real measured plot width AND it's narrow (mobile), swap
+  // the vertical-only labelDy stacking for full 2D collision resolution.
+  // `artists` arrives pre-sorted best-first (ResultsBody passes it straight
+  // through), so a dot's index in `dots` doubles as its priority rank.
+  const isNarrow = plotSize != null && plotSize.width < NARROW_PLOT_WIDTH_PX;
+  const collisionVisible = useMemo<Record<string, boolean> | null>(() => {
+    if (!isNarrow || plotSize == null) return null;
+    const labels: LabelInput[] = dots
+      .filter((d) => d.dual)
+      .map((d, i) => ({
+        name: d.name,
+        xPct: d.x,
+        yPct: d.y,
+        rank: i,
+        anchorRight: d.labelRight,
+        dotOffsetPx: d.size / 2 + 7,
+      }));
+    return resolveLabelCollisions(labels, plotSize.width, plotSize.height);
+  }, [dots, isNarrow, plotSize]);
+
   if (artists.length === 0) {
     return (
       <div
@@ -93,6 +145,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
         <div className="flex flex-col">
           {/* Plot */}
           <div
+            ref={plotRef}
             className="relative h-[400px] min-[720px]:h-[520px] overflow-hidden border"
             style={{ borderColor: "var(--border)", background: "var(--bg)" }}
           >
@@ -121,7 +174,8 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
             {/* Dots */}
             {dots.map((d) => {
               const isHovered = hovered === d.name;
-              const showLabel = d.dual || isHovered;
+              const dualLabelVisible = collisionVisible ? (collisionVisible[d.name] ?? true) : true;
+              const showLabel = (d.dual && dualLabelVisible) || isHovered;
               const labelColor = d.dual
                 ? "var(--accent)"
                 : isHovered
@@ -170,7 +224,12 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
                       className="absolute font-mono whitespace-nowrap"
                       style={{
                         top: 0,
-                        transform: `translateY(calc(-50% + ${labelDy[d.name] ?? 0}px))`,
+                        // In narrow/collision mode, visibility alone resolves
+                        // overlaps (per labelLayout's box math, which assumes
+                        // no extra vertical offset) — the old labelDy vertical
+                        // stacking only applies when we haven't measured a
+                        // narrow container yet.
+                        transform: `translateY(calc(-50% + ${collisionVisible ? 0 : labelDy[d.name] ?? 0}px))`,
                         fontSize: "9.5px",
                         letterSpacing: "0.02em",
                         color: labelColor,
