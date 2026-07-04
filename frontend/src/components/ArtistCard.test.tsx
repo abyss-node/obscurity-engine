@@ -131,3 +131,36 @@ describe("ArtistCard — click_listen/share beacons", () => {
     expect(postEventMock).not.toHaveBeenCalled();
   });
 });
+
+describe("ArtistCard — Bandcamp link", () => {
+  it("falls back to an encoded Bandcamp search URL when no resolved bandcamp_url is present", () => {
+    const artist = makeArtist({ rec_id: "rec-1", name: "Duster & Friends", bandcamp_url: undefined });
+    render(<ArtistCard artist={artist} rank={1} expanded onToggle={() => {}} />);
+    const link = screen.getByText("Bandcamp").closest("a");
+    expect(link).toHaveAttribute(
+      "href",
+      "https://bandcamp.com/search?q=Duster%20%26%20Friends&item_type=b"
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("prefers a backend-resolved exact bandcamp_url over the search fallback", () => {
+    const artist = makeArtist({ rec_id: "rec-1", bandcamp_url: "https://duster.bandcamp.com" });
+    render(<ArtistCard artist={artist} rank={1} expanded onToggle={() => {}} />);
+    const link = screen.getByText("Bandcamp").closest("a");
+    expect(link).toHaveAttribute("href", "https://duster.bandcamp.com");
+  });
+
+  it("fires click_listen with target=bandcamp on click", () => {
+    const artist = makeArtist({ rec_id: "rec-1" });
+    render(<ArtistCard artist={artist} rank={1} expanded onToggle={() => {}} runId="run-9" />);
+    fireEvent.click(screen.getByText("Bandcamp"));
+    expect(postEventMock).toHaveBeenCalledWith({
+      rec_id: "rec-1",
+      run_id: "run-9",
+      type: "click_listen",
+      target: "bandcamp",
+    });
+  });
+});

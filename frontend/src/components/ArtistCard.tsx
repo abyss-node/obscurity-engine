@@ -86,6 +86,9 @@ export default function ArtistCard({
   // always lands somewhere useful (never a dead link).
   const spotifyUrl =
     artist.spotify_url ?? `https://open.spotify.com/search/${encodeURIComponent(artist.name)}`;
+  // Search-link chosen over MB-precise artist URLs for now — always resolves,
+  // zero API cost; MB-precise upgrade (MusicBrainz Bandcamp artist-URL rel)
+  // is gated on the coverage probe (scripts/mb_bandcamp_coverage.py).
   const bandcampUrl =
     artist.bandcamp_url ?? `https://bandcamp.com/search?q=${encodeURIComponent(artist.name)}&item_type=b`;
   // Share the artist's Spotify page on WhatsApp. wa.me opens the app (mobile) or
