@@ -43,6 +43,20 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 const SIMILAR_CONCURRENCY: usize = 8;
 const SIMILAR_ARTISTS_PER_SEED: u32 = 20;
 
+/// Caps how many per-seed ListenBrainz futures run at once inside
+/// `build_listenbrainz_prov_budgeted`. Each future's first step is
+/// `resolve_mbid`, whose tier-1 lookup is a Last.fm `artist.getinfo` call —
+/// on a cold cache (prod has no Redis, so every redeploy starts cold) pushing
+/// all `MAX_SEEDS` (100) futures into `FuturesUnordered` unbounded would burst
+/// up to 100 concurrent Last.fm requests at race start, stacking on top of the
+/// Last.fm arm's own `SIMILAR_CONCURRENCY`-wide (8) `getsimilar` fan-out that
+/// runs at the exact same moment (see `race_arms`). Mirrors `SIMILAR_CONCURRENCY`
+/// so neither arm out-bursts the other. This only paces how fast seeds are
+/// picked up — it does not touch the absolute 8s `LB_TIME_BUDGET`, so a
+/// cold-cache request simply resolves fewer seeds within budget (already
+/// handled by the existing fail-open/`degraded` path).
+const LB_TIER1_CONCURRENCY: usize = 8;
+
 /// Per-request wall-clock budget for the ADDITIVE ListenBrainz path. Whatever LB
 /// resolves+fetches inside this window is blended; the rest is skipped and the
 /// request is counted as degraded. This is the fail-open guarantee. The budget
@@ -299,11 +313,17 @@ async fn build_listenbrainz_prov_budgeted(
     let cache = b.cache;
     let metrics = b.metrics;
 
+    let seed_semaphore = Arc::new(Semaphore::new(LB_TIER1_CONCURRENCY));
     let mut futures = FuturesUnordered::new();
     for seed in seed_names {
         let seed = seed.clone();
         let lastfm = Arc::clone(client);
+        let seed_semaphore = Arc::clone(&seed_semaphore);
         futures.push(async move {
+            // Held for the whole per-seed future (tier-1 resolve through
+            // similar-artist fetch) so the semaphore caps concurrent entries
+            // into `resolve_mbid` — see `LB_TIER1_CONCURRENCY`.
+            let _permit = seed_semaphore.acquire().await;
             let neighbors = match lb.resolve_mbid(&seed, &lastfm, cache, metrics).await {
                 Some(mbid) => {
                     lb.similar(&mbid, SIMILAR_ARTISTS_PER_SEED as usize, cache, metrics).await
@@ -573,6 +593,41 @@ mod tests {
         assert!(!degraded, "fast LB within budget is not degraded");
         let cand = prov.get("mockneighbour").expect("LB candidate blended in");
         assert!(cand.recs.get("SeedA").unwrap().listenbrainz);
+    }
+
+    // Regression for the LB_TIER1_CONCURRENCY cap (FIX 1): pushing more seeds
+    // than the cap must still resolve every seed within a generous budget —
+    // the semaphore should only pace intake, never drop or deadlock work.
+    // (A true peak-concurrency assertion on the tier-1 `resolve_mbid` fan-out
+    // would need to mock Last.fm's `artist.getinfo`, which `fetch_artist_mbid`
+    // hits via the hardcoded `LASTFM_API_URL` — not the `LASTFM_API_BASE`
+    // override used elsewhere — so it isn't cheaply mockable without touching
+    // lastfm.rs production code; this test instead guards the queuing
+    // behavior via the already-mockable `similar` seam.)
+    #[tokio::test]
+    async fn lb_arm_resolves_all_seeds_above_concurrency_cap() {
+        let url = spawn_lb_similar_mock(0).await;
+        let lb = ListenBrainzClient::with_urls(url, "unused".into());
+        let cache = CacheStore::InMemory(InMemoryStore::new());
+        let metrics = Metrics::new();
+        let seed_names: Vec<String> = (0..12).map(|i| format!("Seed{}", i)).collect();
+        let seed_refs: Vec<&str> = seed_names.iter().map(String::as_str).collect();
+        preseed_mbids(&cache, &seed_refs).await;
+
+        let b = BlendConfig {
+            source: CandidateSource::Blend,
+            listenbrainz: &lb,
+            cache: &cache,
+            metrics: &metrics,
+        };
+        let dummy_lastfm = Arc::new(LastfmClient::new("TESTKEY".into()));
+
+        let (prov, degraded) =
+            build_listenbrainz_prov_budgeted(&dummy_lastfm, &seed_names, &b, Duration::from_secs(5)).await;
+
+        assert!(!degraded, "12 seeds queued behind an 8-wide cap must still finish within a generous budget");
+        let cand = prov.get("mockneighbour").expect("LB candidate blended in");
+        assert_eq!(cand.recs.len(), 12, "every seed must be resolved, not just the first 8");
     }
 
     // ── race_arms: concurrency + fail-closed abort + fail-open budget ─────────
