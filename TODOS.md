@@ -33,7 +33,9 @@ Deferred work with context. Format: what / why / context / effort (human → CC)
   fix requiring no CEGE and no scraping; seeds the two-sided marketplace.
   Revisit alongside Phase 4 or if the E3 alternate-source spikes disappoint.
   Effort M → S. P2.
-- [ ] **E5: Friend-compare on the share page** *(user decision 2026-07-02:
-  DEFERRED)* — compare-with-friend on /u/ or /r/ pages; the proven growth
-  mechanic in this category (Obscurify, Receiptify). Revisit when retention
-  is measurable post-Phase-2. Effort S/M → S. P2.
+- [x] **E5: Friend-compare on the share page** — SHIPPED 2026-07-04
+  (50a35b5): visitor on /r/[id] enters their username, discovery runs with
+  the share's period/appetite, renders taste-match % (weighted-Jaccard +
+  overlap boost), you'd-both-discover chips, lower-median depth verdict,
+  run-your-full-scan CTA. Un-deferred after the Spotify-quota spike demoted
+  F5 — share pages are the ungated growth channel.
