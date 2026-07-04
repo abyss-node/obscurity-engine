@@ -556,6 +556,13 @@ mod tests {
     }
 
     #[test]
+    fn validate_click_listen_accepts_bandcamp_target() {
+        // The frontend's "Support on Bandcamp" search-link (ArtistCard.tsx)
+        // fires click_listen with target=bandcamp; must not 400.
+        assert!(validate_event(&eb("click_listen", Some(UUID_A), None, Some("bandcamp"))).is_ok());
+    }
+
+    #[test]
     fn validate_anonymous_rules() {
         // save/dismiss/unsave/undo_dismiss require auth; click_listen/share do not.
         assert!(validate_event(&eb("save", Some(UUID_A), None, None)).unwrap().requires_auth);
