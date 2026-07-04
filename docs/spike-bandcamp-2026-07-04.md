@@ -320,3 +320,54 @@ does, since Bandcamp is where obscure-artist fans actually spend money.
 - Whether Bandcamp has ever formally rejected or revoked API access from a
   discovery/recommendation-shaped applicant (as opposed to a scraper) — no
   such case surfaced in this research pass either way.
+
+## Appendix: coverage probe results (2026-07-04)
+
+Follow-up to the unresolved item above, run via `scripts/mb_bandcamp_coverage.py`
+(read-only against the public MusicBrainz web service; no eval/** changes,
+no Bandcamp scraping). The script's own live query, made correctly this
+time — MB artist search at the same `score >= 80` threshold
+`backend/src/listenbrainz.rs::mb_search` uses, then
+`GET /ws/2/artist/{mbid}?inc=url-rels` per resolved MBID, paced at 1.1s/call
+with a descriptive User-Agent matching the codebase's existing MB politeness
+pattern — replaces the spike's non-credible `count:0`.
+
+**Sample:** 40 hand-picked artist names spanning obscure-DIY to
+well-known-indie, skewed toward the genres Q3 flagged as Bandcamp-adjacency-strong
+(ambient, shoegaze, post-rock, experimental electronic, DIY bedroom pop).
+Committed `eval/*.json` artifacts were checked first per the task brief, but
+every one (`blend_n348.json` included) stores only aggregated per-user
+metrics (hits/reach/precision/etc.) — none retain the actual recommended
+artist names (those live only in the gitignored, uncommitted `eval/.cache/`).
+So this is a hardcoded proxy sample, not a draw from a committed artifact —
+noted here explicitly as the task brief allows.
+
+**Results:**
+
+| Metric | Value |
+|---|---|
+| N sampled | 40 |
+| Resolved to an MBID (score ≥ 80) | 38 / 40 (95.0%) |
+| Of resolved, has a Bandcamp artist-URL relationship | 35 / 38 (92.1%) |
+| Errors (network/transport) | 0 |
+
+Unresolved (no MB match ≥ score 80): "Parannoul", "For Elissa" — both
+genuinely deep-long-tail/DIY names likely thin or absent in MusicBrainz
+itself, not a query-encoding artifact (no errors were logged; this run's
+`mb_search` call shape is byte-identical to the Rust code's). Of the 38
+resolved artists, only "Julie", "TOPS", and "Nostalgist" resolved without a
+Bandcamp relationship populated.
+
+**Recommendation:** the MB-precise upgrade is worth building. A 92%
+Bandcamp-URL hit rate among MB-resolvable artists is far higher than this
+spike's cautious prior, confirms Q4's directional read (independent-leaning
+artists' MB entries are well-maintained here), and the resolution path
+(MBID search + `url-rels` lookup) is mechanically identical to the
+MusicBrainz calls `backend/src/listenbrainz.rs` already makes for the blend
+candidate source — no new infra, same rate-limit budget. Net: swap the
+current `bandcamp_url` fallback from "always search-link" to "MB `url-rels`
+lookup, fall back to search-link only on miss," gated behind the existing
+per-artist MBID resolution the blend path already performs when
+`CANDIDATE_SOURCE` includes ListenBrainz/Blend (Last.fm-only mode has no
+MBID in hand and would need its own resolve call, same cost as today's
+Spotify/`"This Is"` resolution).
