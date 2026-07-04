@@ -4,11 +4,15 @@ Deferred work with context. Format: what / why / context / effort (human → CC)
 
 ## From /autoplan review of docs/roadmap-10x-2026-07-02.md (2026-07-02)
 
-- [ ] **Bandcamp analysis: candidate source + paid-fan surface** — "1000 true
-  fans" is about fans who pay; Bandcamp is where obscure-artist fans pay, and
-  its Discover/fan-collections graph is an unanalyzed candidate source.
-  Research first (API/ToS, adjacency quality), then A/B in the eval harness
-  like E3's alternates. Effort M → S. P2. Depends on: E3 harness plumbing.
+- [x] **Bandcamp analysis: candidate source + paid-fan surface** — RESEARCHED
+  2026-07-04, see [spike-bandcamp-2026-07-04.md](docs/spike-bandcamp-2026-07-04.md).
+  Verdict: candidate source **NO-GO** (every adjacency path — fan
+  collections, "fans also bought," Discover tags — requires scraping or
+  unauthorized undocumented endpoints, explicitly banned by Bandcamp's AUP;
+  official API is seller-account-only); paid-fan link-out **GO** (MusicBrainz
+  already has an official Bandcamp artist-URL relationship, no-scraping,
+  reuses the existing MB lookup path — ship as a "Support on Bandcamp" link,
+  effort S, coverage on our pool unverified — see doc).
 - [ ] **Mission-arithmetic section** — write the fan-delivery equation
   (MAU × discoveries/user × concentration per artist) with real numbers once
   the analytics baseline (E1) produces actual MAU; decide what the listener
