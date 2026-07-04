@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDepthProse } from "./scoring";
 import { loadCache, saveCache } from "./cache";
+import { classifyDiscoveryError, TIMEOUT_ERROR, NETWORK_ERROR } from "./discoveryError";
 import type {
   Artist,
   TrackItem,
@@ -133,41 +134,18 @@ export function useDiscovery(
         };
         const response = await fetchDiscovery();
         if (!response.ok) {
-          let detail = `HTTP ${response.status}`;
-          let hasAppErrorDetail = false;
+          // hasAppErrorDetail (a parseable JSON body carrying an `error`
+          // field) is load-bearing for the 404 → USER_NOT_FOUND gate inside
+          // classifyDiscoveryError — see that function's doc comment. Passed
+          // through as `detail === null` vs a string, not as a separate flag.
+          let detail: string | null = null;
           try {
             const body = await response.json();
             if (body?.error) {
               detail = String(body.error);
-              hasAppErrorDetail = true;
             }
           } catch { /* non-JSON */ }
-          // The backend's only 404 on this endpoint is "no such Last.fm user" —
-          // a permanent, non-retryable state. Must be checked before the busy
-          // heuristic below: a nonexistent username's error text can otherwise
-          // coincidentally match the rate-limit wording and get mislabeled as a
-          // transient failure (it isn't — retrying won't help). But a 404 can
-          // also come from a framework/proxy layer (misrouted request, wrong
-          // API base) whose body isn't the app's error JSON at all — that must
-          // NOT be confidently reported as "this username doesn't exist", so
-          // USER_NOT_FOUND requires the app's actual error shape (a parseable
-          // JSON body carrying an `error` field); an unparseable/bodyless 404
-          // falls through to the generic failure copy below instead.
-          if (response.status === 404 && hasAppErrorDetail) {
-            setError(`[ERR] USER_NOT_FOUND — ${detail}`);
-            return;
-          }
-          // Upstream rate-limit / busy signatures from the backend → actionable hint
-          // instead of a raw "error decoding response body".
-          const busy =
-            response.status >= 500 &&
-            /rate limit|error decoding|failed to fetch|temporarily|unavailable/i.test(detail);
-          const errMsg = busy
-            ? "[ERR] SONAR_FAILURE — Last.fm is rate-limiting us right now. Wait a few seconds and retry."
-            : response.status >= 500
-              ? `[ERR] SONAR_FAILURE — The discovery service hit an error; retry in a moment. (${detail})`
-              : `[ERR] SONAR_FAILURE — ${detail}`;
-          setError(errMsg);
+          setError(classifyDiscoveryError(response.status, detail));
           return;
         }
         if (mode === "tracks") {
@@ -181,11 +159,7 @@ export function useDiscovery(
         }
       } catch (e) {
         const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
-        setError(
-          isTimeout
-            ? "[ERR] SONAR_FAILURE — Request timed out after 90s. The service may be busy; retry."
-            : "[ERR] SONAR_FAILURE — Couldn't reach the discovery service. It may be starting up or blocked; retry in a moment."
-        );
+        setError(isTimeout ? TIMEOUT_ERROR : NETWORK_ERROR);
       } finally {
         clearTimeout(wakeupTimer);
         setWakingUp(false);

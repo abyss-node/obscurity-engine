@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import ResultsBody from "./ResultsBody";
+import CompareSection from "./CompareSection";
 import { PERIOD_WINDOWS, type SortType } from "../lib/types";
 import type { SharePayload } from "../lib/shareStore";
 
@@ -17,7 +18,7 @@ import type { SharePayload } from "../lib/shareStore";
  * it (and SSR the artist names into the initial HTML) after fetching the store.
  */
 export function ReadonlyResults({ payload }: { payload: SharePayload }) {
-  const { username, period, recommendations } = payload;
+  const { username, period, appetite, recommendations } = payload;
   const [sortBy, setSortBy] = useState<SortType>("composite");
 
   const sortedArtists = useMemo(() => {
@@ -69,6 +70,15 @@ export function ReadonlyResults({ payload }: { payload: SharePayload }) {
             get your own →
           </a>
         </div>
+
+        {recommendations.length > 0 && (
+          <CompareSection
+            sharerUsername={username}
+            period={period}
+            appetite={appetite}
+            sharerArtists={recommendations}
+          />
+        )}
 
         {recommendations.length > 0 && (
           <ResultsBody
