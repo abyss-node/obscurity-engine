@@ -490,6 +490,57 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn artist_info_fetch_requests_autocorrect_and_returns_canonical() {
+        // LB-sourced candidates carry MB-canonical spellings ("Guns N’ Roses",
+        // curly apostrophe); without autocorrect=1 Last.fm serves its separate
+        // variant page — tiny listeners (defeats the 25K ceiling) and zero
+        // userplaycount (defeats the played-before exclusion). Live prod bug
+        // 2026-07-04. Lock in: getinfo always requests autocorrect.
+        let captured: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let cap = Arc::clone(&captured);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route(
+            "/",
+            get(move |axum::extract::RawQuery(q): axum::extract::RawQuery| {
+                let cap = Arc::clone(&cap);
+                async move {
+                    cap.lock().unwrap().push(q.unwrap_or_default());
+                    axum::Json(serde_json::json!({
+                        "artist": {
+                            "name": "Guns N' Roses",
+                            "stats": {
+                                "listeners": "5291432",
+                                "playcount": "263000000",
+                                "userplaycount": "488"
+                            },
+                            "tags": { "tag": [{ "name": "hard rock" }] }
+                        }
+                    }))
+                }
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        let _base = MockLastfmBase::set(addr);
+
+        let client = crate::lastfm::LastfmClient::new("k".into());
+        let info = client
+            .fetch_artist_info("Guns N’ Roses", "someuser")
+            .await
+            .expect("artist info fetch should succeed against the mock");
+        // Autocorrect resolves the variant spelling to the canonical page.
+        assert_eq!(info.artist.name, "Guns N' Roses");
+        assert_eq!(info.artist.stats.listeners, 5_291_432);
+        let qs = captured.lock().unwrap().join("&");
+        assert!(
+            qs.contains("autocorrect=1"),
+            "artist.getinfo must request autocorrect=1, got: {qs}"
+        );
+    }
+
+    #[tokio::test]
     async fn events_malformed_body_is_400() {
         let app = build_router(no_db_state());
         let resp = app.oneshot(ev_req("{not json")).await.unwrap();

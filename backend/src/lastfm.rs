@@ -578,9 +578,16 @@ impl LastfmClient {
             }
         }
 
+        // autocorrect=1 is load-bearing: ListenBrainz-sourced candidates carry
+        // MusicBrainz-canonical spellings ("Guns N’ Roses", curly apostrophe),
+        // and without autocorrect Last.fm serves its separate VARIANT page —
+        // tiny listener count (defeats the 25K ceiling) and zero userplaycount
+        // (defeats the played-before exclusion), so mainstream artists surface
+        // as obscure discoveries (prod report 2026-07-04). Autocorrect resolves
+        // to the canonical page; a no-op for names already canonical.
         let url = format!(
-            "{}?method=artist.getinfo&artist={}&username={}&api_key={}&format=json",
-            LASTFM_API_URL, urlencoding::encode(artist_name), urlencoding::encode(username), self.api_key
+            "{}?method=artist.getinfo&artist={}&username={}&autocorrect=1&api_key={}&format=json",
+            lastfm_api_base(), urlencoding::encode(artist_name), urlencoding::encode(username), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let response: crate::models::ArtistInfoResponse = serde_json::from_str(&resp_text)?;

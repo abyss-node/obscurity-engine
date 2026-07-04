@@ -209,7 +209,71 @@ async fn fetch_and_score(
             .then_with(|| a.name.cmp(&b.name))
     });
 
+    // getInfo autocorrect resolves variant spellings (e.g. an LB-sourced
+    // MB-canonical name) to Last.fm's canonical artist, so two candidate keys
+    // can now yield the same final artist — keep only the highest-composite
+    // entry per normalized name (list is already sorted by composite desc).
+    dedup_scored_by_name(&mut scored_artists);
+
     Ok(scored_artists)
+}
+
+/// Drop later duplicates of the same normalized artist name, preserving order.
+/// Callers pass a composite-desc sorted list, so "first wins" = highest score.
+fn dedup_scored_by_name(scored: &mut Vec<DiscoveryResponseItem>) {
+    let mut seen: HashSet<String> = HashSet::new();
+    scored.retain(|a| seen.insert(normalize_artist_name(&a.name)));
+}
+
+#[cfg(test)]
+mod dedup_tests {
+    use super::*;
+
+    fn item(name: &str, composite: f64) -> DiscoveryResponseItem {
+        DiscoveryResponseItem {
+            name: name.to_string(),
+            stickiness_score: 0.0,
+            conviction_score: 0,
+            composite_score: composite,
+            total_listeners: 100,
+            top_tags: vec![],
+            source_seeds: vec![],
+            cross_validated: false,
+            taste_alignment: 0.0,
+            velocity: None,
+            user_playcount: 0,
+            reengagement: false,
+            spotify_url: None,
+            bandcamp_url: None,
+            this_is_url: None,
+            rec_id: None,
+        }
+    }
+
+    #[test]
+    fn keeps_highest_composite_entry_per_normalized_name() {
+        // Two candidate keys resolving (via getInfo autocorrect) to the same
+        // canonical artist — list arrives composite-desc sorted, so the first
+        // (highest) entry survives and the later duplicate is dropped.
+        let mut scored = vec![
+            item("Guns N' Roses", 9.0),
+            item("Some Other Band", 5.0),
+            item("guns n' roses", 3.0),
+        ];
+        dedup_scored_by_name(&mut scored);
+        assert_eq!(
+            scored.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(),
+            vec!["Guns N' Roses", "Some Other Band"]
+        );
+        assert_eq!(scored[0].composite_score, 9.0);
+    }
+
+    #[test]
+    fn distinct_names_are_untouched() {
+        let mut scored = vec![item("A", 2.0), item("B", 1.0)];
+        dedup_scored_by_name(&mut scored);
+        assert_eq!(scored.len(), 2);
+    }
 }
 
 fn collab_components(name: &str) -> Vec<String> {
