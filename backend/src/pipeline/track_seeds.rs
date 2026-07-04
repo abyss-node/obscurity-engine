@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
-use crate::lastfm::{LastfmClient, TimePeriod};
+use crate::lastfm::{LastfmClient, TimePeriod, is_user_not_found_error};
 use crate::utils::parse_period;
 
 const MAX_SEEDS: usize = 200;
@@ -78,7 +78,17 @@ async fn collect_single(
     let response = client
         .fetch_user_top_tracks(username, 100, period)
         .await
-        .map_err(|e| format!("Failed to fetch top tracks: {}", e))?;
+        .map_err(|e| {
+            // A "user not found" error is permanent and user-facing on its own
+            // terms — propagate it unchanged (preserving downcastability) so
+            // the handler can surface a 404 instead of folding it into the
+            // generic "Failed to fetch..." string every other error gets.
+            if is_user_not_found_error(e.as_ref()) {
+                e
+            } else {
+                format!("Failed to fetch top tracks: {}", e).into()
+            }
+        })?;
 
     if response.toptracks.track.is_empty() {
         return Err("No track history found for this user.".into());

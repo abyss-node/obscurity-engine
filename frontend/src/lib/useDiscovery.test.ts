@@ -109,3 +109,34 @@ describe("useDiscovery — error classification", () => {
     );
   });
 });
+
+// Tracks-mode fast-follow (mirrors the F3 artists fix on the backend —
+// backend/src/lastfm.rs fetch_user_top_tracks + handlers.rs
+// track_discovery_handler now surface the same 404/USER_NOT_FOUND for a
+// nonexistent user). The `!response.ok` error-classification block above is
+// written mode-agnostically — it branches on `response.status`, never on
+// `mode` — so it already maps a tracks-endpoint 404 identically. Verified by
+// code inspection: not artists-only, so no extension was needed there.
+//
+// Separately: `mode === "tracks"` currently short-circuits the whole fetch
+// effect (still gated behind the "Coming soon" alpha overlay, per the
+// comment a few lines above this hook's effect) — so today the tracks
+// endpoint is never actually called from this hook regardless of the
+// mapping being correct. This test locks in that gate so a future change
+// doesn't silently start firing tracks requests (and burning Last.fm rate
+// limit) without it being a deliberate decision.
+describe("useDiscovery — tracks mode alpha gate", () => {
+  it("never fetches in tracks mode (still gated behind the coming-soon overlay)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() =>
+      useDiscovery("realuser3", "7day", "balanced", "tracks", "", noop)
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+  });
+});

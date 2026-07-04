@@ -423,6 +423,48 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn tracks_discovery_nonexistent_user_is_404_not_generic_500() {
+        // Mirrors discovery_nonexistent_user_is_404_not_generic_500 above, for
+        // the tracks endpoint: before the fast-follow fix, track_seeds.rs
+        // stringified every fetch_user_top_tracks error into "Failed to fetch
+        // top tracks: ...", which handlers.rs then always mapped to a 500
+        // "Track discovery failed: ..." — the frontend's busy/rate-limit
+        // heuristic matched that wording and told the user Last.fm was
+        // rate-limiting them. Lock in the fix: a nonexistent username on
+        // /api/discovery/tracks now surfaces as 404 with unambiguous wording.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route(
+            "/",
+            get(|| async {
+                axum::Json(serde_json::json!({ "error": 6, "message": "User not found" }))
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+
+        let app = build_router(no_db_state());
+        let (status, json) = status_of(
+            app,
+            Request::builder()
+                .uri("/api/discovery/tracks?username=nosuchuser&period=7day")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+
+        std::env::remove_var("LASTFM_API_BASE");
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let msg = json["error"].as_str().unwrap_or("").to_lowercase();
+        assert!(!msg.contains("rate"), "must not read as a rate-limit failure: {msg}");
+        assert!(!msg.contains("failed to fetch"), "must not carry the generic wrapper text: {msg}");
+        assert!(msg.contains("not found"), "should clearly say the user wasn't found: {msg}");
+    }
+
+    #[tokio::test]
     async fn events_malformed_body_is_400() {
         let app = build_router(no_db_state());
         let resp = app.oneshot(ev_req("{not json")).await.unwrap();
