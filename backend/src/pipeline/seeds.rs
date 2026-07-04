@@ -16,6 +16,44 @@ use crate::utils::parse_period;
 
 const MAX_SEEDS: usize = 100;
 
+/// Strip a YouTube-Music-scrobbler artifact: some scrobblers submit the raw
+/// YouTube channel title (e.g. "Ulver - Topic") instead of the artist name.
+/// That name then fails artist.getsimilar (no match, no autocorrect for this
+/// path) and the seed contributes nothing — for accounts whose library is
+/// dominated by these, discovery collapses to near-empty. Only a trailing
+/// " - Topic" (or its en-dash variant) suffix is stripped, case-insensitively
+/// — a real artist named "Topic" (the German DJ) is left untouched since the
+/// match requires something before the separator.
+fn normalize_seed_name(name: &str) -> String {
+    let trimmed = name.trim();
+    for suffix in [" - Topic", " \u{2013} Topic"] {
+        let suffix_chars: Vec<char> = suffix.chars().collect();
+        let name_chars: Vec<char> = trimmed.chars().collect();
+        if name_chars.len() > suffix_chars.len() {
+            let tail_start = name_chars.len() - suffix_chars.len();
+            let tail: String = name_chars[tail_start..].iter().collect();
+            if tail.eq_ignore_ascii_case(suffix) {
+                let head: String = name_chars[..tail_start].iter().collect();
+                return head.trim().to_string();
+            }
+        }
+    }
+    trimmed.to_string()
+}
+
+/// Accumulate one seed occurrence into `weights`/`names`, merging by summing
+/// weight if `name` was already seen — this can happen post-normalization,
+/// e.g. "Ulver - Topic" and a real "Ulver" scrobble collapsing to the same
+/// key. First-seen order is preserved in `names`.
+fn accumulate_seed(weights: &mut HashMap<String, f64>, names: &mut Vec<String>, name: String, weight: f64) {
+    if let Some(existing) = weights.get_mut(&name) {
+        *existing += weight;
+    } else {
+        names.push(name.clone());
+        weights.insert(name, weight);
+    }
+}
+
 pub struct Seeds {
     /// artist_name → blended weight (higher = stronger taste signal)
     pub weights: HashMap<String, f64>,
@@ -86,7 +124,8 @@ async fn collect_blend(
                         .max(1.0);
                     // log2 compresses the range so a 10,000-play artist
                     // doesn't completely overshadow a 100-play one
-                    *merged.entry(artist.name).or_insert(0.0) += plays.log2().max(1.0) * factor;
+                    let name = normalize_seed_name(&artist.name);
+                    *merged.entry(name).or_insert(0.0) += plays.log2().max(1.0) * factor;
                 }
             }
             // A transient failure on any window would silently drop its recency
@@ -162,10 +201,57 @@ async fn collect_single(
             .and_then(|p| p.parse::<f64>().ok())
             .unwrap_or(1.0)
             .max(1.0);
-        weights.insert(artist.name.clone(), plays.log2().max(1.0));
-        names.push(artist.name);
+        let name = normalize_seed_name(&artist.name);
+        accumulate_seed(&mut weights, &mut names, name, plays.log2().max(1.0));
     }
 
     println!("SEEDS: {} seeds from user.gettopartists ({})", names.len(), period_str);
     Ok(Seeds { weights, names, total_artist_count })
+}
+
+#[cfg(test)]
+mod topic_suffix_tests {
+    use super::*;
+
+    #[test]
+    fn strips_topic_suffix_case_insensitive() {
+        assert_eq!(normalize_seed_name("Ulver - Topic"), "Ulver");
+        assert_eq!(normalize_seed_name("Ulver - topic"), "Ulver");
+        assert_eq!(normalize_seed_name("Acid Bath - Topic"), "Acid Bath");
+        assert_eq!(normalize_seed_name("Ulver"), "Ulver");
+        // The DJ named "Topic" is a standalone name, not a suffix match — untouched.
+        assert_eq!(normalize_seed_name("Topic"), "Topic");
+    }
+
+    #[test]
+    fn en_dash_topic_suffix_variant_is_stripped() {
+        assert_eq!(normalize_seed_name("Ulver \u{2013} Topic"), "Ulver");
+    }
+
+    #[test]
+    fn youtube_topic_seeds_merge_with_the_real_artist() {
+        // "Ulver - Topic" and "Ulver" must collapse into one seed (summed
+        // weight); "Topic" the artist and "Acid Bath - Topic" must not.
+        let inputs: [(&str, f64); 4] = [
+            ("Ulver - Topic", 10.0),
+            ("Ulver", 5.0),
+            ("Acid Bath - Topic", 3.0),
+            ("Topic", 2.0),
+        ];
+        let mut weights: HashMap<String, f64> = HashMap::new();
+        let mut names: Vec<String> = Vec::new();
+        for (raw, weight) in inputs {
+            let name = normalize_seed_name(raw);
+            accumulate_seed(&mut weights, &mut names, name, weight);
+        }
+        assert_eq!(
+            names,
+            vec!["Ulver".to_string(), "Acid Bath".to_string(), "Topic".to_string()],
+            "one merged entry for Ulver, Acid Bath untouched, Topic-the-DJ survives"
+        );
+        assert_eq!(weights.len(), 3);
+        assert_eq!(weights["Ulver"], 15.0, "10 (Topic variant) + 5 (real) merged");
+        assert_eq!(weights["Acid Bath"], 3.0);
+        assert_eq!(weights["Topic"], 2.0);
+    }
 }

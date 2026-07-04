@@ -474,7 +474,7 @@ fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
         }
     }
 
-    let mut genres: Vec<GenreWeight> = tag_weights.into_iter()
+    let genres: Vec<GenreWeight> = tag_weights.into_iter()
         .map(|(name, weight)| GenreWeight {
             name,
             weight: if total_weight > 0 {
@@ -484,6 +484,11 @@ fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
             },
         })
         .collect();
+    // FIX 2 (2026-07-05): country/region tags like "india"/"Indian"/"brazil"
+    // aren't genres — drop them from the aggregate readout so they never show
+    // up as a "genre" in the UI or on the shareable PNG. Per-artist top_tags
+    // are unaffected (the frontend already filters those).
+    let mut genres = filter_geo_genres(genres);
     genres.sort_by(|a, b| {
         b.weight.partial_cmp(&a.weight)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -491,6 +496,32 @@ fn aggregate_genres(artists: &[DiscoveryResponseItem]) -> Vec<GenreWeight> {
     });
     genres.truncate(5);
     genres
+}
+
+/// Drop standalone geo/country tags from an aggregate genre list (whole-tag,
+/// case-insensitive match against `crate::geo_tags::GEO_TAGS` — see that
+/// module, ported from frontend/src/lib/geoTags.ts).
+fn filter_geo_genres(genres: Vec<GenreWeight>) -> Vec<GenreWeight> {
+    genres.into_iter().filter(|g| !crate::geo_tags::is_geo_tag(&g.name)).collect()
+}
+
+#[cfg(test)]
+mod geo_filter_tests {
+    use super::*;
+
+    #[test]
+    fn aggregate_top_genres_filters_geo_tags() {
+        let genres = vec![
+            GenreWeight { name: "death metal".to_string(), weight: 10.0 },
+            GenreWeight { name: "india".to_string(), weight: 9.0 },
+            GenreWeight { name: "Indian".to_string(), weight: 8.0 },
+            GenreWeight { name: "bollywood".to_string(), weight: 7.0 },
+            GenreWeight { name: "brazil".to_string(), weight: 6.0 },
+        ];
+        let filtered = filter_geo_genres(genres);
+        let names: Vec<&str> = filtered.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, vec!["death metal", "bollywood"]);
+    }
 }
 
 /// Keep at most DIVERSITY_SLOTS_PER_GENRE artists per primary genre.

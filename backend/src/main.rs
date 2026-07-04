@@ -8,6 +8,7 @@ use axum::{
     Router,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::timeout::TimeoutLayer;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ mod api;
 mod auth;
 mod cache;
 mod db;
+mod geo_tags;
 mod handlers;
 mod lastfm;
 mod listenbrainz;
@@ -24,6 +26,14 @@ mod pipeline;
 mod ratelimit;
 mod spotify;
 mod utils;
+
+// Outer backstop for the 2026-07-05 incident: one wedged discovery compute
+// hung its request forever and, because nothing bounded handler execution
+// time, took every other route down with it (Railway still showed "Online").
+// This is a coarse limit on top of discovery's own internal budgets — it
+// should essentially never fire for a legitimate request (cold computes run
+// ~20-25s; heavy users more, but nowhere near this).
+const REQUEST_TIMEOUT_SECS: u64 = 120;
 
 use lastfm::LastfmClient;
 use listenbrainz::{CandidateSource, ListenBrainzClient};
@@ -80,6 +90,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/status", get(api::status_handler))
         .with_state(state)
+        // Coarse outer timeout — see REQUEST_TIMEOUT_SECS above. Applied here
+        // (inside build_router) rather than only in main() so it covers every
+        // route, including "/", and every caller of build_router (main and
+        // the integration tests below build the identical router).
+        .layer(TimeoutLayer::new(Duration::from_secs(REQUEST_TIMEOUT_SECS)))
 }
 
 #[tokio::main]
