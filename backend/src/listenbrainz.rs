@@ -19,6 +19,10 @@
 //! per-request time budget (see `candidates.rs`) enforces this: whatever LB
 //! answered within budget is blended, the rest is skipped and the request is
 //! counted as degraded. NEVER convert an LB failure into a request failure.
+//! The budget runs CONCURRENTLY with the Last.fm arm (the two arms race — see
+//! `candidates.rs::race_arms`), overlapping LB's window with Last.fm's work
+//! rather than following it; a Last.fm-arm error drops the in-flight LB future
+//! in place (it is never spawned, so cancellation leaks nothing).
 //!
 //! ## Caching (mandatory before the lever is flipped)
 //! Every similar-artists and MBID resolution is cached through the shared
