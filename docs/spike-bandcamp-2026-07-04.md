@@ -358,9 +358,13 @@ itself, not a query-encoding artifact (no errors were logged; this run's
 resolved artists, only "Julie", "TOPS", and "Nostalgist" resolved without a
 Bandcamp relationship populated.
 
-**Recommendation:** the MB-precise upgrade is worth building. A 92%
-Bandcamp-URL hit rate among MB-resolvable artists is far higher than this
-spike's cautious prior, confirms Q4's directional read (independent-leaning
+**Recommendation:** the MB-precise upgrade is worth building — with one
+caveat on the headline number: the sample was deliberately skewed toward
+Bandcamp-adjacency-strong genres, so 92% is an optimistic upper bound for
+the app's real recommendation mix (a genre-neutral draw from live rec
+output would likely land lower; re-measure against actual recommendations
+before treating this as a production hit rate). Even discounted, the rate
+is far higher than this spike's cautious prior, confirms Q4's directional read (independent-leaning
 artists' MB entries are well-maintained here), and the resolution path
 (MBID search + `url-rels` lookup) is mechanically identical to the
 MusicBrainz calls `backend/src/listenbrainz.rs` already makes for the blend
