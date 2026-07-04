@@ -305,7 +305,15 @@ impl ListenBrainzClient {
         let key = format!("lb:similar:{}", mbid);
         if let Some(c) = cache.get_json::<SimilarCache>(&key).await {
             metrics.record_lb_cache_hit();
-            return c.neighbors.into_iter().take(limit).collect();
+            // Fold on read too: entries cached before the punctuation fix (or
+            // written by an older build against a shared Redis) hold unfolded
+            // names for up to the 7-day TTL.
+            return c
+                .neighbors
+                .into_iter()
+                .map(|(n, s)| (fold_mb_punctuation(&n), s))
+                .take(limit)
+                .collect();
         }
 
         let _permit = match self.sim_sem.acquire().await {
@@ -377,7 +385,28 @@ fn normalize_similar(v: &Value) -> Vec<(String, f64)> {
         .filter_map(|(a, raw)| {
             a.get("name")
                 .and_then(|n| n.as_str())
-                .map(|name| (name.to_string(), raw / max_score))
+                .map(|name| (fold_mb_punctuation(name), raw / max_score))
+        })
+        .collect()
+}
+
+/// Fold MusicBrainz-style unicode punctuation to the ASCII forms Last.fm's
+/// canonical pages use. MB canonical names carry U+2010 hyphens ("alt‐J",
+/// "Anti‐Flag") and U+2019 apostrophes ("Guns N’ Roses"); Last.fm keeps
+/// separate low-traffic VARIANT pages for those exact strings, and
+/// `artist.getinfo` autocorrect does NOT collapse the hyphen variants — so
+/// unfolded names defeat the listener ceiling and played-before exclusion
+/// (prod leak 2026-07-04: "alt‐J" @ 5.7K listeners / 0 userplaycount vs the
+/// real alt-J @ 2.4M / 295). Folding at the LB boundary keeps every
+/// downstream consumer (getinfo, A6 dedup, seed exclusion) in ASCII space.
+fn fold_mb_punctuation(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '\u{2010}'..='\u{2015}' | '\u{2212}' => '-', // hyphens/dashes/minus
+            '\u{2018}' | '\u{2019}' | '\u{02BC}' => '\'', // curly/modifier apostrophes
+            '\u{201C}' | '\u{201D}' => '"',
+            '\u{00A0}' => ' ', // no-break space
+            _ => c,
         })
         .collect()
 }
@@ -385,6 +414,33 @@ fn normalize_similar(v: &Value) -> Vec<(String, f64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folds_mb_unicode_punctuation_to_ascii() {
+        // U+2010 hyphen — the exact prod leak strings.
+        assert_eq!(fold_mb_punctuation("alt\u{2010}J"), "alt-J");
+        assert_eq!(fold_mb_punctuation("Anti\u{2010}Flag"), "Anti-Flag");
+        // U+2019 apostrophe (autocorrect happened to fix this one, but the
+        // fold keeps us off the variant page entirely).
+        assert_eq!(fold_mb_punctuation("Guns N\u{2019} Roses"), "Guns N' Roses");
+        // En/em dash and minus sign variants.
+        assert_eq!(fold_mb_punctuation("A\u{2013}B\u{2014}C\u{2212}D"), "A-B-C-D");
+        // Plain ASCII names pass through untouched.
+        assert_eq!(fold_mb_punctuation("Putridity"), "Putridity");
+        // Non-punctuation unicode (umlauts etc.) is preserved.
+        assert_eq!(fold_mb_punctuation("Waldgefl\u{00FC}ster"), "Waldgefl\u{00FC}ster");
+    }
+
+    #[test]
+    fn normalize_similar_folds_names() {
+        let v = serde_json::json!([
+            { "name": "alt\u{2010}J", "score": 100 },
+            { "name": "Plain Band", "score": 50 }
+        ]);
+        let out = normalize_similar(&v);
+        assert_eq!(out[0].0, "alt-J");
+        assert_eq!(out[1].0, "Plain Band");
+    }
 
     #[test]
     fn candidate_source_parse_matrix() {
