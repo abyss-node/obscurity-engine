@@ -350,6 +350,29 @@ mod integration_tests {
         (status, json)
     }
 
+    /// LASTFM_API_BASE is process-global, so tests that point it at a mock
+    /// server must not run concurrently — one test's remove_var while another's
+    /// request is in flight sends that request to the real Last.fm URL. The
+    /// guard serializes those tests and removes the var on drop, so a panicking
+    /// assertion can't leak the override into later tests either.
+    static LASTFM_API_BASE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct MockLastfmBase(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+    impl MockLastfmBase {
+        fn set(addr: std::net::SocketAddr) -> Self {
+            let guard = LASTFM_API_BASE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+            MockLastfmBase(guard)
+        }
+    }
+
+    impl Drop for MockLastfmBase {
+        fn drop(&mut self) {
+            std::env::remove_var("LASTFM_API_BASE");
+        }
+    }
+
     fn ev_req(body: &str) -> Request<Body> {
         Request::builder()
             .method("POST")
@@ -401,7 +424,7 @@ mod integration_tests {
         tokio::spawn(async move {
             axum::serve(listener, mock).await.unwrap();
         });
-        std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+        let _base = MockLastfmBase::set(addr);
 
         let app = build_router(no_db_state());
         let (status, json) = status_of(
@@ -412,8 +435,6 @@ mod integration_tests {
                 .unwrap(),
         )
         .await;
-
-        std::env::remove_var("LASTFM_API_BASE");
 
         assert_eq!(status, StatusCode::NOT_FOUND);
         let msg = json["error"].as_str().unwrap_or("").to_lowercase();
@@ -443,7 +464,7 @@ mod integration_tests {
         tokio::spawn(async move {
             axum::serve(listener, mock).await.unwrap();
         });
-        std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+        let _base = MockLastfmBase::set(addr);
 
         let app = build_router(no_db_state());
         let (status, json) = status_of(
@@ -454,8 +475,6 @@ mod integration_tests {
                 .unwrap(),
         )
         .await;
-
-        std::env::remove_var("LASTFM_API_BASE");
 
         assert_eq!(status, StatusCode::NOT_FOUND);
         let msg = json["error"].as_str().unwrap_or("").to_lowercase();
@@ -657,7 +676,7 @@ mod integration_tests {
         tokio::spawn(async move {
             axum::serve(listener, mock).await.unwrap();
         });
-        std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+        let _base = MockLastfmBase::set(addr);
 
         let state = base_state(Some(Arc::clone(&db)), true, Some("secret".into()), Arc::new(ratelimit::RateLimiter::new()));
 
@@ -719,7 +738,6 @@ mod integration_tests {
             .await
             .unwrap();
         assert_eq!(after.status(), StatusCode::UNAUTHORIZED, "revoked token no longer authorizes");
-        std::env::remove_var("LASTFM_API_BASE");
     }
 
     #[tokio::test]
