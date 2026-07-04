@@ -10,6 +10,7 @@ COPY backend/Cargo.toml backend/Cargo.lock ./
 # Cache deps before copying source
 RUN mkdir src && echo "fn main(){}" > src/main.rs && cargo build --release && rm -rf src
 COPY backend/src ./src
+COPY backend/migrations ./migrations
 RUN touch src/main.rs && cargo build --release
 
 FROM debian:bookworm-slim
