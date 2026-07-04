@@ -6,9 +6,14 @@ import { useDiscovery } from "./useDiscovery";
 // permanent failure) — it must be surfaced distinctly from a genuine
 // rate-limit/transient 500, which used to get conflated because a
 // nonexistent-username error string coincidentally matched the busy-heuristic
-// regex. These tests lock in the three-way mapping in the `!response.ok`
-// branch: 404 → USER_NOT_FOUND, rate-limit-worded 500 → busy/SONAR_FAILURE,
-// generic 500 → generic SONAR_FAILURE (unchanged from before the fix).
+// regex. These tests lock in the mapping in the `!response.ok` branch:
+// app-shaped 404 (parseable JSON body with an `error` field) → USER_NOT_FOUND,
+// rate-limit-worded 500 → busy/SONAR_FAILURE, generic 500 → generic
+// SONAR_FAILURE (unchanged from before the fix). A 404 WITHOUT the app's error
+// shape (bare/HTML body, or JSON with no `error` field — e.g. a framework/proxy
+// 404 from a misrouted request or wrong API base) must NOT be confidently
+// reported as "that username doesn't exist" — it degrades to the same generic
+// SONAR_FAILURE copy instead.
 
 const noop = () => {};
 
@@ -47,7 +52,12 @@ describe("useDiscovery — error classification", () => {
     expect(result.current.error?.toLowerCase()).not.toContain("rate");
   });
 
-  it("falls back to a clear not-found message when the backend gives no useful detail", async () => {
+  // FIX 3: a 404 with a JSON body that carries no `error` field isn't proof
+  // this is the app's "no such Last.fm user" response — it could just as
+  // easily be a framework/proxy 404 (misrouted request, wrong API base).
+  // Without the app's error shape, this must NOT be confidently reported as
+  // "that username doesn't exist" — it degrades to the generic failure copy.
+  it("a 404 with a JSON body but no app error field is NOT classified as USER_NOT_FOUND", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -63,8 +73,33 @@ describe("useDiscovery — error classification", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.error).toMatch(/^\[ERR\] USER_NOT_FOUND —/);
-    expect(result.current.error).toContain("doesn't exist");
+    expect(result.current.error).not.toContain("USER_NOT_FOUND");
+    expect(result.current.error).toBe("[ERR] SONAR_FAILURE — HTTP 404");
+  });
+
+  // A bare/HTML 404 (e.g. a proxy or Next.js 404 page, not JSON at all) must
+  // be even more clearly rejected as "app-shaped" — response.json() itself
+  // throws, so there's no error detail to classify against at all.
+  it("a bare/HTML 404 (unparseable body) is NOT classified as USER_NOT_FOUND", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => {
+          throw new Error("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON");
+        },
+      })
+    );
+
+    const { result } = renderHook(() =>
+      useDiscovery("nosuchuser789", "7day", "balanced", "artists", "", noop)
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).not.toContain("USER_NOT_FOUND");
+    expect(result.current.error).toBe("[ERR] SONAR_FAILURE — HTTP 404");
   });
 
   it("maps a rate-limit-worded 500 to the existing busy/retry copy", async () => {

@@ -11,8 +11,14 @@
  * overlap, so this resolves collisions in real pixel space instead.
  */
 
-/** Approximate width of one monospace glyph at the label's 9.5px font-size. */
-const CHAR_WIDTH_PX = 5.7;
+/**
+ * Approximate width of one monospace glyph at the label's 9.5px font-size,
+ * folding in the label's `letterSpacing: 0.02em` (DiscoveryMatrix.tsx) —
+ * 0.02 * 9.5px = 0.19px of extra per-character spacing — so the estimated
+ * box no longer slightly underestimates real rendered width. (5.7 base + 0.19
+ * letterSpacing = 5.89.)
+ */
+const CHAR_WIDTH_PX = 5.89;
 /** Fixed line height (+ a little breathing room) for a single-line label. */
 const LABEL_HEIGHT_PX = 12;
 

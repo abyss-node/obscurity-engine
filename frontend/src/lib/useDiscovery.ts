@@ -134,21 +134,27 @@ export function useDiscovery(
         const response = await fetchDiscovery();
         if (!response.ok) {
           let detail = `HTTP ${response.status}`;
+          let hasAppErrorDetail = false;
           try {
             const body = await response.json();
-            if (body?.error) detail = String(body.error);
+            if (body?.error) {
+              detail = String(body.error);
+              hasAppErrorDetail = true;
+            }
           } catch { /* non-JSON */ }
           // The backend's only 404 on this endpoint is "no such Last.fm user" —
           // a permanent, non-retryable state. Must be checked before the busy
           // heuristic below: a nonexistent username's error text can otherwise
           // coincidentally match the rate-limit wording and get mislabeled as a
-          // transient failure (it isn't — retrying won't help).
-          if (response.status === 404) {
-            const notFoundDetail =
-              detail && detail !== `HTTP ${response.status}`
-                ? detail
-                : "That Last.fm username doesn't exist. Check the spelling and try again.";
-            setError(`[ERR] USER_NOT_FOUND — ${notFoundDetail}`);
+          // transient failure (it isn't — retrying won't help). But a 404 can
+          // also come from a framework/proxy layer (misrouted request, wrong
+          // API base) whose body isn't the app's error JSON at all — that must
+          // NOT be confidently reported as "this username doesn't exist", so
+          // USER_NOT_FOUND requires the app's actual error shape (a parseable
+          // JSON body carrying an `error` field); an unparseable/bodyless 404
+          // falls through to the generic failure copy below instead.
+          if (response.status === 404 && hasAppErrorDetail) {
+            setError(`[ERR] USER_NOT_FOUND — ${detail}`);
             return;
           }
           // Upstream rate-limit / busy signatures from the backend → actionable hint
