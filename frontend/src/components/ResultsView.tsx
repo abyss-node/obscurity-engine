@@ -16,7 +16,7 @@ import type { Session } from "../lib/session";
 import type { Artist, TrackItem, GenreWeight, DiscoveryMode, SortType } from "../lib/types";
 
 type SpotifyStatus = "idle" | "loading" | "success" | "error";
-type ShareState = "idle" | "rendering" | "saved" | "copied";
+type ShareState = "idle" | "rendering" | "saved" | "copied" | "saved-copied";
 
 interface ResultsViewProps {
   username: string;

@@ -15,7 +15,7 @@ interface ResultsTopBarProps {
   onRefresh: () => void;
   refreshDisabled: boolean;
   isRefreshing: boolean;
-  shareState: "idle" | "rendering" | "saved" | "copied";
+  shareState: "idle" | "rendering" | "saved" | "copied" | "saved-copied";
   onShare: () => void;
   session?: Session | null;
   savedCount?: number;
@@ -232,11 +232,13 @@ export default function ResultsTopBar({
       >
         {shareState === "rendering"
           ? "rendering…"
-          : shareState === "saved"
-            ? "saved ✓"
-            : shareState === "copied"
-              ? "copied"
-              : "↑ share"}
+          : shareState === "saved-copied"
+            ? "saved ✓ · link copied"
+            : shareState === "saved"
+              ? "saved ✓"
+              : shareState === "copied"
+                ? "copied"
+                : "↑ share"}
       </button>
     </div>
   );
