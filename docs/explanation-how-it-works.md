@@ -125,7 +125,10 @@ from both without double-counting a shared seed — everything downstream
 improvement the project has shipped (+9.5% relative reach at n=348; see
 `docs/blend-n348-2026-07-03.md`). The ListenBrainz arm is **additive and
 fail-open** (8-second budget, 7-day cache): if it's slow or down the discovery
-degrades to Last.fm-only candidates rather than failing. It is off by default
+degrades to Last.fm-only candidates rather than failing. The two arms run
+concurrently — the ListenBrainz budget overlaps the Last.fm fan-out rather than
+following it, so a blend costs `max(lastfm, min(lb, 8s))`, not their sum. It is
+off by default
 (`CANDIDATE_SOURCE=lastfm`), so the pipeline above is exactly what runs unless
 the lever is flipped.
 
