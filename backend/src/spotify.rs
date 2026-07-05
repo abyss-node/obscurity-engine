@@ -1,13 +1,23 @@
 use reqwest::Client;
 use serde::Deserialize;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use std::time::{Duration, Instant};
+
+/// Bounds concurrent Spotify `/search` calls, even within one discovery's
+/// `join_all` fan-out over ~25 artists. Keeps us well under Spotify's
+/// account-wide rate limit instead of firing everything at once.
+const SPOTIFY_SEARCH_CONCURRENCY: usize = 4;
 
 pub struct SpotifyClient {
     client: Client,
     client_id: String,
     client_secret: String,
     token: Mutex<Option<(String, Instant)>>,
+    /// Bounds concurrent calls to `/search`.
+    search_sem: Semaphore,
+    /// Set after a 429 from `/search`; while in the future, `resolve_artist_links`
+    /// short-circuits without calling Spotify at all (sticky-rate-limit cooldown).
+    rate_limited_until: Mutex<Option<Instant>>,
 }
 
 #[derive(Deserialize)]
@@ -63,7 +73,13 @@ const API_BASE: &str = "https://api.spotify.com/v1";
 /// Listen/find links for one artist. Every field is optional: the frontend
 /// only renders a link when its URL is present, so a failed lookup just means
 /// that button doesn't show — never a dead link.
-#[derive(serde::Serialize, Debug, Default, Clone)]
+///
+/// `this_is_url` is always `None` now (the "This Is {artist}" playlist lookup
+/// was dropped 2026-07-05 to halve Spotify `/search` call volume — see
+/// `resolve_artist_links`); the field is kept so the response shape and the
+/// frontend (which already hides the button when this is absent) don't need
+/// to change.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Clone)]
 pub struct ArtistLinks {
     pub spotify_url: Option<String>,
     pub this_is_url: Option<String>,
@@ -72,18 +88,31 @@ pub struct ArtistLinks {
 
 impl SpotifyClient {
     /// Resolve Spotify listen/find links for an artist. Best-effort: a failed
-    /// lookup leaves that field None. Both sub-lookups run concurrently.
+    /// lookup leaves that field None.
     /// (Bandcamp is resolved client-side as a search link — its public API
-    /// 403s datacenter IPs, so there's no point calling it from the server.)
-    pub async fn resolve_artist_links(&self, artist: &str) -> ArtistLinks {
+    /// 403s datacenter IPs, so there's no point calling it from the server.
+    /// The "This Is {artist}" playlist lookup was dropped 2026-07-05 — it
+    /// doubled Spotify `/search` call volume for a lower-value link.)
+    ///
+    /// Returns `None` when resolution was NOT attempted this call — i.e. a
+    /// sticky-429 cooldown is active (see `is_rate_limited`). Callers must not
+    /// cache a `None`. Returns `Some(links)` whenever a lookup was actually
+    /// attempted, even if `links.spotify_url` is itself `None` (a genuine
+    /// negative result, safe — and intended — to cache).
+    pub async fn resolve_artist_links(&self, artist: &str) -> Option<ArtistLinks> {
+        if self.is_rate_limited().await {
+            return None;
+        }
+        // A token-mint failure (bad creds / network) means /search was never
+        // reached either — same "not attempted" bucket as the cooldown case,
+        // so the caller doesn't cache a false negative for every artist during
+        // an outage.
         let Ok(token) = self.get_token().await else {
-            return ArtistLinks::default();
+            return None;
         };
-        let (spotify_url, this_is_url) = futures::join!(
-            self.search_artist_url(&token, artist),
-            self.search_this_is(&token, artist),
-        );
-        ArtistLinks { spotify_url, this_is_url, bandcamp_url: None }
+        let _permit = self.search_sem.acquire().await;
+        let spotify_url = self.search_artist_url(&token, artist).await;
+        Some(ArtistLinks { spotify_url, this_is_url: None, bandcamp_url: None })
     }
 
     /// Top artist match → its open.spotify.com/artist URL.
@@ -110,6 +139,19 @@ impl SpotifyClient {
                 return None;
             }
         };
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let secs = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(30);
+            self.mark_rate_limited(secs).await;
+            eprintln!(
+                "Spotify search_artist_url rate-limited (429) for '{artist}': retry-after={secs}s — entering cooldown, skipping Spotify calls until then"
+            );
+            return None;
+        }
         let data: Resp = parse_spotify_response(resp, &format!("search_artist_url '{artist}'")).await?;
         // Prefer an exact (case-insensitive) name match; fall back to the top hit.
         let items = data.artists.items;
@@ -119,41 +161,27 @@ impl SpotifyClient {
             .map(|a| a.external_urls.spotify.clone())
     }
 
-    /// Spotify's official "This Is {artist}" playlist, if one exists. We only
-    /// accept a playlist owned by `spotify` whose name matches, so we never
-    /// surface a random user playlist.
-    async fn search_this_is(&self, token: &str, artist: &str) -> Option<String> {
-        #[derive(Deserialize)]
-        struct Resp { playlists: Items }
-        #[derive(Deserialize)]
-        struct Items { items: Vec<Option<Playlist>> }
-        #[derive(Deserialize)]
-        struct Playlist { name: String, owner: Owner, external_urls: ExternalUrls }
-        #[derive(Deserialize)]
-        struct Owner { id: String }
-        #[derive(Deserialize)]
-        struct ExternalUrls { spotify: String }
+    /// Start (or extend) the sticky-429 cooldown. `retry_after_secs` is
+    /// clamped to at least 1 so a `0`/unparsed header can't produce a no-op
+    /// cooldown.
+    async fn mark_rate_limited(&self, retry_after_secs: u64) {
+        *self.rate_limited_until.lock().await =
+            Some(Instant::now() + Duration::from_secs(retry_after_secs.max(1)));
+    }
 
-        let want = format!("This Is {}", artist);
-        let resp = match self.client
-            .get(format!("{}/search", API_BASE))
-            .bearer_auth(token)
-            .query(&[("q", want.as_str()), ("type", "playlist"), ("limit", "5")])
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Spotify search_this_is request failed for '{artist}': {e}");
-                return None;
+    /// Whether a 429 cooldown is currently active. Clears (and returns
+    /// `false` for) an expired cooldown so the `Mutex` doesn't hold a stale
+    /// `Some` forever.
+    pub async fn is_rate_limited(&self) -> bool {
+        let mut guard = self.rate_limited_until.lock().await;
+        match *guard {
+            Some(until) if until > Instant::now() => true,
+            Some(_) => {
+                *guard = None;
+                false
             }
-        };
-        let data: Resp = parse_spotify_response(resp, &format!("search_this_is '{artist}'")).await?;
-        // Spotify's playlist search can return null array entries — filter them.
-        data.playlists.items.into_iter()
-            .flatten()
-            .find(|p| p.owner.id == "spotify" && p.name.eq_ignore_ascii_case(&want))
-            .map(|p| p.external_urls.spotify)
+            None => false,
+        }
     }
 
 
@@ -209,6 +237,8 @@ impl SpotifyClient {
             client_id,
             client_secret,
             token: Mutex::new(None),
+            search_sem: Semaphore::new(SPOTIFY_SEARCH_CONCURRENCY),
+            rate_limited_until: Mutex::new(None),
         }
     }
 
@@ -253,5 +283,33 @@ impl SpotifyClient {
     /// means the creds were verified, not merely that env vars were set.
     pub async fn health(&self) -> bool {
         self.get_token().await.is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `is_rate_limited` reflects an active cooldown, and clears the marker
+    /// once it's expired — without a real sleep. `mark_rate_limited` sets a
+    /// std::time::Instant deadline (not tokio's virtual clock), so
+    /// `tokio::time::pause()` can't fast-forward it; this test lives in the
+    /// same module and instead mutates the private field directly to a
+    /// past `Instant`, which exercises the exact same read path.
+    #[tokio::test]
+    async fn rate_limit_cooldown_tracks_and_expires() {
+        let client = SpotifyClient::new("id".into(), "secret".into());
+        assert!(!client.is_rate_limited().await, "fresh client should not be rate-limited");
+
+        client.mark_rate_limited(60).await;
+        assert!(client.is_rate_limited().await, "cooldown should be active right after marking");
+
+        // Simulate the cooldown having already expired.
+        *client.rate_limited_until.lock().await = Some(Instant::now() - Duration::from_secs(1));
+        assert!(!client.is_rate_limited().await, "expired cooldown should read as not rate-limited");
+        assert!(
+            client.rate_limited_until.lock().await.is_none(),
+            "expired cooldown should be cleared, not left as a stale Some"
+        );
     }
 }

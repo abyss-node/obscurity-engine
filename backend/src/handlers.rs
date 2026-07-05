@@ -124,7 +124,7 @@ pub async fn discovery_handler(
         return match discover_obscure_artists(client, query.username, query.period, appetite_mult, blend).await {
             Ok((result, _reserve)) => {
                 let result = annotate_sparse_artists(result);
-                let result = attach_listen_links(&state.spotify, result).await;
+                let result = attach_listen_links(&state.spotify, &state.cache, result).await;
                 Ok(Json(result))
             }
             Err(e) if e.to_string().contains("No listening history") => {
@@ -175,8 +175,8 @@ pub async fn discovery_handler(
     match discover_obscure_artists(client, query.username.clone(), query.period.clone(), appetite_mult, blend).await {
         Ok((result, mut reserve)) => {
             let mut result = annotate_sparse_artists(result);
-            result = attach_listen_links(&state.spotify, result).await;
-            attach_links_to_items(&state.spotify, &mut reserve).await;
+            result = attach_listen_links(&state.spotify, &state.cache, result).await;
+            attach_links_to_items(&state.spotify, &state.cache, &mut reserve).await;
 
             // Only persist/cache non-empty results; degraded/empty runs shouldn't stick.
             if !result.artists.is_empty() {
@@ -248,24 +248,40 @@ fn annotate_sparse_artists(mut result: models::DiscoveryResponse) -> models::Dis
     result
 }
 
-/// Resolve listen/find links (Spotify artist, "This Is" playlist, Bandcamp) for
-/// every artist in the result and attach them in place. Best-effort: a missing
-/// link just means the frontend hides that button. No-op when Spotify isn't
-/// configured. Runs all artists concurrently — wall-clock ≈ one round-trip.
+/// Resolve listen/find links (Spotify artist, Bandcamp) for every artist in
+/// the result and attach them in place. Best-effort: a missing link just
+/// means the frontend hides that button. No-op when Spotify isn't configured.
+/// Runs all artists concurrently — wall-clock ≈ one round-trip (cache hits are
+/// cheap; actual Spotify network calls are bounded by `SpotifyClient`'s own
+/// search semaphore).
 async fn attach_listen_links(
     spotify: &Option<Arc<SpotifyClient>>,
+    cache: &cache::CacheStore,
     mut result: models::DiscoveryResponse,
 ) -> models::DiscoveryResponse {
-    attach_links_to_items(spotify, &mut result.artists).await;
+    attach_links_to_items(spotify, cache, &mut result.artists).await;
     result
+}
+
+/// Cache key for one artist's resolved Spotify links. 30-day TTL (applied at
+/// the write site) since artist->URL mappings are stable.
+fn spotify_links_cache_key(name: &str) -> String {
+    format!("spotify_links:{}", name.to_lowercase().trim())
 }
 
 /// Resolve listen/find links for a slice of items in place (see
 /// `attach_listen_links`). Used for both the visible list and the dismissal
 /// reserve, so backfilled artists already carry their links (resolved once and
 /// cached with the run). No-op when Spotify isn't configured or the slice is empty.
+///
+/// Per-artist: a cache hit is used directly (no Spotify call at all). On a
+/// miss, `SpotifyClient::resolve_artist_links` is called — `Some(links)`
+/// (a lookup that was actually attempted, even a negative one) is cached for
+/// 30 days; `None` (resolution skipped because a 429 cooldown is active)
+/// is never cached and just leaves that artist's links empty for this response.
 async fn attach_links_to_items(
     spotify: &Option<Arc<SpotifyClient>>,
+    cache: &cache::CacheStore,
     items: &mut [models::DiscoveryResponseItem],
 ) {
     let Some(spotify) = spotify else { return; };
@@ -275,13 +291,25 @@ async fn attach_links_to_items(
     let lookups = items.iter().map(|a| {
         let spotify = Arc::clone(spotify);
         let name = a.name.clone();
-        async move { spotify.resolve_artist_links(&name).await }
+        async move {
+            let key = spotify_links_cache_key(&name);
+            if let Some(cached) = cache.get_json::<crate::spotify::ArtistLinks>(&key).await {
+                return (key, cached, false);
+            }
+            match spotify.resolve_artist_links(&name).await {
+                Some(links) => (key, links, true),
+                None => (key, crate::spotify::ArtistLinks::default(), false),
+            }
+        }
     });
-    let links = futures::future::join_all(lookups).await;
-    for (item, link) in items.iter_mut().zip(links) {
-        item.spotify_url = link.spotify_url;
-        item.this_is_url = link.this_is_url;
-        item.bandcamp_url = link.bandcamp_url;
+    let resolved = futures::future::join_all(lookups).await;
+    for (item, (key, links, should_cache)) in items.iter_mut().zip(resolved) {
+        if should_cache {
+            cache.put_json(&key, &links, Duration::from_secs(30 * 24 * 3600)).await;
+        }
+        item.spotify_url = links.spotify_url;
+        item.this_is_url = links.this_is_url;
+        item.bandcamp_url = links.bandcamp_url;
     }
 }
 
