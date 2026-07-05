@@ -15,6 +15,40 @@ struct TokenResponse {
     access_token: String,
 }
 
+/// Parse a Spotify search/lookup response, capturing the real HTTP status and a
+/// body snippet on failure. The old code did `resp.json::<T>()` directly, so a
+/// non-2xx error body (e.g. a 429/403 whose JSON shape is `{"error": ...}`, not
+/// the search shape) surfaced only as a misleading "error decoding response
+/// body" with no status. Now the status and body are logged, so a broken
+/// Spotify integration is actually diagnosable. Still best-effort: any failure
+/// returns None so the caller just omits that link.
+async fn parse_spotify_response<T: serde::de::DeserializeOwned>(
+    resp: reqwest::Response,
+    ctx: &str,
+) -> Option<T> {
+    let status = resp.status();
+    let body = match resp.text().await {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Spotify {ctx}: reading body failed (HTTP {status}): {e}");
+            return None;
+        }
+    };
+    if !status.is_success() {
+        let snippet: String = body.chars().take(200).collect();
+        eprintln!("Spotify {ctx}: HTTP {status} — {snippet}");
+        return None;
+    }
+    match serde_json::from_str::<T>(&body) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            let snippet: String = body.chars().take(200).collect();
+            eprintln!("Spotify {ctx}: JSON parse failed: {e} — body: {snippet}");
+            None
+        }
+    }
+}
+
 
 /// Returned by `lookup_track` — everything the frontend needs for preview + open-in-spotify.
 #[derive(serde::Serialize, Debug)]
@@ -76,13 +110,7 @@ impl SpotifyClient {
                 return None;
             }
         };
-        let data = match resp.json::<Resp>().await {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("Spotify search_artist_url JSON parse failed for '{artist}': {e}");
-                return None;
-            }
-        };
+        let data: Resp = parse_spotify_response(resp, &format!("search_artist_url '{artist}'")).await?;
         // Prefer an exact (case-insensitive) name match; fall back to the top hit.
         let items = data.artists.items;
         items.iter()
@@ -120,13 +148,7 @@ impl SpotifyClient {
                 return None;
             }
         };
-        let data = match resp.json::<Resp>().await {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("Spotify search_this_is JSON parse failed for '{artist}': {e}");
-                return None;
-            }
-        };
+        let data: Resp = parse_spotify_response(resp, &format!("search_this_is '{artist}'")).await?;
         // Spotify's playlist search can return null array entries — filter them.
         data.playlists.items.into_iter()
             .flatten()
@@ -168,20 +190,22 @@ impl SpotifyClient {
             }
         };
 
-        let data = match resp.json::<Resp>().await {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("Spotify lookup_track JSON parse failed for '{artist}' - '{track}': {e}");
-                return None;
-            }
-        };
+        let data: Resp = parse_spotify_response(resp, &format!("lookup_track '{artist}' - '{track}'")).await?;
         let t = data.tracks.items.into_iter().next()?;
         Some(SpotifyTrackPreview { id: t.id, preview_url: t.preview_url, spotify_url: t.external_urls.spotify })
     }
 
     pub fn new(client_id: String, client_secret: String) -> Self {
+        // Give the Spotify client the same bounded timeouts as the Last.fm one —
+        // Client::new() has no timeout, so a stalled Spotify request could hang
+        // indefinitely (and, via /api/status health(), stall that endpoint too).
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
         Self {
-            client: Client::new(),
+            client,
             client_id,
             client_secret,
             token: Mutex::new(None),
