@@ -63,13 +63,26 @@ impl SpotifyClient {
         #[derive(Deserialize)]
         struct ExternalUrls { spotify: String }
 
-        let resp = self.client
+        let resp = match self.client
             .get(format!("{}/search", API_BASE))
             .bearer_auth(token)
             .query(&[("q", artist), ("type", "artist"), ("limit", "3")])
             .send()
-            .await.ok()?;
-        let data = resp.json::<Resp>().await.ok()?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Spotify search_artist_url request failed for '{artist}': {e}");
+                return None;
+            }
+        };
+        let data = match resp.json::<Resp>().await {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Spotify search_artist_url JSON parse failed for '{artist}': {e}");
+                return None;
+            }
+        };
         // Prefer an exact (case-insensitive) name match; fall back to the top hit.
         let items = data.artists.items;
         items.iter()
@@ -94,13 +107,26 @@ impl SpotifyClient {
         struct ExternalUrls { spotify: String }
 
         let want = format!("This Is {}", artist);
-        let resp = self.client
+        let resp = match self.client
             .get(format!("{}/search", API_BASE))
             .bearer_auth(token)
             .query(&[("q", want.as_str()), ("type", "playlist"), ("limit", "5")])
             .send()
-            .await.ok()?;
-        let data = resp.json::<Resp>().await.ok()?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Spotify search_this_is request failed for '{artist}': {e}");
+                return None;
+            }
+        };
+        let data = match resp.json::<Resp>().await {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Spotify search_this_is JSON parse failed for '{artist}': {e}");
+                return None;
+            }
+        };
         // Spotify's playlist search can return null array entries — filter them.
         data.playlists.items.into_iter()
             .flatten()
@@ -128,14 +154,27 @@ impl SpotifyClient {
         #[derive(Deserialize)]
         struct ExternalUrls { spotify: String }
 
-        let resp = self.client
+        let resp = match self.client
             .get(format!("{}/search", API_BASE))
             .bearer_auth(&token)
             .query(&[("q", query.as_str()), ("type", "track"), ("limit", "1")])
             .send()
-            .await.ok()?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Spotify lookup_track request failed for '{artist}' - '{track}': {e}");
+                return None;
+            }
+        };
 
-        let data = resp.json::<Resp>().await.ok()?;
+        let data = match resp.json::<Resp>().await {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Spotify lookup_track JSON parse failed for '{artist}' - '{track}': {e}");
+                return None;
+            }
+        };
         let t = data.tracks.items.into_iter().next()?;
         Some(SpotifyTrackPreview { id: t.id, preview_url: t.preview_url, spotify_url: t.external_urls.spotify })
     }
@@ -149,6 +188,10 @@ impl SpotifyClient {
         }
     }
 
+    /// Mint (or reuse the cached) Spotify app token. On failure — bad creds,
+    /// network error, non-2xx from Spotify — logs one line via eprintln! so a
+    /// silently-broken Spotify integration is visible in the logs (FIX 3,
+    /// 2026-07-05: previously this returned Err with zero log output).
     async fn get_token(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut cache = self.token.lock().await;
         if let Some((token, obtained_at)) = cache.as_ref() {
@@ -156,16 +199,35 @@ impl SpotifyClient {
                 return Ok(token.clone());
             }
         }
-        let resp = self.client
+        let send_result = self.client
             .post("https://accounts.spotify.com/api/token")
             .basic_auth(&self.client_id, Some(&self.client_secret))
             .form(&[("grant_type", "client_credentials")])
             .send()
-            .await?
-            .error_for_status()?;
+            .await;
+        let resp = match send_result {
+            Ok(r) => match r.error_for_status() {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Spotify token mint failed: {e}");
+                    return Err(e.into());
+                }
+            },
+            Err(e) => {
+                eprintln!("Spotify token mint failed: {e}");
+                return Err(e.into());
+            }
+        };
         let data: TokenResponse = resp.json().await?;
         *cache = Some((data.access_token.clone(), Instant::now()));
         Ok(data.access_token)
     }
 
+    /// Whether the configured Spotify credentials actually work — attempts a
+    /// token mint (reusing the cached token after the first successful call,
+    /// so this never hammers Spotify). Used by FIX 4 (/api/status) so "ok"
+    /// means the creds were verified, not merely that env vars were set.
+    pub async fn health(&self) -> bool {
+        self.get_token().await.is_ok()
+    }
 }

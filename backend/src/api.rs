@@ -401,7 +401,18 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
             _ => "error",
         }
     };
-    let spotify = if state.spotify.is_some() { "ok" } else { "disabled" };
+    // spotify: disabled (no creds configured) / ok (creds verified via a real
+    // token mint) / error (creds configured but token mint failed). FIX 4
+    // (2026-07-05): previously this only checked that `state.spotify` was
+    // `Some` — i.e. that env vars were present — and reported "ok" even when
+    // the creds were invalid and every link resolution was silently failing.
+    // `SpotifyClient::health()` mints (or reuses the cached, ~3500s) token, so
+    // this never hammers Spotify on repeated /api/status polls.
+    let spotify = match &state.spotify {
+        Some(client) if client.health().await => "ok",
+        Some(_) => "error",
+        None => "disabled",
+    };
     let lastfm_auth = if state.lastfm_secret.is_some() { "ok" } else { "disabled" };
     // listenbrainz: disabled (source=lastfm) / ok (blend arm live) / error (blend
     // arm selected but LB currently failing). Reflects the client health flag,
