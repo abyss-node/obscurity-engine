@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Non-optional so the default `cargo build --release` compiles and runs the
 # Redis-backed cache path. When REDIS_URL is unset the in-memory store is used
 # and Redis is never contacted.
-redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
 # Postgres persistence (Phase 1). Runtime queries only (no `query!` macros), so
 # `cargo build`/`cargo test` are green with NO DATABASE_URL set — nothing here
 # is contacted until DATABASE_URL is present at runtime. rustls (not native-tls)
