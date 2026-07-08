@@ -68,7 +68,8 @@ export type SortType = "composite" | "conviction" | "stickiness" | "listeners";
 export type DiscoveryMode = "artists" | "tracks";
 
 export const PERIOD_LABELS: Record<string, string> = {
-  blend: "MIX",
+  blend: "BLEND",
+  ytd: "YTD",
   "7day": "7D",
   "1month": "1M",
   "3month": "3M",
@@ -90,6 +91,7 @@ export const APPETITE_STOPS: { val: string; label: string; blurb: string }[] = [
 // Human-readable window phrase for the short-window empty state.
 export const PERIOD_WINDOWS: Record<string, string> = {
   blend: "your library",
+  ytd: "year-to-date",
   "7day": "7-day window",
   "1month": "1-month window",
   "3month": "3-month window",

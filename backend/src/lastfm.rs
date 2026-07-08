@@ -118,12 +118,34 @@ pub struct TrackArtistRef {
     pub name: String,
 }
 
+// ── Weekly artist chart API types (used for the "ytd" period) ──────────────
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WeeklyArtistChartResponse {
+    pub weeklyartistchart: WeeklyArtistChart,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WeeklyArtistChart {
+    #[serde(default)]
+    pub artist: Vec<WeeklyChartArtist>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WeeklyChartArtist {
+    pub name: String,
+    pub mbid: Option<String>,
+    pub url: String,
+    pub playcount: String,
+}
+
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
 /// Base Last.fm API URL, overridable via `LASTFM_API_BASE` — same env var and
 /// fallback pattern as `get_session`'s `LASTFM_API_BASE` override, extended to
-/// the methods (`fetch_user_top_artists`, `fetch_user_info`, `fetch_user_top_tracks`)
-/// that need a mockable endpoint for the user-not-found integration tests.
+/// the methods (`fetch_user_top_artists`, `fetch_user_info`, `fetch_user_top_tracks`,
+/// `fetch_user_weekly_artist_chart`) that need a mockable endpoint for the
+/// user-not-found integration tests.
 /// Unset in production, so this is a no-op there (falls back to the real URL).
 fn lastfm_api_base() -> String {
     std::env::var("LASTFM_API_BASE")
@@ -494,6 +516,34 @@ impl LastfmClient {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
             lastfm_api_base(), urlencoding::encode(username), self.api_key, period, limit
+        );
+        let resp_text = self.get_with_retry(&url).await?;
+        let json: Value = serde_json::from_str(&resp_text)?;
+        if json.get("error").is_some() {
+            let err_msg: LastfmErrorResponse = serde_json::from_value(json)?;
+            if err_msg.error == 6 {
+                return Err(Box::new(LastfmUserNotFound(username.to_string())));
+            }
+            return Err(format!("Last.fm Error {}: {}", err_msg.error, err_msg.message).into());
+        }
+        Ok(serde_json::from_str(&resp_text)?)
+    }
+
+    /// Fetch an aggregated artist chart over an arbitrary unix `from`/`to` range
+    /// via `user.getweeklyartistchart`. Used for the "ytd" period (see
+    /// `pipeline/seeds.rs::collect_ytd`), which is not one of Last.fm's native
+    /// period buckets. Unlike `gettopartists`, the response carries no
+    /// `@attr.total` and no `listeners` field — just `name`/`mbid`/`url`/`playcount`
+    /// per artist.
+    pub async fn fetch_user_weekly_artist_chart(
+        &self,
+        username: &str,
+        from: i64,
+        to: i64,
+    ) -> Result<WeeklyArtistChartResponse, BoxError> {
+        let url = format!(
+            "{}?method=user.getweeklyartistchart&user={}&api_key={}&from={}&to={}&format=json",
+            lastfm_api_base(), urlencoding::encode(username), self.api_key, from, to
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;

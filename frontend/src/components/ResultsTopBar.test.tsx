@@ -33,7 +33,7 @@ describe("ResultsTopBar — renders all controls", () => {
     expect(screen.getByText("artists")).toBeInTheDocument();
     expect(screen.getByText("tracks")).toBeInTheDocument();
 
-    for (const label of ["MIX", "7D", "1M", "3M", "6M", "1Y", "ALL"]) {
+    for (const label of ["BLEND", "YTD", "7D", "1M", "3M", "6M", "1Y", "ALL"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
 
@@ -42,6 +42,15 @@ describe("ResultsTopBar — renders all controls", () => {
 
     expect(screen.getByTitle("refresh")).toBeInTheDocument();
     expect(screen.getByTitle("share")).toBeInTheDocument();
+  });
+
+  it("renders the period pills in the exact order BLEND, YTD, 7D, 1M, 3M, 6M, 1Y, ALL", () => {
+    render(<ResultsTopBar {...baseProps} />);
+    const periodLabels = ["BLEND", "YTD", "7D", "1M", "3M", "6M", "1Y", "ALL"];
+    const buttons = screen
+      .getAllByRole("button")
+      .filter((btn) => periodLabels.includes(btn.textContent ?? ""));
+    expect(buttons.map((btn) => btn.textContent)).toEqual(periodLabels);
   });
 
   it("does not render session/saved controls when logged out", () => {

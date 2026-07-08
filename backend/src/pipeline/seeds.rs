@@ -3,11 +3,13 @@
 /// "Seeds" are the user's most-listened artists, used as the starting points
 /// for the discovery graph traversal in subsequent phases.
 ///
-/// Two collection strategies:
+/// Three collection strategies:
 /// - "blend" mode: fetches all 6 time windows in parallel, normalises
 ///   each window's playcounts to a per-week rate, and merges them so that
 ///   recent listening weighs more heavily than historical plays.
 /// - single-period mode: one gettopartists call, weighted by log2(playcount).
+/// - "ytd" mode: one getweeklyartistchart call over Jan 1 → now, weighted by
+///   log2(playcount) like single-period (see collect_ytd).
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -62,6 +64,10 @@ pub struct Seeds {
     /// User's total distinct artist count (from gettopartists @attr.total).
     /// Used to compute the underexplored-novelty threshold. None if unavailable.
     pub total_artist_count: Option<u64>,
+    /// Lifetime-scrobble-equivalent derived for windowed periods that don't
+    /// natively expose a totals attr; None for periods where it isn't computed.
+    /// Currently only populated by collect_ytd (sum of the chart's playcounts).
+    pub total_scrobbles: Option<u64>,
 }
 
 pub async fn collect(
@@ -71,6 +77,8 @@ pub async fn collect(
 ) -> Result<Seeds, Box<dyn std::error::Error + Send + Sync>> {
     if period_str == "blend" {
         collect_blend(client, username).await
+    } else if period_str == "ytd" {
+        collect_ytd(client, username).await
     } else {
         collect_single(client, username, period_str).await
     }
@@ -161,7 +169,7 @@ async fn collect_blend(
     }
 
     println!("BLEND: {} merged seeds across all periods", names.len());
-    Ok(Seeds { weights, names, total_artist_count: max_total })
+    Ok(Seeds { weights, names, total_artist_count: max_total, total_scrobbles: None })
 }
 
 async fn collect_single(
@@ -206,7 +214,64 @@ async fn collect_single(
     }
 
     println!("SEEDS: {} seeds from user.gettopartists ({})", names.len(), period_str);
-    Ok(Seeds { weights, names, total_artist_count })
+    Ok(Seeds { weights, names, total_artist_count, total_scrobbles: None })
+}
+
+/// "ytd" collection: aggregates the whole year (Jan 1 → now) into one chart via
+/// `user.getweeklyartistchart`'s arbitrary from/to range, rather than one of
+/// Last.fm's native period buckets. Mirrors collect_single's structure and
+/// error handling; differs in the source endpoint and in deriving
+/// total_artist_count/total_scrobbles directly from the chart (no @attr.total
+/// on this endpoint, unlike gettopartists).
+async fn collect_ytd(
+    client: &Arc<LastfmClient>,
+    username: &str,
+) -> Result<Seeds, Box<dyn std::error::Error + Send + Sync>> {
+    let (from, to) = crate::utils::ytd_range();
+    let response = client
+        .fetch_user_weekly_artist_chart(username, from, to)
+        .await
+        .map_err(|e| {
+            if is_user_not_found_error(e.as_ref()) {
+                e
+            } else {
+                format!("Failed to fetch weekly artist chart: {}", e).into()
+            }
+        })?;
+
+    let mut chart_artists = response.weeklyartistchart.artist;
+    if chart_artists.is_empty() {
+        return Err("No listening history found for this user.".into());
+    }
+
+    // weeklyartistchart carries no @attr.total (unlike gettopartists) — derive
+    // the underexplored-threshold inputs directly from the chart: distinct
+    // artist count is the entry count, lifetime-scrobble-equivalent is the sum
+    // of this window's playcounts. Sorted defensively by playcount descending
+    // before truncating to MAX_SEEDS, consistent with "top N by playcount".
+    chart_artists.sort_by(|a, b| {
+        let pa: f64 = a.playcount.parse().unwrap_or(0.0);
+        let pb: f64 = b.playcount.parse().unwrap_or(0.0);
+        pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let total_artist_count = Some(chart_artists.len() as u64);
+    let total_scrobbles = Some(
+        chart_artists.iter()
+            .filter_map(|a| a.playcount.parse::<u64>().ok())
+            .sum::<u64>()
+    );
+
+    let mut weights = HashMap::new();
+    let mut names = Vec::new();
+    for artist in chart_artists.into_iter().take(MAX_SEEDS) {
+        let plays = artist.playcount.parse::<f64>().unwrap_or(1.0).max(1.0);
+        let name = normalize_seed_name(&artist.name);
+        accumulate_seed(&mut weights, &mut names, name, plays.log2().max(1.0));
+    }
+
+    println!("SEEDS: {} seeds from user.getweeklyartistchart (ytd)", names.len());
+    Ok(Seeds { weights, names, total_artist_count, total_scrobbles })
 }
 
 #[cfg(test)]

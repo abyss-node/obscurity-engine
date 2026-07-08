@@ -527,6 +527,128 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn ytd_seed_collection_parses_weekly_artist_chart() {
+        // The "ytd" period sources from user.getweeklyartistchart (an arbitrary
+        // from/to aggregated chart, not one of Last.fm's native period buckets —
+        // see pipeline/seeds.rs::collect_ytd). Verify parsing + derivation
+        // directly: seed count, total_artist_count, total_scrobbles (sum of
+        // playcounts, since this endpoint has no @attr.total), and that the
+        // highest-playcount artist ends up highest-weighted. One artist has no
+        // mbid to confirm the Option field round-trips.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route(
+            "/",
+            get(|| async {
+                axum::Json(serde_json::json!({
+                    "weeklyartistchart": {
+                        "artist": [
+                            { "name": "Alpha", "mbid": "mbid-alpha", "url": "http://last.fm/alpha", "@attr": {"rank":"1"}, "playcount": "50" },
+                            { "name": "Beta", "url": "http://last.fm/beta", "@attr": {"rank":"2"}, "playcount": "120" },
+                            { "name": "Gamma", "mbid": "mbid-gamma", "url": "http://last.fm/gamma", "@attr": {"rank":"3"}, "playcount": "10" }
+                        ],
+                        "@attr": { "user": "someuser", "from": "0", "to": "0" }
+                    }
+                }))
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        let _base = MockLastfmBase::set(addr);
+
+        let client = Arc::new(crate::lastfm::LastfmClient::new("TESTKEY".into()));
+        let seeds = crate::pipeline::seeds::collect(&client, "someuser", "ytd")
+            .await
+            .expect("ytd seed collection should succeed against the mock");
+
+        assert_eq!(seeds.names.len(), 3);
+        assert_eq!(seeds.total_artist_count, Some(3));
+        assert_eq!(seeds.total_scrobbles, Some(50 + 120 + 10));
+        let top_name = seeds
+            .names
+            .iter()
+            .max_by(|a, b| seeds.weights[*a].partial_cmp(&seeds.weights[*b]).unwrap())
+            .unwrap();
+        assert_eq!(top_name, "Beta", "the highest-playcount artist must end up highest-weighted");
+    }
+
+    #[tokio::test]
+    async fn discovery_rejects_invalid_period_with_400() {
+        // No mock/network needed — period validation happens before any fetch.
+        let app = build_router(no_db_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/discovery?username=validuser&period=totally-bogus")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn tracks_discovery_rejects_ytd_period_with_400() {
+        // "ytd" is artist-discovery-only (no verified getweeklytrackchart
+        // integration) — this 400 is the deliberate, sanctioned fallback, not
+        // a regression.
+        let app = build_router(no_db_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/discovery/tracks?username=validuser&period=ytd")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn discovery_ytd_nonexistent_user_is_404_not_generic_500() {
+        // Mirrors discovery_nonexistent_user_is_404_not_generic_500 above, with
+        // period=ytd — proves ytd is accepted past the period-validation check
+        // (a rejected period would 400 before ever reaching the mock) and that
+        // the F3 error-6-under-404 fix applies to the new weeklyartistchart
+        // endpoint too (it reuses get_with_retry, so this is inherited, not
+        // separately implemented).
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route(
+            "/",
+            get(|| async {
+                (
+                    StatusCode::NOT_FOUND,
+                    axum::Json(serde_json::json!({ "error": 6, "message": "User not found" })),
+                )
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        let _base = MockLastfmBase::set(addr);
+
+        let app = build_router(no_db_state());
+        let (status, json) = status_of(
+            app,
+            Request::builder()
+                .uri("/api/discovery?username=nosuchuser&period=ytd")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let msg = json["error"].as_str().unwrap_or("").to_lowercase();
+        assert!(!msg.contains("rate"), "must not read as a rate-limit failure: {msg}");
+        assert!(!msg.contains("failed to fetch"), "must not carry the generic wrapper text: {msg}");
+        assert!(msg.contains("not found"), "should clearly say the user wasn't found: {msg}");
+    }
+
+    #[tokio::test]
     async fn tracks_discovery_nonexistent_user_is_404_not_generic_500() {
         // Mirrors discovery_nonexistent_user_is_404_not_generic_500 above, for
         // the tracks endpoint: before the fast-follow fix, track_seeds.rs

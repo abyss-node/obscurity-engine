@@ -31,6 +31,14 @@ fn validate_username(username: &str) -> bool {
     username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+// Every period string the discovery/tracks endpoints accept. "blend" (MIX/BLEND
+// in the UI) merges all six native windows; "ytd" is not a Last.fm-native
+// period (see pipeline/seeds.rs::collect_ytd) and is artist-discovery-only —
+// the tracks endpoint has no verified user.getweeklytrackchart integration yet,
+// so it stays out of TRACK_PERIODS.
+const ARTIST_PERIODS: &[&str] = &["7day", "1month", "3month", "6month", "12month", "overall", "blend", "ytd"];
+const TRACK_PERIODS: &[&str] = &["7day", "1month", "3month", "6month", "12month", "overall", "blend"];
+
 #[derive(Deserialize)]
 pub(crate) struct DiscoveryQuery {
     period: String,
@@ -85,6 +93,16 @@ pub async fn discovery_handler(
             StatusCode::BAD_REQUEST,
             Json(models::ErrorResponse {
                 error: "Invalid username. Must be 2-15 alphanumeric, hyphen, or underscore characters.".into(),
+                code: 400,
+            }),
+        ));
+    }
+
+    if !ARTIST_PERIODS.contains(&query.period.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(models::ErrorResponse {
+                error: format!("Invalid period. Must be one of: {}.", ARTIST_PERIODS.join(", ")),
                 code: 400,
             }),
         ));
@@ -338,6 +356,16 @@ pub async fn track_discovery_handler(
             StatusCode::BAD_REQUEST,
             Json(models::ErrorResponse {
                 error: "Invalid username.".into(),
+                code: 400,
+            }),
+        ));
+    }
+
+    if !TRACK_PERIODS.contains(&query.period.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(models::ErrorResponse {
+                error: format!("Invalid period. Must be one of: {}.", TRACK_PERIODS.join(", ")),
                 code: 400,
             }),
         ));

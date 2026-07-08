@@ -123,7 +123,7 @@ export default function EmptyState({
         className="font-mono text-[11px] tracking-[0.06em] leading-[1.7] max-w-[40ch]"
         style={{ color: "var(--muted)" }}
       >
-        Try <span style={{ color: "var(--accent)" }}>MIX</span> or{" "}
+        Try <span style={{ color: "var(--accent)" }}>BLEND</span> or{" "}
         <span style={{ color: "var(--accent)" }}>ALL</span> — they draw on your
         whole history and have the most to work from.
       </p>

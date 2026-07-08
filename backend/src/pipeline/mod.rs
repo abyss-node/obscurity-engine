@@ -12,7 +12,10 @@
 /// what it does and which constants control its behaviour.
 mod candidates;
 mod scoring;
-mod seeds;
+// pub(crate) (not private like the other stages) so main.rs's integration tests
+// can exercise seeds::collect / Seeds directly for the "ytd" period, without
+// standing up a full discovery run.
+pub(crate) mod seeds;
 mod tag_graph;
 mod track_candidates;
 mod track_scoring;
@@ -73,10 +76,13 @@ pub async fn discover_obscure_artists(
     // and fall back to the seed-window gettopartists @attr.total — the fallback is
     // only lifetime-accurate for the "blend"/"overall" periods, so preferring
     // artist_count keeps the threshold correct for windowed periods (7day..12month).
+    // total_scrobbles has the analogous ytd-only fallback: seeds.total_scrobbles is
+    // None for every period except ytd, so this is additive-only for everything else.
     let user_info = client.fetch_user_info(&username).await.ok().map(|u| u.user);
     let total_scrobbles = user_info.as_ref()
         .and_then(|u| u.playcount.as_ref())
-        .and_then(|p| p.parse::<f64>().ok());
+        .and_then(|p| p.parse::<f64>().ok())
+        .or_else(|| seeds.total_scrobbles.map(|s| s as f64));
     let distinct_artists = user_info.as_ref()
         .and_then(|u| u.artist_count.as_ref())
         .and_then(|a| a.parse::<u64>().ok())
