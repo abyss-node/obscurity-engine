@@ -97,6 +97,29 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .layer(TimeoutLayer::new(Duration::from_secs(REQUEST_TIMEOUT_SECS)))
 }
 
+/// One blocking liveness probe against the local server: raw std TCP + a
+/// hand-rolled HTTP/1.0 GET so it has zero dependence on the tokio runtime or
+/// any async client. Returns true if the server sends back ANY bytes.
+fn watchdog_probe(addr: &std::net::SocketAddr) -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut sock) = std::net::TcpStream::connect_timeout(addr, Duration::from_secs(5)) else {
+        return false;
+    };
+    // Read/write timeouts so a starved runtime (connect accepted by the kernel
+    // backlog, then silence — the wedge signature) fails the probe instead of
+    // hanging the watchdog thread forever.
+    let _ = sock.set_write_timeout(Some(Duration::from_secs(5)));
+    let _ = sock.set_read_timeout(Some(Duration::from_secs(10)));
+    if sock
+        .write_all(b"GET / HTTP/1.0\r\nHost: watchdog\r\nConnection: close\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut buf = [0u8; 32];
+    matches!(sock.read(&mut buf), Ok(n) if n > 0)
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -229,6 +252,45 @@ async fn main() {
         loop {
             ticker.tick().await;
             println!("{}", metrics_interval.summary_line());
+        }
+    });
+
+    // Liveness watchdog — 2026-07-05 incident: the entire tokio runtime starved
+    // (every route AND the hourly metrics task went silent for ~3 days) while
+    // Railway still reported "Online", so nothing ever restarted the process.
+    // This MUST be a dedicated OS thread using std-only blocking I/O: a tokio
+    // task (like the sweep/metrics tasks above) would share the starved runtime
+    // and die with it — which is exactly why the in-runtime 120s TimeoutLayer
+    // couldn't fire either. The probe counts ANY response bytes as alive (a 500
+    // still proves the scheduler runs); zero bytes is the wedge signature. After
+    // WATCHDOG_MAX_FAILURES consecutive failures it exits nonzero so Railway's
+    // ON_FAILURE restart policy revives us: worst case ~2.5 min down, not days.
+    let watchdog_port: u16 = port.parse().unwrap_or(8080);
+    std::thread::spawn(move || {
+        const WATCHDOG_INTERVAL: Duration = Duration::from_secs(30);
+        const WATCHDOG_MAX_FAILURES: u32 = 4;
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], watchdog_port));
+        let mut failures: u32 = 0;
+        std::thread::sleep(WATCHDOG_INTERVAL); // let the server bind first
+        loop {
+            if watchdog_probe(&addr) {
+                failures = 0;
+            } else {
+                failures += 1;
+                // Best-effort log on a side thread: if blocked stdout/stderr
+                // writes are the very thing wedging the runtime, logging inline
+                // here would wedge the watchdog too and stop the exit below.
+                std::thread::spawn(move || {
+                    eprintln!(
+                        "WATCHDOG: self-probe failed ({failures}/{WATCHDOG_MAX_FAILURES} consecutive)"
+                    );
+                });
+                if failures >= WATCHDOG_MAX_FAILURES {
+                    std::thread::sleep(Duration::from_secs(2)); // give the log a chance to flush
+                    std::process::exit(1);
+                }
+            }
+            std::thread::sleep(WATCHDOG_INTERVAL);
         }
     });
 

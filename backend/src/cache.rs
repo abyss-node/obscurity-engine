@@ -138,6 +138,12 @@ impl Default for InMemoryStore {
 
 // ── Redis store ─────────────────────────────────────────────────────────────
 
+/// Upper bound on any single Redis operation — the lazy connect and every
+/// GET/SET/PING. redis 0.25's `ConnectionManager` has no built-in timeouts, so
+/// without this a half-open Upstash TLS connection hangs callers indefinitely;
+/// with it they degrade to a cache miss like every other Redis failure.
+const REDIS_OP_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Redis-backed store using a tokio async `ConnectionManager` (auto-reconnect).
 /// The manager is created lazily on first use, so constructing the store never
 /// fails and a Redis that is down at startup simply degrades reads/writes to
@@ -160,18 +166,30 @@ impl RedisStore {
 
     /// Get (or lazily create) a cloned connection manager. Returns `None` and
     /// logs if a connection can't be established — callers degrade to a miss.
+    ///
+    /// The connect is bounded by `REDIS_OP_TIMEOUT` and runs OUTSIDE the lock:
+    /// redis 0.25 has no built-in connect/response timeouts, so a hung Upstash
+    /// TLS handshake would otherwise hold the process-wide manager lock forever
+    /// and wedge every cache caller behind it (2026-07-05 incident class).
+    /// Concurrent first-callers may race duplicate connects; last write wins,
+    /// which is harmless — clones share one multiplexed connection anyway.
     async fn manager(&self) -> Option<redis::aio::ConnectionManager> {
-        let mut guard = self.manager.lock().await;
-        if let Some(m) = guard.as_ref() {
+        if let Some(m) = self.manager.lock().await.as_ref() {
             return Some(m.clone());
         }
-        match self.client.get_connection_manager().await {
-            Ok(m) => {
-                *guard = Some(m.clone());
+        match tokio::time::timeout(REDIS_OP_TIMEOUT, self.client.get_connection_manager()).await {
+            Ok(Ok(m)) => {
+                *self.manager.lock().await = Some(m.clone());
                 Some(m)
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 eprintln!("Redis connection error, degrading to cache miss: {e}");
+                None
+            }
+            Err(_) => {
+                eprintln!(
+                    "Redis connect timed out after {REDIS_OP_TIMEOUT:?}, degrading to cache miss"
+                );
                 None
             }
         }
@@ -183,19 +201,32 @@ impl RedisStore {
         let Some(mut conn) = self.manager().await else {
             return false;
         };
-        let res: redis::RedisResult<String> = redis::cmd("PING").query_async(&mut conn).await;
-        res.is_ok()
+        matches!(
+            tokio::time::timeout(
+                REDIS_OP_TIMEOUT,
+                redis::cmd("PING").query_async::<_, String>(&mut conn),
+            )
+            .await,
+            Ok(Ok(_))
+        )
     }
 
     async fn get(&self, key: &str) -> Option<CachedResult> {
         let mut conn = self.manager().await?;
-        let res: redis::RedisResult<Option<String>> =
-            redis::cmd("GET").arg(key).query_async(&mut conn).await;
-        match res {
-            Ok(Some(v)) => Some(CachedResult { value: v }),
-            Ok(None) => None,
-            Err(e) => {
+        match tokio::time::timeout(
+            REDIS_OP_TIMEOUT,
+            redis::cmd("GET").arg(key).query_async::<_, Option<String>>(&mut conn),
+        )
+        .await
+        {
+            Ok(Ok(Some(v))) => Some(CachedResult { value: v }),
+            Ok(Ok(None)) => None,
+            Ok(Err(e)) => {
                 eprintln!("Redis GET error for {key}, degrading to cache miss: {e}");
+                None
+            }
+            Err(_) => {
+                eprintln!("Redis GET timed out for {key}, degrading to cache miss");
                 None
             }
         }
@@ -207,15 +238,20 @@ impl RedisStore {
         };
         // Redis requires EX >= 1; clamp defensively.
         let ttl_secs = ttl.as_secs().max(1);
-        let res: redis::RedisResult<()> = redis::cmd("SET")
-            .arg(key)
-            .arg(value.value)
-            .arg("EX")
-            .arg(ttl_secs)
-            .query_async(&mut conn)
-            .await;
-        if let Err(e) = res {
-            eprintln!("Redis SET error for {key}, value not cached: {e}");
+        match tokio::time::timeout(
+            REDIS_OP_TIMEOUT,
+            redis::cmd("SET")
+                .arg(key)
+                .arg(value.value)
+                .arg("EX")
+                .arg(ttl_secs)
+                .query_async::<_, ()>(&mut conn),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => eprintln!("Redis SET error for {key}, value not cached: {e}"),
+            Err(_) => eprintln!("Redis SET timed out for {key}, value not cached"),
         }
     }
 }
