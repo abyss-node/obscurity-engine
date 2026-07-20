@@ -1,0 +1,41 @@
+name: keep-warm
+
+# Free-tier Render services sleep after 15 min without traffic. This ping keeps
+# the backend warm and doubles as downtime alerting: GitHub emails the repo
+# owner when a scheduled run fails.
+#
+# Requires the repo Actions variable BACKEND_URL (Settings > Secrets and
+# variables > Actions > Variables). Until it is set, runs no-op green.
+#
+# NOTE: GitHub disables scheduled workflows after ~60 days without repo
+# activity — it emails a warning first; one click re-enables.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping backend
+        env:
+          URL: ${{ vars.BACKEND_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "BACKEND_URL variable not set; skipping."
+            exit 0
+          fi
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 90 "$URL/" || true)
+            if [ "$code" = "200" ]; then
+              echo "OK (attempt $i)"
+              exit 0
+            fi
+            echo "attempt $i: HTTP ${code:-none}"
+            sleep 20
+          done
+          echo "Backend unhealthy after 3 attempts" >&2
+          exit 1

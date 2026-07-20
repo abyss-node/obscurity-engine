@@ -2,6 +2,7 @@ node_modules/
 /backend/target/
 .env
 .env.local
+.env.render
 .next/
 dist/
 .DS_Store

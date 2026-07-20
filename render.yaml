@@ -1,14 +1,28 @@
 services:
   - type: web
     name: obscurity-backend
-    env: rust
-    rootDir: backend
-    buildCommand: cargo build --release
-    startCommand: ./target/release/backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
     envVars:
+      - key: FRONTEND_URL
+        value: https://obscurity-engine.vercel.app
+      - key: CANDIDATE_SOURCE
+        value: blend
+      # Free plan has no persistent disk: donated keys survive restarts only
+      # until the container is replaced; the pool re-seeds from LASTFM_API_KEYS.
+      - key: KEY_STORE_PATH
+        value: /tmp/lastfm-keys.json
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
       - key: LASTFM_API_KEY
         sync: false
-      - key: FRONTEND_URL
+      - key: LASTFM_API_KEYS
         sync: false
-      - key: PORT
-        value: 10000
+      - key: LASTFM_API_SECRET
+        sync: false
