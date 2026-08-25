@@ -39,6 +39,26 @@ const WRITE_QUEUE_CAP: usize = 4096;
 /// and falls back (reads return empty, the discovery still serves).
 const ACQUIRE_TIMEOUT: Duration = Duration::from_millis(1000);
 
+/// How long the boot-time migration connect waits. It cannot share
+/// `ACQUIRE_TIMEOUT`: a scale-to-zero Postgres (Neon's free tier) takes several
+/// seconds to wake, so a cold compute can never answer inside 1s.
+///
+/// Verified against Neon on 2026-08-25. With the 1s budget the first attempt
+/// reported "pool timed out while waiting for an open connection", which MASKS
+/// the real error: a second attempt, against a compute the first had woken,
+/// reported `database "obscurity" does not exist`. A misleading error here
+/// costs a deploy.
+const MIGRATE_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Backoff, in seconds, between migration attempts.
+///
+/// Migrations used to be attempted exactly once at boot, which made the promise
+/// in `connect()` false: the pool recovered on its own but the SCHEMA did not,
+/// so against a cold database the process served indefinitely with tables that
+/// were never created and every write failing. Retrying off the startup path
+/// keeps the promise without delaying the platform health check.
+const MIGRATE_BACKOFF_SECS: [u64; 5] = [2, 5, 15, 30, 60];
+
 /// Acceptance window for events referencing a rec_id (pinned contract: 24h).
 const REC_TTL: Duration = Duration::from_secs(24 * 3600);
 
@@ -153,15 +173,10 @@ impl Db {
             }
         };
 
-        // Additive-only migrations, applied on boot. A failure here means the DB
-        // is currently unreachable — loud, but non-fatal (server still serves).
-        match sqlx::migrate!("./migrations").run(&pool).await {
-            Ok(()) => println!("Postgres: connected and migrations applied"),
-            Err(e) => eprintln!(
-                "POSTGRES: DATABASE_URL set but migrations failed ({e}); \
-                 serving without persistence until the DB is reachable"
-            ),
-        }
+        // Additive-only migrations, applied off the startup path so a cold
+        // database delays neither listening nor the platform health check.
+        // Retries with backoff; loud on every failure, loud on eventual success.
+        tokio::spawn(migrate_with_retry(url.clone()));
 
         let (tx, rx) = mpsc::channel::<WriteJob>(WRITE_QUEUE_CAP);
         let writer_pool = pool.clone();
@@ -170,6 +185,56 @@ impl Db {
         Some(Self { pool, tx })
     }
 
+}
+
+/// Apply migrations, retrying with backoff until they succeed or the schedule is
+/// exhausted. Uses its OWN short-lived pool: the request-path pool's 1s acquire
+/// budget is deliberately tight, and a waking database cannot meet it.
+async fn migrate_with_retry(url: String) {
+    let attempts = MIGRATE_BACKOFF_SECS.len() + 1;
+    for attempt in 1..=attempts {
+        let pool = match PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(MIGRATE_ACQUIRE_TIMEOUT)
+            .connect(&url)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("POSTGRES: migration connect failed (attempt {attempt}/{attempts}): {e}");
+                match MIGRATE_BACKOFF_SECS.get(attempt - 1) {
+                    Some(wait) => {
+                        tokio::time::sleep(Duration::from_secs(*wait)).await;
+                        continue;
+                    }
+                    None => break,
+                }
+            }
+        };
+
+        let result = sqlx::migrate!("./migrations").run(&pool).await;
+        pool.close().await;
+
+        match result {
+            Ok(()) => {
+                println!("Postgres: connected and migrations applied (attempt {attempt})");
+                return;
+            }
+            Err(e) => {
+                eprintln!("POSTGRES: migrations failed (attempt {attempt}/{attempts}): {e}");
+                match MIGRATE_BACKOFF_SECS.get(attempt - 1) {
+                    Some(wait) => tokio::time::sleep(Duration::from_secs(*wait)).await,
+                    None => break,
+                }
+            }
+        }
+    }
+    eprintln!(
+        "POSTGRES: migrations did not apply; serving WITHOUT persistence.          Writes will fail until the process is restarted against a reachable database."
+    );
+}
+
+impl Db {
     /// Best-effort connectivity probe for `/api/status` (ok vs error). Cheap
     /// `SELECT 1` bounded by the acquire timeout.
     pub async fn ping(&self) -> bool {
