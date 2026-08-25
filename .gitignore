@@ -25,3 +25,6 @@ design-*.html
 frontend-bundle.md
 obscurity-frontend.zip
 screenshot_*.png
+
+# repo-local scratch (agent working files)
+tmp/
