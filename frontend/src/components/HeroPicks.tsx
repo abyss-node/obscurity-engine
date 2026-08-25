@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Artist } from "../app/page";
+import { Artist } from "../lib/types";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent } from "../lib/capability";
 import { postEvent } from "../lib/events";

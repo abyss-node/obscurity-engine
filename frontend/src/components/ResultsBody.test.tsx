@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ResultsBody from "./ResultsBody";
-import type { Artist } from "../app/page";
+import type { Artist } from "../lib/types";
 
 vi.mock("../lib/events", () => ({
   postEvent: vi.fn().mockResolvedValue(true),

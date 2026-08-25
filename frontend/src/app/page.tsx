@@ -27,12 +27,11 @@ import {
 
 // Re-exported for backward compatibility — this used to be page.tsx's own
 // public surface, and many components/lib modules still import types from
-// "../app/page". The definitions now live in ../lib/types; only the names
-// that were previously exported from here are re-exported (SortType and
-// PERIOD_WINDOWS were never part of the public surface, so they're
-// import-only above).
-export type { Artist, TrackItem, GenreWeight, DiscoveryData, TrackDiscoveryData, DiscoveryMode };
-export { PERIOD_LABELS, APPETITE_STOPS };
+// The definitions live in ../lib/types and every consumer imports them from
+// there directly. Nothing is re-exported from this module: a Next App Router
+// page may only export the framework's own names (default, metadata,
+// revalidate and the rest), and any additional export is a type error that
+// `next.config.js` was silently swallowing via `ignoreBuildErrors`.
 
 export default function Home() {
   const [username, setUsername] = useState<string | null>(null);
@@ -329,9 +328,3 @@ export default function Home() {
     </>
   );
 }
-
-// Re-exported for backward compatibility — ReadonlyResults now lives in its
-// own module (components/ReadonlyResults.tsx); app/r/[id]/page.tsx imports
-// it from there directly, but keep this re-export in case anything else
-// still resolves it via "../app/page" / "@/app/page".
-export { ReadonlyResults } from "../components/ReadonlyResults";

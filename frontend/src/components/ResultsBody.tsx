@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import ArtistList from "./ArtistList";
 import DiscoveryMatrix from "./DiscoveryMatrix";
 import HeroPicks from "./HeroPicks";
-import type { Artist } from "../app/page";
+import type { Artist } from "../lib/types";
 import type { Session } from "../lib/session";
 
 type ResultsTab = "suggestions" | "analytics";

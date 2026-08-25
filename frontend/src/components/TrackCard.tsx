@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TrackItem } from "../app/page";
+import { TrackItem } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import Tooltip from "./Tooltip";
 import { firstGenreTag, isGeoTag, formatGeoTag } from "../lib/geoTags";

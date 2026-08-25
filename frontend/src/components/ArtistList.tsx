@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Artist } from "../app/page";
+import { Artist } from "../lib/types";
 import ArtistCard from "./ArtistCard";
 import DismissedRow from "./DismissedRow";
 import Tooltip from "./Tooltip";

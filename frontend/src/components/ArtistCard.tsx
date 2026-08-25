@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Artist } from "../app/page";
+import { Artist } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import { firstGenreTag, isGeoTag, formatGeoTag, countryFromTags } from "../lib/geoTags";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";

@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Artist } from "../app/page";
+import { Artist } from "../lib/types";
 import { normConviction, normStickiness, obscurityDotSize } from "../lib/scoring";
 import { resolveLabelCollisions, type LabelInput } from "../lib/labelLayout";
 

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+  backend:
+    name: Backend
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      # The gate. 96 tests, and they pass with no DATABASE_URL and no REDIS_URL
+      # set — that is the graceful-degradation invariant, so CI asserts it by
+      # running with neither.
+      - name: Tests
+        run: cargo test --all-targets
+
+      # Advisory for now: both are red on the current tree (14 clippy warnings,
+      # real rustfmt drift). Introducing CI and failing it in the same change
+      # teaches everyone to ignore the red. Flip these to blocking in the commit
+      # that cleans them up, not before.
+      - name: Format (advisory)
+        continue-on-error: true
+        run: cargo fmt --check
+      - name: Clippy (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-targets -- -D warnings
+
+  frontend:
+    name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+
+      # next.config.js sets ignoreBuildErrors and ignoreDuringBuilds, so the
+      # build checks NEITHER types nor lint. This step is the ONLY type
+      # enforcement that exists in this repo — do not fold it into the build
+      # step believing that covers it.
+      #
+      # There is deliberately no lint step: the repo has no ESLint config at
+      # all, so `next lint` drops into an interactive setup prompt (and is
+      # deprecated in Next 15 besides). Adding one is a real task, not a CI
+      # line — see .claude/README.md.
+      - name: Types
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm run test
+      - name: Build
+        run: npm run build

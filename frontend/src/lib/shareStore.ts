@@ -1,4 +1,4 @@
-import type { Artist } from "@/app/page";
+import type { Artist } from "@/lib/types";
 
 /**
  * Persistent share-link store.

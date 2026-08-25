@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
-import type { Artist, GenreWeight } from "../app/page";
+import type { Artist, GenreWeight } from "../lib/types";
 import { firstGenreTag } from "../lib/geoTags";
 
 // 660 × 860 shareable result card (§8). Rendered off-screen by page.tsx and

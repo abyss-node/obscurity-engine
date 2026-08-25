@@ -1,7 +1,7 @@
 // Shared discovery domain types + constants. Moved verbatim out of
 // app/page.tsx during the page.tsx decomposition — app/page.tsx re-exports
 // the subset of these that were previously part of its public surface
-// (consumers keep importing from "../app/page" unchanged) while new code can
+// (consumers keep importing from "./types" unchanged) while new code can
 // import directly from here.
 
 export type Artist = {

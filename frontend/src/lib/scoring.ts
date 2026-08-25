@@ -1,4 +1,4 @@
-import type { Artist } from "../app/page";
+import type { Artist } from "./types";
 
 /**
  * Shared score normalizers — keep the Discovery Matrix, the ledger, and any

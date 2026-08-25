@@ -1,6 +1,6 @@
 "use client";
 
-import { PERIOD_LABELS, APPETITE_STOPS, type DiscoveryMode } from "../app/page";
+import { PERIOD_LABELS, APPETITE_STOPS, type DiscoveryMode } from "../lib/types";
 import type { Session } from "../lib/session";
 
 interface ResultsTopBarProps {

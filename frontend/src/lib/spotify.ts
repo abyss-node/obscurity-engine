@@ -1,4 +1,4 @@
-import type { TrackItem } from "../app/page";
+import type { TrackItem } from "./types";
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ?? "";
 const SCOPES = "playlist-modify-private playlist-modify-public";

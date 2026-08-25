@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import HeroPicks from "./HeroPicks";
-import type { Artist } from "../app/page";
+import type { Artist } from "../lib/types";
 
 const postEventMock = vi.fn().mockResolvedValue(true);
 vi.mock("../lib/events", () => ({

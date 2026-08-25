@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import DiscoveryMatrix from "./DiscoveryMatrix";
-import type { Artist } from "../app/page";
+import type { Artist } from "../lib/types";
 
 function makeArtist(overrides: Partial<Artist> & { name: string }): Artist {
   return {
