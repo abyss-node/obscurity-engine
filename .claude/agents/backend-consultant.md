@@ -13,14 +13,27 @@ Rust. You go and find out; you come back with the answer, not the evidence.
 
 ## The source of truth, and the trap
 
-**`backend/src/models.rs` is the contract.** Read it for any question about
-response shape. `backend/src/handlers.rs` and `api.rs` are where behaviour lives
-— scoping, validation, what happens on conflict, which status an error takes.
+**`backend/src/models.rs` is the contract for the discovery endpoints** —
+`DiscoveryResponse`, `TrackDiscoveryResponse` and their items. Read it for any
+question about their response shape.
 
-**`docs/reference-api.md` is not authoritative.** It was last updated 2026-07-03
-and is already wrong: it omits the `ytd` period and still calls BLEND "MIX", both
-changed on 2026-07-09. Never answer a contract question from it. If you cite it
-at all, say it is unverified and give the Rust `file:line` alongside.
+**It is not the contract for everything.** `/api/status`, `/api/auth/session` and
+the `me/*` endpoints have no typed model: their shapes are inline
+`serde_json::json!` in `api.rs`, or `Value` built in `db.rs`. Finding nothing in
+`models.rs` is therefore not evidence that a field does not exist — read the
+handler before you say it is absent.
+
+`backend/src/handlers.rs` and `api.rs` are where behaviour lives — scoping,
+validation, what happens on conflict, which status an error takes.
+
+**`docs/reference-api.md` is not authoritative.** Nothing regenerates it and no
+test binds it to the code, so it states what was true when someone last typed it
+— `git log -1 -- docs/reference-api.md` tells you when. Assume it lags. It lags
+today on the accepted `period` values: `handlers.rs` takes `ytd` for artists and
+rejects it for tracks, while `docs/reference-api.md:111` says the tracks endpoint
+takes the "Same query parameters as `/api/discovery`". It does not omit the
+asymmetry, it asserts the opposite. Answer contract questions from the Rust with
+the `file:line`; if you cite the doc at all, say it is unverified.
 
 **Answer presence, not just type.** This is the question the caller most needs
 and most often forgets to ask. In serde, `#[serde(default)]` governs

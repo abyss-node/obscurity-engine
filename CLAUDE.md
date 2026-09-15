@@ -33,8 +33,10 @@ lane has to change, say so and stop. That is a separate session.
 
 `frontend/src/lib/types.ts` is **hand-mirrored** from `backend/src/models.rs`.
 There is no OpenAPI spec, no generated client, no codegen step, and no CI job
-that compares them. `.github/workflows/` contains one file and it is a keep-warm
-ping.
+that compares them. `.github/workflows/ci.yml` does run the real suites — backend
+`cargo test --all-targets`, frontend `typecheck`, `test` and `build`, all blocking
+— which is what makes this gap dangerous rather than survivable: every one of them
+goes green while the two sides disagree.
 
 So: rename a field in `models.rs` and **both sides still compile.** The frontend
 reads `undefined` at runtime and a screen renders blank. `cargo test` passes,

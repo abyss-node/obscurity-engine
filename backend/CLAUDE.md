@@ -80,10 +80,14 @@ Test the behaviour that would break discovery, not the framework.
 
 Edition 2021, stable toolchain pinned in `rust-toolchain.toml`.
 
-There is **no `clippy.toml` and no clippy step in CI.** Nothing currently refuses
-a dated or sloppy construct mechanically, so it falls to review, which is the
-wrong place for it. Adding `cargo clippy -- -D warnings` is a cheap, real
-improvement; until then, do not restate style in review either.
+There is **no `clippy.toml`, and the clippy step in CI is advisory.**
+`.github/workflows/ci.yml` runs `cargo clippy --all-targets -- -D warnings` under
+`continue-on-error`, so nothing is refused mechanically yet and it still falls to
+review, which is the wrong place for it. The remaining work is flipping that step
+to blocking — `ci.yml` gates that on first clearing the 14 warnings and the
+rustfmt drift already on the tree, on the grounds that failing a check in the same
+change that introduces it teaches everyone to ignore the red. Until then, do not
+restate style in review either.
 
 ## Commands
 
@@ -95,7 +99,7 @@ PowerShell-safe.
 | Run | `cd backend; cargo run --release` |
 | Tests | `cd backend; cargo test` |
 | One test | `cd backend; cargo test <name>` |
-| Lint (once configured) | `cd backend; cargo clippy -- -D warnings` |
+| Lint (advisory in CI) | `cd backend; cargo clippy --all-targets -- -D warnings` |
 | Format | `cd backend; cargo fmt` |
 | Postgres for DB-backed work | `docker compose up -d postgres` |
 
