@@ -59,7 +59,7 @@ export default function LoadingState({ wakingUp }: LoadingStateProps) {
         <span style={{ opacity: blink ? 1 : 0 }}>_</span>
       </p>
 
-      <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+      <p className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
         first run can take ~20s while the engine wakes up
       </p>
     </motion.div>

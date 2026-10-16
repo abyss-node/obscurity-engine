@@ -155,23 +155,23 @@ export default function LandingView({
               href="https://www.last.fm/join"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+              className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
               style={{ color: "var(--accent)" }}
             >
               new to last.fm? create account →
             </a>
-            <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--border)" }}>|</span>
             <button
               onClick={() => { setShowSetup((s) => !s); setShowApiKey(false); }}
-              className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+              className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
               style={{ color: "var(--dim)" }}
             >
               connect your music {showSetup ? "▲" : "▼"}
             </button>
-            <span className="font-mono text-[10px]" style={{ color: "var(--border)" }}>|</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--border)" }}>|</span>
             <button
               onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
-              className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+              className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
               style={{ color: apiKey ? "var(--accent)" : "var(--dim)" }}
             >
               {apiKey ? "api key active ▼" : `api key ${showApiKey ? "▲" : "▼"}`}
@@ -202,7 +202,7 @@ export default function LandingView({
                 className="w-full flex flex-col gap-3"
               >
                 <div className="border p-4 flex flex-col gap-3" style={{ borderColor: "var(--border)" }}>
-                  <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--muted)" }}>
+                  <p className="font-mono text-[11px] tracking-wider leading-relaxed" style={{ color: "var(--muted)" }}>
                     your own key avoids shared rate limits — saved to this browser permanently
                   </p>
                   <ol className="flex flex-col gap-1.5">
@@ -213,8 +213,8 @@ export default function LandingView({
                       <>callback url: <span style={{ color: "var(--muted)" }}>leave blank</span></>,
                       <>submit → copy the 32-character api key</>,
                     ].map((step, i) => (
-                      <li key={i} className="flex gap-2 font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
-                        <span style={{ color: "var(--border)" }}>{i + 1}.</span>
+                      <li key={i} className="flex gap-2 font-mono text-[11px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
+                        <span style={{ color: "var(--dim)" }}>{i + 1}.</span>
                         <span>{step}</span>
                       </li>
                     ))}
@@ -230,7 +230,7 @@ export default function LandingView({
                     />
                     <button
                       onClick={() => onSaveApiKey(apiKeyInput.trim(), shareKey)}
-                      className="font-mono text-[10px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
+                      className="font-mono text-[11px] tracking-widest transition-opacity hover:opacity-60 shrink-0"
                       style={{ color: "var(--muted)" }}
                     >
                       {apiKeyInput.trim() ? "save" : "clear"}
@@ -243,7 +243,7 @@ export default function LandingView({
                     className="flex items-start gap-2 text-left transition-opacity hover:opacity-80"
                   >
                     <span
-                      className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[9px]"
+                      className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[11px]"
                       style={{
                         width: 14, height: 14, border: "1px solid var(--accent2)",
                         color: "var(--accent)",
@@ -253,7 +253,7 @@ export default function LandingView({
                     >
                       {shareKey ? "✓" : ""}
                     </span>
-                    <span className="font-mono text-[9px] leading-relaxed tracking-wider" style={{ color: "var(--dim)" }}>
+                    <span className="font-mono text-[11px] leading-relaxed tracking-wider" style={{ color: "var(--dim)" }}>
                       also share to the pool to speed up discovery for everyone (read-only app key, no account access)
                     </span>
                   </button>

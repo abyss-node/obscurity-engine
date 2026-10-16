@@ -12,15 +12,15 @@
  */
 
 /**
- * Approximate width of one monospace glyph at the label's 9.5px font-size,
+ * Approximate width of one monospace glyph at the label's 11px font-size,
  * folding in the label's `letterSpacing: 0.02em` (DiscoveryMatrix.tsx) —
- * 0.02 * 9.5px = 0.19px of extra per-character spacing — so the estimated
- * box no longer slightly underestimates real rendered width. (5.7 base + 0.19
- * letterSpacing = 5.89.)
+ * 0.02 * 11px = 0.22px of extra per-character spacing — so the estimated
+ * box no longer slightly underestimates real rendered width. (6.6 base + 0.22
+ * letterSpacing = 6.82.)
  */
-const CHAR_WIDTH_PX = 5.89;
+const CHAR_WIDTH_PX = 6.82;
 /** Fixed line height (+ a little breathing room) for a single-line label. */
-const LABEL_HEIGHT_PX = 12;
+const LABEL_HEIGHT_PX = 14;
 
 export type LabelInput = {
   name: string;

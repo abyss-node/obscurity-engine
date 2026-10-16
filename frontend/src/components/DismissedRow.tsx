@@ -10,13 +10,13 @@ export default function DismissedRow({ name, onUndo }: { name: string; onUndo: (
       className="border-b flex items-center justify-between px-3 py-3.5"
       style={{ borderColor: "var(--border)" }}
     >
-      <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+      <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
         dismissed <span style={{ color: "var(--muted)" }}>{name}</span>
       </span>
       <button
         type="button"
         onClick={onUndo}
-        className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+        className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
         style={{ color: "var(--accent)" }}
       >
         undo

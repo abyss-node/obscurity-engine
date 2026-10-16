@@ -62,7 +62,7 @@ export default function CompareSection({
 
   return (
     <div className="flex flex-col gap-4 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
-      <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+      <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
         compare — how deep does your taste go?
       </span>
 
@@ -105,7 +105,7 @@ export default function CompareSection({
           </div>
 
           {isSelf && input.trim() && (
-            <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+            <p className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
               that&apos;s the username being shared — try a different one to compare.
             </p>
           )}
@@ -136,14 +136,14 @@ export default function CompareSection({
             <span className="font-mono text-[11px] tracking-widest" style={{ color: "var(--muted)" }}>
               {depthVerdict}
             </span>
-            <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+            <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
               you: {comparison.visitorMedianListeners.toLocaleString()} median listeners ·{" "}
               {sharerUsername}: {comparison.sharerMedianListeners.toLocaleString()} median listeners
             </span>
           </div>
 
           {data.message && (
-            <p className="font-mono text-[10px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
+            <p className="font-mono text-[11px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
               {data.message}
             </p>
           )}
@@ -152,7 +152,7 @@ export default function CompareSection({
             {comparison.overlap.length > 0 ? (
               <>
                 <span
-                  className="font-mono text-[10px] tracking-widest uppercase"
+                  className="font-mono text-[11px] tracking-widest uppercase"
                   style={{ color: "var(--dim)" }}
                 >
                   you&apos;d both discover
@@ -167,7 +167,7 @@ export default function CompareSection({
                       <span className="font-mono text-[11px]" style={{ color: "var(--text)" }}>
                         {artist.name}
                       </span>
-                      <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)" }}>
+                      <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
                         {formatListeners(artist.total_listeners)} listeners
                       </span>
                     </div>

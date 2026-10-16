@@ -114,7 +114,7 @@ export default function ResultsTopBar({
           <button
             key={m}
             onClick={() => setMode(m)}
-            className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
+            className="font-mono text-[11px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
             style={{
               borderColor: mode === m ? "var(--accent)" : "var(--border)",
               color: mode === m ? "var(--accent)" : "var(--dim)",
@@ -135,7 +135,7 @@ export default function ResultsTopBar({
           <button
             key={val}
             onClick={() => setPeriod(val)}
-            className="font-mono text-[10px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
+            className="font-mono text-[11px] tracking-wider px-2 py-0.5 border transition-colors duration-150"
             style={{
               borderColor: period === val ? "var(--accent)" : "var(--border)",
               color: period === val ? "var(--accent)" : "var(--dim)",
@@ -152,7 +152,7 @@ export default function ResultsTopBar({
           joins the single row on desktop, shrinking progressively. */}
       <div className="flex items-center gap-2 order-last basis-full min-[720px]:order-none min-[720px]:basis-auto min-[720px]:shrink-0">
         <span
-          className="font-mono text-[10px] tracking-wider shrink-0 min-[720px]:hidden min-[1150px]:inline"
+          className="font-mono text-[11px] tracking-wider shrink-0 min-[720px]:hidden min-[1150px]:inline"
           style={{ color: "var(--dim)" }}
         >
           appetite
@@ -170,7 +170,7 @@ export default function ResultsTopBar({
           title={`${activeAppetite?.label} — ${activeAppetite?.blurb}`}
         />
         <span
-          className="font-mono text-[10px] tracking-wider shrink-0 min-[720px]:hidden min-[900px]:inline"
+          className="font-mono text-[11px] tracking-wider shrink-0 min-[720px]:hidden min-[900px]:inline"
           style={{ color: "var(--accent)" }}
         >
           {activeAppetite?.label}
@@ -181,7 +181,7 @@ export default function ResultsTopBar({
       <button
         onClick={onRefresh}
         disabled={refreshDisabled}
-        className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-30"
+        className="font-mono text-[11px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-30"
         style={{ color: "var(--dim)" }}
         title="refresh"
       >
@@ -202,7 +202,7 @@ export default function ResultsTopBar({
           {SEP()}
           <button
             onClick={onLogout}
-            className="font-mono text-[10px] tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-60"
+            className="font-mono text-[11px] tracking-wide shrink-0 transition-opacity duration-150 hover:opacity-60"
             style={{ color: "var(--dim)" }}
             title="log out"
           >
@@ -211,7 +211,7 @@ export default function ResultsTopBar({
           {savedCount > 0 && (
             <button
               onClick={onShowSaved}
-              className="font-mono text-[10px] tracking-wider shrink-0 transition-opacity duration-150 hover:opacity-60"
+              className="font-mono text-[11px] tracking-wider shrink-0 transition-opacity duration-150 hover:opacity-60"
               style={{ color: "var(--dim)" }}
             >
               saved
@@ -226,7 +226,7 @@ export default function ResultsTopBar({
       <button
         onClick={onShare}
         disabled={shareState === "rendering"}
-        className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-40"
+        className="font-mono text-[11px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60 disabled:opacity-40"
         style={{ color: "var(--dim)" }}
         title="share"
       >

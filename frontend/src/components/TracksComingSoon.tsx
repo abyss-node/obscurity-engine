@@ -24,7 +24,7 @@ export default function TracksComingSoon({ onBack }: TracksComingSoonProps) {
             className="flex items-center gap-4 px-3 py-3.5 border-b"
             style={{ borderColor: "var(--border)" }}
           >
-            <span className="font-mono text-[10px]" style={{ color: "var(--dim)" }}>
+            <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>
               {String(i + 1).padStart(2, "0")}
             </span>
             <div className="flex flex-col gap-1.5 flex-1">
@@ -44,7 +44,7 @@ export default function TracksComingSoon({ onBack }: TracksComingSoonProps) {
         className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6"
         style={{ background: "rgba(8,8,6,0.93)" }}
       >
-        <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+        <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
           tracks
         </span>
         <h2 className="font-serif italic text-4xl" style={{ color: "var(--text)" }}>
@@ -56,7 +56,7 @@ export default function TracksComingSoon({ onBack }: TracksComingSoonProps) {
         </p>
         <button
           onClick={onBack}
-          className="mt-2 font-mono text-[10px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
+          className="mt-2 font-mono text-[11px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
           style={{ borderColor: "var(--border)", color: "var(--muted)" }}
         >
           ← back to artists

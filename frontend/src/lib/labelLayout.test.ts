@@ -29,7 +29,7 @@ function assertNoVisibleOverlaps(
 function denseCluster(): LabelInput[] {
   return Array.from({ length: 8 }, (_, i) => ({
     name: `Artist Longname ${i}`,
-    xPct: 45 + i * 1.5,
+    xPct: 45 + i * 5, // spaced so wide width keeps strictly more labels than narrow at the 11px label metrics
     yPct: 48 + (i % 3), // tight vertical band
     rank: i,
     anchorRight: i % 2 === 0,

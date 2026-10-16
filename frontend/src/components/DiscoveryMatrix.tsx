@@ -18,11 +18,11 @@ type DiscoveryMatrixProps = {
 };
 
 // Matrix-local hexes that aren't global tokens (documented in the design spec).
-const NEUTRAL_DOT = "#7A7265"; // = --muted
+const NEUTRAL_DOT = "#7A7265"; // dot fill, needs only 3:1 non-text contrast
 const NEUTRAL_DOT_BORDER = "#5A5249";
 const NEUTRAL_LABEL = "#9A9082";
 const NEUTRAL_LABEL_HOVER = "#B5AC9C";
-const QUADRANT = "#6E665A";
+const QUADRANT = "#8A8071"; // = --dim
 const GRIDLINE = "#1A1916"; // = --surface2
 
 type Dot = {
@@ -121,7 +121,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
   if (artists.length === 0) {
     return (
       <div
-        className="w-full flex items-center justify-center py-10 font-mono text-[10px] tracking-widest uppercase animate-pulse"
+        className="w-full flex items-center justify-center py-10 font-mono text-[11px] tracking-widest uppercase animate-pulse"
         style={{ color: "var(--dim)" }}
       >
         awaiting sonar data...
@@ -135,7 +135,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
         {/* Y-axis caption */}
         <div className="flex items-center justify-center">
           <span
-            className="font-mono text-[10px] uppercase whitespace-nowrap"
+            className="font-mono text-[11px] uppercase whitespace-nowrap"
             style={{ color: "var(--muted)", letterSpacing: "0.2em", transform: "rotate(-90deg)" }}
           >
             stickiness →
@@ -156,19 +156,19 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
             {/* Quadrant labels */}
             <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, top: 16 }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: "var(--accent)", letterSpacing: "0.18em" }}>keepers</span>
-              <span className="font-mono text-[9px]" style={{ color: "var(--dim)" }}>love now · love later</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>love now · love later</span>
             </div>
             <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, top: 16 }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>growers</span>
-              <span className="font-mono text-[9px]" style={{ color: "var(--dim)" }}>slow burn</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>slow burn</span>
             </div>
             <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, bottom: 34 }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>quick hits</span>
-              <span className="font-mono text-[9px]" style={{ color: "var(--dim)" }}>instant · may fade</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>instant · may fade</span>
             </div>
             <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, bottom: 34 }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>wildcards</span>
-              <span className="font-mono text-[9px]" style={{ color: "var(--dim)" }}>a gamble</span>
+              <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>a gamble</span>
             </div>
 
             {/* Dots */}
@@ -230,7 +230,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
                         // stacking only applies when we haven't measured a
                         // narrow container yet.
                         transform: `translateY(calc(-50% + ${collisionVisible ? 0 : labelDy[d.name] ?? 0}px))`,
-                        fontSize: "9.5px",
+                        fontSize: "11px",
                         letterSpacing: "0.02em",
                         color: labelColor,
                         // Dark halo so a label stays legible over dots and any
@@ -251,9 +251,9 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
 
           {/* X-axis caption */}
           <div className="flex justify-between items-center" style={{ padding: "9px 2px 0" }}>
-            <span className="font-mono text-[9px]" style={{ color: "var(--dim)", letterSpacing: "0.1em" }}>low</span>
-            <span className="font-mono text-[10px] uppercase" style={{ color: "var(--muted)", letterSpacing: "0.2em" }}>conviction →</span>
-            <span className="font-mono text-[9px]" style={{ color: "var(--dim)", letterSpacing: "0.1em" }}>high</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--dim)", letterSpacing: "0.1em" }}>low</span>
+            <span className="font-mono text-[11px] uppercase" style={{ color: "var(--muted)", letterSpacing: "0.2em" }}>conviction →</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--dim)", letterSpacing: "0.1em" }}>high</span>
           </div>
         </div>
       </div>
@@ -268,17 +268,17 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
             <div className="rounded-full" style={{ width: 7, height: 7, background: NEUTRAL_DOT }} />
             <div className="rounded-full" style={{ width: 14, height: 14, background: NEUTRAL_DOT }} />
           </div>
-          <span className="font-mono text-[9px]" style={{ color: "var(--muted)", letterSpacing: "0.06em" }}>
+          <span className="font-mono text-[11px]" style={{ color: "var(--muted)", letterSpacing: "0.06em" }}>
             dot size = obscurity (bigger = deeper)
           </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="rounded-full" style={{ width: 11, height: 11, background: "var(--accent)", boxShadow: "0 0 10px rgba(184,131,46,0.6)" }} />
-          <span className="font-mono text-[9px]" style={{ color: "var(--muted)", letterSpacing: "0.06em" }}>
+          <span className="font-mono text-[11px]" style={{ color: "var(--muted)", letterSpacing: "0.06em" }}>
             gold = dual-signal find
           </span>
         </div>
-        <span className="font-mono text-[9px]" style={{ color: "var(--dim)", letterSpacing: "0.06em" }}>
+        <span className="font-mono text-[11px]" style={{ color: "var(--dim)", letterSpacing: "0.06em" }}>
           hover a dot for its name
         </span>
       </div>

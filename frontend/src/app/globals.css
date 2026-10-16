@@ -7,15 +7,17 @@
   --surface:   #111110;
   --surface2:  #1A1916;
   --border:    #2A2824;
+  /* decoration-only hover rule (borders), never text: ~2:1, below the text floor on purpose */
+  --rule:      #4A4640;
   --text:      #EDE8DC;
-  --muted:     #7A7265;
-  --dim:       #4A4640;
+  --muted:     #A39A8A;
+  --dim:       #8A8071;
   --accent:      #B8832E;
   --accent2:     #8B5E2A;
   /* hover-brightened gold — from the results-redesign handoff token table
      ("gold-bright"); used only for hover on gold affordances. */
   --accent-bright: #D9A441;
-  --discovery:   #8B3A2A;
+  --discovery:   #CC654A;
 }
 
 @layer base {

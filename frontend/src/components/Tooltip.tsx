@@ -59,7 +59,7 @@ export default function Tooltip({ text, children }: TooltipProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 4 }}
                 transition={{ duration: 0.15 }}
-                className="fixed -translate-x-1/2 -translate-y-full w-52 px-3 py-2 font-mono text-[10px] leading-relaxed tracking-wide border z-[100] pointer-events-none"
+                className="fixed -translate-x-1/2 -translate-y-full w-52 px-3 py-2 font-mono text-[11px] leading-relaxed tracking-wide border z-[100] pointer-events-none"
                 style={{
                   top: coords.top - 8,
                   left: coords.left,

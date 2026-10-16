@@ -59,14 +59,14 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
         <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 500, letterSpacing: "0.24em", color: "#B8832E" }}>
           OBSCURITY ENGINE
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.12em", color: "#4A4640" }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "#8A8071" }}>
           obscurity-engine.vercel.app
         </span>
       </div>
 
       {/* index */}
       <div style={{ marginTop: 36, display: "flex", flexDirection: "column", gap: 6 }}>
-        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: "#4A4640" }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "#8A8071" }}>
           {username} · obscurity index
         </span>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
@@ -83,7 +83,7 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
           >
             {depthScore.toFixed(0)}
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 14, color: "#4A4640" }}>/ 100</span>
+          <span style={{ fontFamily: MONO, fontSize: 14, color: "#8A8071" }}>/ 100</span>
         </div>
         {verdictCapped && (
           <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 21, color: "#EDE8DC", marginTop: 8 }}>
@@ -94,7 +94,7 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
 
       {/* deepest finds */}
       <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 14 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "#4A4640" }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "#8A8071" }}>
           deepest finds
         </span>
         {finds.map((f) => (
@@ -112,11 +112,11 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
               {f.cross_validated && <span style={{ color: "#B8832E", fontSize: 11 }}>✦</span>}
               <span style={{ fontFamily: PLAYFAIR, fontWeight: 600, fontSize: 22, color: "#EDE8DC" }}>{f.name}</span>
-              <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#7A7265" }}>
+              <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "#A39A8A" }}>
                 {firstGenreTag(f.top_tags)}
               </span>
             </div>
-            <span style={{ fontFamily: MONO, fontSize: 11, color: "#4A4640", whiteSpace: "nowrap" }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "#8A8071", whiteSpace: "nowrap" }}>
               {formatListeners(f.total_listeners)}
             </span>
           </div>
@@ -128,14 +128,14 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
         {genres.map((g) => (
           <span
             key={g.name}
-            style={{ fontFamily: MONO, fontSize: 10, color: "#7A7265", padding: "4px 11px", border: "1px solid #2A2824" }}
+            style={{ fontFamily: MONO, fontSize: 11, color: "#A39A8A", padding: "4px 11px", border: "1px solid #2A2824" }}
           >
             {g.name} {Math.round(g.weight)}%
           </span>
         ))}
       </div>
 
-      <span style={{ marginTop: 36, fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "#4A4640" }}>
+      <span style={{ marginTop: 36, fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: "#8A8071" }}>
         mapped from {activeSeedCount} seeds · {underCount} finds under 25K listeners
       </span>
     </div>

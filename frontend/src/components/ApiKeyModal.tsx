@@ -36,7 +36,7 @@ export default function ApiKeyModal({ initialValue, onSave, onClose }: ApiKeyMod
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
         <div className="flex items-baseline justify-between">
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+          <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
             api key
           </span>
           <button
@@ -83,7 +83,7 @@ export default function ApiKeyModal({ initialValue, onSave, onClose }: ApiKeyMod
           className="flex items-start gap-2.5 text-left transition-opacity hover:opacity-80"
         >
           <span
-            className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[10px]"
+            className="mt-[1px] shrink-0 flex items-center justify-center font-mono text-[11px]"
             style={{
               width: 15, height: 15, border: "1px solid var(--accent2)",
               color: "var(--accent)",
@@ -93,7 +93,7 @@ export default function ApiKeyModal({ initialValue, onSave, onClose }: ApiKeyMod
           >
             {share ? "✓" : ""}
           </span>
-          <span className="font-mono text-[10px] leading-relaxed tracking-wide" style={{ color: "var(--muted)" }}>
+          <span className="font-mono text-[11px] leading-relaxed tracking-wide" style={{ color: "var(--muted)" }}>
             share this key to speed up discovery for everyone — it joins a pool
             that spreads Last.fm&apos;s rate limit. It&apos;s a read-only app key
             (no account access). Leave off to keep it private to this browser.
@@ -101,12 +101,12 @@ export default function ApiKeyModal({ initialValue, onSave, onClose }: ApiKeyMod
         </button>
 
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)" }}>
+          <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
             {share ? "stored locally + shared to the pool" : "stored locally · never sent to us"}
           </span>
           <button
             onClick={() => onSave(value.trim(), share)}
-            className="font-mono text-[10px] tracking-widest px-5 py-2 border transition-colors duration-150"
+            className="font-mono text-[11px] tracking-widest px-5 py-2 border transition-colors duration-150"
             style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = "var(--accent-bright)";

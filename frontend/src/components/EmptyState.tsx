@@ -29,7 +29,7 @@ export default function EmptyState({
         className="flex flex-col items-center justify-center gap-4 pt-24 px-8 text-center"
       >
         <span
-          className="font-mono text-[10px] tracking-[0.18em] uppercase"
+          className="font-mono text-[11px] tracking-[0.18em] uppercase"
           style={{ color: "var(--dim)" }}
         >
           nothing saved yet
@@ -53,7 +53,7 @@ export default function EmptyState({
         className="flex flex-col items-center justify-center gap-[22px] pt-40 px-8 text-center"
       >
         <span
-          className="font-mono text-[10px] tracking-[0.18em] uppercase"
+          className="font-mono text-[11px] tracking-[0.18em] uppercase"
           style={{ color: "var(--dim)" }}
         >
           account found · 0 scrobbles
@@ -77,7 +77,7 @@ export default function EmptyState({
           {onCheckSetup && (
             <button
               onClick={onCheckSetup}
-              className="font-mono text-[10px] tracking-[0.16em] uppercase px-5 py-[9px] border transition-colors duration-150"
+              className="font-mono text-[11px] tracking-[0.16em] uppercase px-5 py-[9px] border transition-colors duration-150"
               style={{ borderColor: "var(--accent2)", color: "var(--accent)" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent-bright)")}
               onMouseLeave={(e) => (e.currentTarget.style.color = "var(--accent)")}
@@ -88,7 +88,7 @@ export default function EmptyState({
           {onCheckAgain && (
             <button
               onClick={onCheckAgain}
-              className="font-mono text-[10px] tracking-[0.14em] transition-opacity duration-150 hover:opacity-70"
+              className="font-mono text-[11px] tracking-[0.14em] transition-opacity duration-150 hover:opacity-70"
               style={{ color: "var(--dim)" }}
             >
               ↻ check again
@@ -108,7 +108,7 @@ export default function EmptyState({
       className="flex flex-col items-center justify-center gap-5 pt-40 px-8 text-center"
     >
       <span
-        className="font-mono text-[10px] tracking-[0.18em] uppercase"
+        className="font-mono text-[11px] tracking-[0.18em] uppercase"
         style={{ color: "var(--dim)" }}
       >
         no signal · {windowLabel ?? "this window"}

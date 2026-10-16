@@ -86,7 +86,7 @@ export default function ArtistList({
         className="sticky top-[68px] min-[720px]:top-12 z-30 flex items-center gap-3 min-[720px]:gap-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8 overflow-x-auto"
         style={{ background: "var(--bg)" }}
       >
-        <span className="font-mono text-[8px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
+        <span className="font-mono text-[11px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
           sort by
         </span>
         <div className="flex items-center gap-4 min-[720px]:gap-5 shrink-0">
@@ -117,10 +117,10 @@ export default function ArtistList({
           className={`grid w-full items-center gap-2.5 min-[720px]:gap-4 px-3 pb-2.5 border-b ${ledgerCols}`}
           style={{ borderColor: "var(--border)" }}
         >
-          <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>#</span>
-          <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>artist</span>
-          <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre</span>
-          <span className="hidden min-[720px]:block font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>country</span>
+          <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>#</span>
+          <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>artist</span>
+          <span className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genre</span>
+          <span className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>country</span>
           {/* Mobile (<720px): the 40px/46px columns are narrower than these
               labels at tracking-widest, so "CONVICTION" and "LISTENERS" were
               overflowing their cells and running together with no gap
@@ -129,8 +129,8 @@ export default function ArtistList({
               instead of both centered-inward) guarantees they never touch.
               Desktop columns (104px/74px) have room to spare, so
               tracking-widest + text-center is restored unchanged ≥720px. */}
-          <span className="font-mono text-[8px] tracking-normal min-[720px]:tracking-widest uppercase text-right min-[720px]:text-center" style={{ color: "var(--dim)" }}>conviction</span>
-          <span className="font-mono text-[8px] tracking-normal min-[720px]:tracking-widest uppercase text-left min-[720px]:text-center" style={{ color: "var(--dim)" }}>listeners</span>
+          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-widest uppercase text-right min-[720px]:text-center" style={{ color: "var(--dim)" }}>conviction</span>
+          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-widest uppercase text-left min-[720px]:text-center" style={{ color: "var(--dim)" }}>listeners</span>
           <span />
         </div>
 
@@ -169,7 +169,7 @@ export default function ArtistList({
           <button
             type="button"
             onClick={() => setShown(artists.length)}
-            className="w-full flex items-center justify-center gap-2 py-4 font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
+            className="w-full flex items-center justify-center gap-2 py-4 font-mono text-[11px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-60"
             style={{ color: "var(--accent)" }}
           >
             view more

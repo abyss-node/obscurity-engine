@@ -139,12 +139,12 @@ export default function ResultsBody({
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-3 flex-wrap">
               <span
-                className="font-mono text-[10px] tracking-widest uppercase"
+                className="font-mono text-[11px] tracking-widest uppercase"
                 style={{ color: "var(--dim)" }}
               >
                 discovery matrix
               </span>
-              <span className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)", opacity: 0.7 }}>
+              <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
                 conviction × stickiness · dot size = obscurity · click a dot to open its row
               </span>
             </div>

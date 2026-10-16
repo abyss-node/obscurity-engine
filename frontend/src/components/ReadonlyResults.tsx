@@ -50,7 +50,7 @@ export function ReadonlyResults({ payload }: { payload: SharePayload }) {
       <div className="max-w-4xl mx-auto px-4 sm:px-8 pt-24 pb-16 flex flex-col gap-16">
         {/* Shared-view header */}
         <div className="flex flex-col gap-3 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+          <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
             shared discovery
           </span>
           <h1
@@ -59,7 +59,7 @@ export function ReadonlyResults({ payload }: { payload: SharePayload }) {
           >
             {username}
           </h1>
-          <p className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+          <p className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
             {PERIOD_WINDOWS[period] ?? period} · {recommendations.length} finds
           </p>
           <a

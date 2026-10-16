@@ -60,16 +60,16 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
     <div className="pt-6 min-[720px]:pt-12" data-testid="hero-picks">
       <div className="flex items-baseline justify-between flex-wrap gap-2.5">
         <div className="flex items-baseline gap-3.5">
-          <span className="font-mono text-[10px] tracking-[0.24em] uppercase" style={{ color: "var(--dim)" }}>
+          <span className="font-mono text-[11px] tracking-[0.24em] uppercase" style={{ color: "var(--dim)" }}>
             top picks
           </span>
-          <span className="font-mono text-[9px]" style={{ color: "var(--dim)", opacity: 0.7 }}>
+          <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>
             strongest signal from this run
           </span>
         </div>
         {depthScore > 0 && (
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[10px] tracking-[0.24em] uppercase" style={{ color: "var(--dim)" }}>
+            <span className="font-mono text-[11px] tracking-[0.24em] uppercase" style={{ color: "var(--dim)" }}>
               obscurity index
             </span>
             <span className="font-serif text-2xl font-bold italic leading-none" style={{ color: "var(--accent)" }}>
@@ -104,11 +104,11 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
               }}
             >
               <div className="flex items-center justify-between">
-                <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+                <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
                   {String(idx + 1).padStart(2, "0")}
                 </span>
                 {artist.cross_validated && (
-                  <span className="font-mono text-[9px] tracking-[0.16em]" style={{ color: "var(--accent)" }}>
+                  <span className="font-mono text-[11px] tracking-[0.16em]" style={{ color: "var(--accent)" }}>
                     ✦ dual-signal
                   </span>
                 )}
@@ -121,7 +121,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                 {artist.name}
               </div>
 
-              <div className="font-mono text-[9px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }}>
+              <div className="font-mono text-[11px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }}>
                 {meta}
               </div>
 
@@ -130,7 +130,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--text)" }}>
                     {conviction}
                   </span>
-                  <span className="font-mono text-[8px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
                     conviction
                   </span>
                 </div>
@@ -138,7 +138,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--muted)" }}>
                     {stickiness}
                   </span>
-                  <span className="font-mono text-[8px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
                     stickiness
                   </span>
                 </div>
@@ -146,14 +146,14 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--muted)" }}>
                     {formatListeners(artist.total_listeners)}
                   </span>
-                  <span className="font-mono text-[8px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
                     listeners
                   </span>
                 </div>
               </div>
 
               {seeds.length > 0 && (
-                <div className="font-mono text-[10px] mt-4 leading-relaxed" style={{ color: "var(--dim)" }}>
+                <div className="font-mono text-[11px] mt-4 leading-relaxed" style={{ color: "var(--dim)" }}>
                   via <span style={{ color: "var(--muted)" }}>{seeds.join(" · ")}</span>
                 </div>
               )}
@@ -166,7 +166,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => handleLinkClick(artist, l)}
-                    className="font-mono text-[9px] tracking-wider px-2.5 py-1.5 transition-colors duration-150"
+                    className="font-mono text-[11px] tracking-wider px-2.5 py-1.5 transition-colors duration-150"
                     style={{ border: "1px solid var(--border)", color: "var(--accent)" }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.borderColor = "var(--accent2)";

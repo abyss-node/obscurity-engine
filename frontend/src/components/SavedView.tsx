@@ -67,7 +67,7 @@ export default function SavedView({ onClose, onCountChange }: SavedViewProps) {
     >
       <div className="max-w-2xl mx-auto px-6 py-16 flex flex-col gap-10">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+          <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
             saved
           </span>
           <button
@@ -123,7 +123,7 @@ export default function SavedView({ onClose, onCountChange }: SavedViewProps) {
                 </div>
                 <button
                   onClick={() => handleRemove(item)}
-                  className="font-mono text-[10px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60"
+                  className="font-mono text-[11px] tracking-widest shrink-0 transition-opacity duration-150 hover:opacity-60"
                   style={{ color: "var(--dim)" }}
                 >
                   remove

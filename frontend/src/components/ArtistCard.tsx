@@ -39,7 +39,7 @@ type LinkDef = {
 const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
   <div className="flex flex-col gap-1.5">
     <span className="font-mono text-[19px] leading-none" style={{ color: "var(--text)" }}>{value}</span>
-    <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+    <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
       {caption}
     </span>
   </div>
@@ -134,7 +134,7 @@ export default function ArtistCard({
         onMouseLeave={(e) => (e.currentTarget.style.background = expanded ? "var(--surface)" : "transparent")}
       >
         {/* rank */}
-        <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+        <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
           {String(rank).padStart(2, "0")}
         </span>
 
@@ -146,7 +146,7 @@ export default function ArtistCard({
             </span>
           )}
           {saved && (
-            <span className="shrink-0 text-[10px] leading-none" style={{ color: "var(--text)" }} aria-label="saved">
+            <span className="shrink-0 text-[11px] leading-none" style={{ color: "var(--text)" }} aria-label="saved">
               ●
             </span>
           )}
@@ -157,7 +157,7 @@ export default function ArtistCard({
 
         {/* genre (desktop) */}
         <span
-          className="hidden min-[720px]:block font-mono text-[9px] tracking-widest uppercase truncate"
+          className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase truncate"
           style={{ color: "var(--muted)" }}
         >
           {primaryTag ?? ""}
@@ -165,7 +165,7 @@ export default function ArtistCard({
 
         {/* country (desktop) */}
         <span
-          className="hidden min-[720px]:block font-mono text-[9px] tracking-widest uppercase truncate"
+          className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase truncate"
           style={{ color: "var(--dim)" }}
         >
           {country ? formatGeoTag(country) : ""}
@@ -208,7 +208,7 @@ export default function ArtistCard({
                 </div>
                 {allSeeds.length > 0 && (
                   <div className="flex flex-col gap-2.5">
-                    <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                    <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
                       recommended via
                     </span>
                     <p className="font-mono text-[11px] leading-relaxed" style={{ color: "var(--muted)" }}>
@@ -218,12 +218,12 @@ export default function ArtistCard({
                 )}
                 {extraGenres.length > 0 && (
                   <div className="flex flex-col gap-2.5">
-                    <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genres</span>
+                    <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>genres</span>
                     <div className="flex flex-wrap gap-2">
                       {extraGenres.map((tag) => (
                         <span
                           key={tag}
-                          className="font-mono text-[9px] tracking-widest uppercase px-2.5 py-1 border"
+                          className="font-mono text-[11px] tracking-widest uppercase px-2.5 py-1 border"
                           style={{ color: "var(--muted)", borderColor: "var(--border)" }}
                         >
                           {tag}
@@ -247,7 +247,7 @@ export default function ArtistCard({
                       <button
                         type="button"
                         onClick={onUnsave}
-                        className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                        className="flex items-center gap-1.5 font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                         style={{ color: "var(--text)" }}
                       >
                         <span aria-hidden>●</span> saved
@@ -256,7 +256,7 @@ export default function ArtistCard({
                       <button
                         type="button"
                         onClick={onSave}
-                        className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                        className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                         style={{ color: "var(--muted)" }}
                       >
                         save
@@ -265,7 +265,7 @@ export default function ArtistCard({
                     <button
                       type="button"
                       onClick={onDismiss}
-                      className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                      className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                       style={{ color: "var(--muted)" }}
                     >
                       dismiss
@@ -276,7 +276,7 @@ export default function ArtistCard({
 
               {/* Right: listen / find */}
               <div className="flex flex-col gap-3">
-                <span className="font-mono text-[8px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listen / find</span>
+                <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listen / find</span>
                 <div className="flex flex-col gap-2">
                   {links.map((l) => (
                     <a
@@ -285,7 +285,7 @@ export default function ArtistCard({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => handleLinkClick(l)}
-                      className="flex items-center justify-between px-3 py-2.5 border font-mono text-[10px] tracking-wider transition-colors duration-150"
+                      className="flex items-center justify-between px-3 py-2.5 border font-mono text-[11px] tracking-wider transition-colors duration-150"
                       style={{ color: "var(--accent)", borderColor: "var(--border)" }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.borderColor = "var(--accent2)";

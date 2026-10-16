@@ -66,7 +66,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
       className={`relative cursor-pointer border transition-colors duration-150 flex flex-col
         ${isHero ? "p-10 md:p-14" : "p-6 md:p-8"}`}
       style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--dim)")}
+      onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--rule)")}
       onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.borderColor = "var(--border)")}
     >
       <div className="flex flex-col gap-3">
@@ -89,12 +89,12 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
             </span>
             <div className="flex items-center gap-2 flex-wrap mt-1">
                 {firstGenreTag(track.top_tags) && (
-                  <span className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
+                  <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--muted)" }}>
                     {firstGenreTag(track.top_tags)}
                   </span>
                 )}
                 {track.top_tags.filter(t => isGeoTag(t)).slice(0, 1).map(t => (
-                  <span key={t} className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                  <span key={t} className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
                     {formatGeoTag(t.toLowerCase())}
                   </span>
                 ))}
@@ -104,7 +104,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
                       key={tag}
                       initial={{ opacity: 0, x: -4 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="font-mono text-[10px] tracking-widest uppercase"
+                      className="font-mono text-[11px] tracking-widest uppercase"
                       style={{ color: "var(--dim)" }}
                     >
                       {tag}
@@ -113,7 +113,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
                 </AnimatePresence>
               </div>
             <Tooltip text="Total unique listeners on Last.fm globally. Lower = deeper cut.">
-              <span className="font-mono text-[10px] tracking-wider" style={{ color: "var(--dim)" }}>
+              <span className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
                 {formatListeners(track.total_listeners)}
               </span>
             </Tooltip>
@@ -121,13 +121,13 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
 
           {/* Top-right: preview button + rank */}
           <div className="flex flex-col items-end gap-2 shrink-0">
-            <span className="font-mono text-[9px] tracking-widest" style={{ color: "var(--dim)" }}>
+            <span className="font-mono text-[11px] tracking-widest" style={{ color: "var(--dim)" }}>
               /{rank.toString().padStart(2, "0")}
             </span>
             <button
               onClick={handlePreview}
               title={previewLoaded ? "Hide preview" : "Preview on Spotify"}
-              className="font-mono text-[9px] tracking-widest border px-2 py-1 transition-all duration-150"
+              className="font-mono text-[11px] tracking-widest border px-2 py-1 transition-all duration-150"
               style={{
                 borderColor: previewLoaded ? "#1DB954" : "var(--border)",
                 color: previewLoaded ? "#1DB954" : "var(--dim)",
@@ -163,7 +163,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
         </AnimatePresence>
 
         {preview === "error" && (
-          <p className="font-mono text-[9px] tracking-wider" style={{ color: "var(--dim)" }}>
+          <p className="font-mono text-[11px] tracking-wider" style={{ color: "var(--dim)" }}>
             not found on spotify
           </p>
         )}
@@ -178,19 +178,19 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
           <div className="mt-6 pt-6 border-t flex flex-col gap-5" style={{ borderColor: "var(--border)" }}>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <div className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
+                <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>conviction</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {Math.round(Math.min(track.conviction_score / 100, 10) * 10)}%
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
+                <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>stickiness</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {Math.round(Math.min(Math.log10(track.stickiness_score + 1) / Math.log10(101) * 10, 10) * 10)}%
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listeners</span>
+                <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>listeners</span>
                 <span className="font-mono text-base" style={{ color: "var(--text)" }}>
                   {formatListeners(track.total_listeners).replace(" listeners", "")}
                 </span>
@@ -199,10 +199,10 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
 
             {track.source_seeds.length > 0 && (
               <div className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+                <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
                   via
                 </span>
-                <span className="font-mono text-[10px]" style={{ color: "var(--muted)" }}>
+                <span className="font-mono text-[11px]" style={{ color: "var(--muted)" }}>
                   {track.source_seeds[0].track} — {track.source_seeds[0].artist}
                 </span>
               </div>
@@ -213,7 +213,7 @@ export default function TrackCard({ track, rank, isHero }: TrackCardProps) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              className="w-full py-3 text-center border font-mono text-[10px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70"
+              className="w-full py-3 text-center border font-mono text-[11px] tracking-widest uppercase transition-opacity duration-150 hover:opacity-70"
               style={{ borderColor: "var(--border)", color: "var(--muted)" }}
             >
               view on last.fm →

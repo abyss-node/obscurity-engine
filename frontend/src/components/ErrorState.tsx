@@ -41,7 +41,7 @@ export default function ErrorState({ error, onRetry, onAddApiKey }: ErrorStatePr
       <div className="flex items-center gap-3">
         <button
           onClick={onRetry}
-          className="font-mono text-[10px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
+          className="font-mono text-[11px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
           style={{ borderColor: "var(--discovery)", color: "var(--discovery)" }}
         >
           ↻ retry
@@ -49,7 +49,7 @@ export default function ErrorState({ error, onRetry, onAddApiKey }: ErrorStatePr
         {onAddApiKey && (
           <button
             onClick={onAddApiKey}
-            className="font-mono text-[10px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
+            className="font-mono text-[11px] tracking-widest px-5 py-2 border transition-opacity duration-150 hover:opacity-70"
             style={{ borderColor: "var(--border)", color: "var(--muted)" }}
           >
             add API key

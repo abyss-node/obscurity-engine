@@ -81,11 +81,11 @@ export default function OnboardingGuide() {
               <span className="font-mono text-[11px] tracking-wide" style={{ color: "var(--text)" }}>
                 {p.label}
               </span>
-              <span className="font-mono text-[9px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
+              <span className="font-mono text-[11px] tracking-widest uppercase" style={{ color: "var(--dim)" }}>
                 {p.os}
               </span>
             </div>
-            <span className="font-mono text-[10px]" style={{ color: "var(--dim)" }}>
+            <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>
               {active === p.id ? "▲" : "▼"}
             </span>
           </button>
@@ -106,7 +106,7 @@ export default function OnboardingGuide() {
                   {p.steps.map((step, i) => (
                     <div key={i} className="flex gap-3 items-start">
                       <span
-                        className="font-mono text-[9px] tracking-widest shrink-0 mt-0.5"
+                        className="font-mono text-[11px] tracking-widest shrink-0 mt-0.5"
                         style={{ color: "var(--dim)" }}
                       >
                         {String(i + 1).padStart(2, "0")}
@@ -120,7 +120,7 @@ export default function OnboardingGuide() {
                             href={step.link.href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-mono text-[10px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+                            className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
                             style={{ color: "var(--accent)" }}
                             onClick={(e) => e.stopPropagation()}
                           >

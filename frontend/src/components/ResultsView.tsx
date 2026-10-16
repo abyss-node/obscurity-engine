@@ -189,7 +189,7 @@ export default function ResultsView({
                   style={{ borderColor: "var(--border)", background: "var(--surface)" }}
                 >
                   <p
-                    className="font-mono text-[10px] tracking-wider leading-loose"
+                    className="font-mono text-[11px] tracking-wider leading-loose"
                     style={{ color: "var(--muted)" }}
                   >
                     [WARN] {lowDataMessage}
@@ -254,14 +254,14 @@ export default function ResultsView({
                     {spotifyStatus === "idle" && (
                       <button
                         onClick={onExportSpotify}
-                        className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
+                        className="font-mono text-[11px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
                         style={{ borderColor: "var(--border)", color: "var(--muted)" }}
                       >
                         <span style={{ color: "#1DB954" }}>♫</span> add to spotify
                       </button>
                     )}
                     {spotifyStatus === "loading" && (
-                      <span className="font-mono text-[10px] tracking-widest animate-pulse" style={{ color: "var(--dim)" }}>
+                      <span className="font-mono text-[11px] tracking-widest animate-pulse" style={{ color: "var(--dim)" }}>
                         creating playlist...
                       </span>
                     )}
@@ -270,14 +270,14 @@ export default function ResultsView({
                         href={playlistUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-mono text-[10px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
+                        className="font-mono text-[11px] tracking-widest border px-4 py-2 transition-opacity duration-150 hover:opacity-70 flex items-center gap-2"
                         style={{ borderColor: "#1DB954", color: "#1DB954" }}
                       >
                         <span>♫</span> open playlist ↗
                       </a>
                     )}
                     {spotifyStatus === "error" && (
-                      <span className="font-mono text-[10px] tracking-widest" style={{ color: "var(--muted)" }}>
+                      <span className="font-mono text-[11px] tracking-widest" style={{ color: "var(--muted)" }}>
                         spotify export failed —{" "}
                         <button
                           onClick={onSpotifyStatusReset}
