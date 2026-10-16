@@ -167,26 +167,27 @@ describe("ArtistCard — Bandcamp link", () => {
 
 describe("ArtistCard — origin (MusicBrainz meta)", () => {
   const base = { artist: makeArtist({ top_tags: ["swedish death metal"] }), rank: 1, expanded: false, onToggle: () => {} };
+  const lines = () => Array.from(screen.getByTestId("origin-desktop").children).map((c) => c.textContent);
 
-  it("shows the tag guess when there is no meta", () => {
+  it("shows the tag guess on line 1 when there is no meta", () => {
     render(<ArtistCard {...base} />);
-    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("Sweden");
+    expect(lines()).toEqual(["Sweden", " "]);
   });
 
-  it("shows country, year and type from meta, MB country winning over the tag guess", () => {
+  it("puts the country on line 1 and year · type on line 2, MB country winning over the tag guess", () => {
     render(
       <ArtistCard
         {...base}
         meta={{ country_iso2: "DE", area_name: "Germany", begin_year: 2014, artist_type: "Group" }}
       />
     );
-    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("Germany · 2014 · band");
+    expect(lines()).toEqual(["Germany", "2014 · band"]);
     expect(screen.getByTestId("origin-mobile")).toHaveTextContent("Germany · 2014 · band");
   });
 
-  it("renders nothing for an artist with neither tag nor meta", () => {
+  it("always renders both lines (reserved height) even with nothing known", () => {
     render(<ArtistCard {...base} artist={makeArtist({ top_tags: ["slowcore"] })} />);
-    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("");
-    expect(screen.queryByTestId("origin-mobile")).not.toBeInTheDocument();
+    expect(lines()).toEqual([" ", " "]);
+    expect(screen.getByTestId("origin-mobile").textContent).toBe(" ");
   });
 });

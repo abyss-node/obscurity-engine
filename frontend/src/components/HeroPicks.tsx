@@ -91,8 +91,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
           const stickiness = normStickiness(artist);
           const primaryTag = firstGenreTag(artist.top_tags);
           const origin = formatArtistOrigin(metaFor(artist.name), countryFromTags(artist.top_tags));
-          const meta = [primaryTag, origin].filter(Boolean).join(" · ");
-          const links = linksFor(artist);
+                  const links = linksFor(artist);
           const seeds = (artist.source_seeds ?? []).slice(0, 2).map((s) => s.name);
 
           return (
@@ -123,8 +122,15 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                 {artist.name}
               </div>
 
-              <div className="font-mono text-[11px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }} title={meta}>
-                {meta}
+              <div className="font-mono text-[11px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }}>
+                {primaryTag}
+              </div>
+              <div
+                className="font-mono text-[11px] leading-[14px] tracking-[0.14em] uppercase mt-1 min-h-[14px]"
+                style={{ color: "var(--dim)" }}
+                data-testid="hero-origin"
+              >
+                {origin || " "}
               </div>
 
               <div className="flex items-end gap-3 mt-5">

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Artist, ArtistMeta } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import { firstGenreTag, isGeoTag, countryFromTags } from "../lib/geoTags";
-import { formatArtistOrigin } from "../lib/artistMeta";
+import { formatArtistOrigin, formatArtistOriginParts } from "../lib/artistMeta";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent, canPersistActions } from "../lib/capability";
 import { postEvent } from "../lib/events";
@@ -49,7 +49,7 @@ const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
 );
 
 const ledgerCols =
-  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_172px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
 export default function ArtistCard({
   artist,
@@ -75,7 +75,9 @@ export default function ArtistCard({
   }, [isFocused]);
 
   const primaryTag = firstGenreTag(artist.top_tags);
-  const origin = formatArtistOrigin(meta, countryFromTags(artist.top_tags));
+  const tagCountry = countryFromTags(artist.top_tags);
+  const origin = formatArtistOrigin(meta, tagCountry);
+  const originParts = formatArtistOriginParts(meta, tagCountry);
   const extraGenres = artist.top_tags
     .filter((t) => !isGeoTag(t) && t.length <= 25 && t.toLowerCase() !== (primaryTag ?? "").toLowerCase())
     .slice(0, 6);
@@ -158,16 +160,13 @@ export default function ArtistCard({
             <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
               {artist.name}
             </span>
-            {origin && (
-              <span
-                className="min-[720px]:hidden font-mono text-[11px] tracking-wider uppercase truncate mt-1"
-                style={{ color: "var(--dim)" }}
-                title={origin}
-                data-testid="origin-mobile"
-              >
-                {origin}
-              </span>
-            )}
+            <span
+              className="min-[720px]:hidden font-mono text-[11px] leading-[14px] tracking-wider uppercase mt-1 min-h-[14px] break-words"
+              style={{ color: "var(--dim)" }}
+              data-testid="origin-mobile"
+            >
+              {origin || " "}
+            </span>
           </span>
         </span>
 
@@ -179,14 +178,15 @@ export default function ArtistCard({
           {primaryTag ?? ""}
         </span>
 
-        {/* country (desktop) */}
+        {/* country (desktop): country on line 1, "year · type" on line 2. Both
+            lines always render at a fixed height so fill-in never shifts the row. */}
         <span
-          className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase truncate"
-          style={{ color: "var(--dim)" }}
+          className="hidden min-[720px]:flex flex-col min-h-[28px] justify-center font-mono text-[11px] leading-[14px] tracking-wider uppercase min-w-0"
           title={origin || undefined}
           data-testid="origin-desktop"
         >
-          {origin}
+          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.country || " "}</span>
+          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.detail || " "}</span>
         </span>
 
         {/* conviction */}

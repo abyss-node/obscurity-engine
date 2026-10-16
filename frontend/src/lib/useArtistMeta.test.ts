@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { POLL_DELAYS_MS, resetArtistMetaCache, useArtistMeta } from "./useArtistMeta";
@@ -148,5 +149,77 @@ describe("useArtistMeta", () => {
     await flush();
     expect(result.current("Sigur Rós")).toEqual(SE);
     expect(result.current("sigur ros")).toBeUndefined();
+  });
+});
+
+// A backend stub whose fetch HONOURS AbortSignal like the real one: a request in
+// flight when its signal aborts rejects with AbortError instead of answering.
+// Each name is pending until 3s after it was first requested, then resolves.
+describe("useArtistMeta — abort-honouring backend, ownership hand-over", () => {
+  let firstSeen: Map<string, number>;
+  beforeEach(() => {
+    firstSeen = new Map();
+    fetchMock.mockImplementation((url: string, init?: { signal?: AbortSignal }) =>
+      new Promise((resolve, reject) => {
+        const names = new URL(url).searchParams.getAll("name");
+        const signal = init?.signal;
+        const abortErr = () => new DOMException("aborted", "AbortError");
+        if (signal?.aborted) return reject(abortErr());
+        const t = setTimeout(() => {
+          const now = Date.now();
+          const meta: Record<string, unknown> = {};
+          const pending: string[] = [];
+          for (const n of names) {
+            if (!firstSeen.has(n)) firstSeen.set(n, now);
+            if (now - firstSeen.get(n)! >= 3000) meta[n] = { ...SE, area_name: n };
+            else { meta[n] = null; pending.push(n); }
+          }
+          resolve(ok(meta, pending));
+        }, 500);
+        signal?.addEventListener("abort", () => { clearTimeout(t); reject(abortErr()); }, { once: true });
+      })
+    );
+  });
+
+  const all = (get: (n: string) => unknown, names: string[]) => names.every((n) => !!get(n));
+
+  it("StrictMode double-mount still fills every name", async () => {
+    const names = ["A", "B", "C"];
+    const { result } = renderHook(() => useArtistMeta(names), { wrapper: StrictMode });
+    await flush(60_000);
+    expect(all(result.current, names)).toBe(true);
+  });
+
+  it("reorder mid-poll (sort change) still fills every name", async () => {
+    const { result, rerender } = renderHook(({ n }) => useArtistMeta(n), { initialProps: { n: ["A", "B", "C"] } });
+    await flush(1000);
+    rerender({ n: ["C", "A", "B"] });
+    await flush(60_000);
+    expect(all(result.current, ["A", "B", "C"])).toBe(true);
+  });
+
+  it("grow mid-poll (view more) fills old and new names", async () => {
+    const { result, rerender } = renderHook(({ n }) => useArtistMeta(n), { initialProps: { n: ["A", "B"] } });
+    await flush(1000);
+    rerender({ n: ["A", "B", "C", "D"] });
+    await flush(60_000);
+    expect(all(result.current, ["A", "B", "C", "D"])).toBe(true);
+  });
+
+  it("shrink mid-poll still fills the remaining names", async () => {
+    const { result, rerender } = renderHook(({ n }) => useArtistMeta(n), { initialProps: { n: ["A", "B", "C"] } });
+    await flush(1000);
+    rerender({ n: ["B"] });
+    await flush(60_000);
+    expect(all(result.current, ["B"])).toBe(true);
+  });
+
+  it("unmounting one holder mid-poll does not starve the other", async () => {
+    const first = renderHook(() => useArtistMeta(["A", "B"]));
+    const second = renderHook(() => useArtistMeta(["A", "B", "C"]));
+    await flush(1000);
+    first.unmount();
+    await flush(60_000);
+    expect(all(second.result.current, ["A", "B", "C"])).toBe(true);
   });
 });

@@ -37,19 +37,29 @@ function metaCountry(meta: ArtistMeta): string | null {
 }
 
 /**
- * "Sweden · 2014 · band". Country: MusicBrainz first, else the tag guess
+ * Origin split for two-line display: `country` ("Sweden") and `detail`
+ * ("2014 · band"). Country: MusicBrainz first, else the tag guess
  * (`tagCountryKey` from countryFromTags). Year and type only come from MB.
- * Parts that do not exist are omitted; returns "" when nothing is known.
+ * Missing parts are empty strings.
  */
-export function formatArtistOrigin(
+export function formatArtistOriginParts(
   meta: ArtistMeta | null | undefined,
   tagCountryKey: string | null | undefined
-): string {
+): { country: string; detail: string } {
   const country =
     (meta ? metaCountry(meta) : null) ?? (tagCountryKey ? formatGeoTag(tagCountryKey) : null);
   const year = meta?.begin_year ? String(meta.begin_year) : null;
   const type = formatArtistType(meta?.artist_type);
-  return [country, year, type].filter(Boolean).join(" · ");
+  return { country: country ?? "", detail: [year, type].filter(Boolean).join(" · ") };
+}
+
+/** "Sweden · 2014 · band", parts omitted when absent; "" when nothing is known. */
+export function formatArtistOrigin(
+  meta: ArtistMeta | null | undefined,
+  tagCountryKey: string | null | undefined
+): string {
+  const { country, detail } = formatArtistOriginParts(meta, tagCountryKey);
+  return [country, detail].filter(Boolean).join(" · ");
 }
 
 /** Distinct, non-blank, <=200-char names, capped at 25 (the endpoint's limits). */

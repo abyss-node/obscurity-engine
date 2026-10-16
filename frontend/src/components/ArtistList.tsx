@@ -38,7 +38,7 @@ const SORT_OPTIONS = [
 // Shared grid template — column header row must line up with each ledger row.
 // Keep in sync with `ledgerCols` in ArtistCard.tsx.
 const ledgerCols =
-  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_172px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
 
 export default function ArtistList({
   artists,
