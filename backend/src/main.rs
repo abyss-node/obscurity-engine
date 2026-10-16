@@ -124,6 +124,12 @@ fn watchdog_probe(addr: &std::net::SocketAddr) -> bool {
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+    // Render's free tier (0.1 CPU) gives this runtime ONE worker thread, so any
+    // blocked worker is a whole-process outage. Logged so that is visible.
+    println!(
+        "Runtime: {} tokio worker thread(s)",
+        tokio::runtime::Handle::current().metrics().num_workers()
+    );
 
     // Key pool: prefer a comma-separated LASTFM_API_KEYS (owner keys), fall back
     // to the single LASTFM_API_KEY. User-shared keys are added at runtime via

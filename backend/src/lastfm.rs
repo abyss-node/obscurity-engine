@@ -290,6 +290,10 @@ pub struct LastfmClient {
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+/// Entry cap for `LastfmClient::audit_cache` (keyed `artist:username`, so one
+/// cold discovery adds ~600 entries and the cap is reached after ~16 of them).
+const AUDIT_CACHE_CAP: usize = 10_000;
+
 /// How long a key sits out after tripping Last.fm's rate limit (Error 29).
 const KEY_BENCH_SECS: u64 = 20;
 
@@ -642,15 +646,31 @@ impl LastfmClient {
         let resp_text = self.get_with_retry(&url).await?;
         let response: crate::models::ArtistInfoResponse = serde_json::from_str(&resp_text)?;
 
-        // Cap cache at 10,000 entries to prevent unbounded memory growth
-        if self.audit_cache.len() >= 10_000 {
-            if let Some(key) = self.audit_cache.iter().next().map(|e| e.key().clone()) {
+        self.remember_artist_info(cache_key, response.clone());
+
+        Ok(response)
+    }
+
+    /// Insert into `audit_cache`, evicting one arbitrary entry once it holds
+    /// `AUDIT_CACHE_CAP` so memory stays bounded.
+    ///
+    /// The victim is picked in its own `let` statement on purpose. A DashMap
+    /// iterator holds a read guard on the shard it is walking, and a temporary
+    /// in an `if let` scrutinee lives until the end of the whole block under
+    /// edition 2021. Written as `if let Some(k) = map.iter().next()... {
+    /// map.remove(&k) }`, the remove asks for a write lock on the shard this
+    /// same thread is still reading, and the thread blocks forever. On a
+    /// one-worker runtime that is every route, and the liveness watchdog kills
+    /// the process (the 2026-10-16 Render restart signature, reproduced
+    /// locally). `insert_at_cap_evicts_without_deadlocking` guards it.
+    fn remember_artist_info(&self, cache_key: String, response: crate::models::ArtistInfoResponse) {
+        if self.audit_cache.len() >= AUDIT_CACHE_CAP {
+            let victim = self.audit_cache.iter().next().map(|e| e.key().clone());
+            if let Some(key) = victim {
                 self.audit_cache.remove(&key);
             }
         }
-        self.audit_cache.insert(cache_key, (Instant::now(), response.clone()));
-
-        Ok(response)
+        self.audit_cache.insert(cache_key, (Instant::now(), response));
     }
 
     pub async fn fetch_user_top_tracks(
@@ -823,6 +843,45 @@ impl LastfmClient {
         let resp_text = self.get_with_retry(&url).await?;
         let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;
         Ok(response.topartists.artist)
+    }
+}
+
+#[cfg(test)]
+mod audit_cache_tests {
+    use super::*;
+    use crate::models::{Artist, ArtistInfoResponse, Stats};
+
+    fn info(name: &str) -> ArtistInfoResponse {
+        ArtistInfoResponse {
+            artist: Artist {
+                name: name.to_string(),
+                stats: Stats { listeners: 1, playcount: 1, userplaycount: None },
+                tags: None,
+                stickiness_score: None,
+            },
+        }
+    }
+
+    /// Regression for the 2026-10-16 Render restarts: the first insert after
+    /// the cache reached its cap deadlocked the calling thread inside eviction,
+    /// which on a one-worker runtime froze every route. Runs on a side thread
+    /// so a regression fails here in seconds instead of hanging the suite.
+    #[test]
+    fn insert_at_cap_evicts_without_deadlocking() {
+        let client = Arc::new(LastfmClient::new("TESTKEY".into()));
+        for i in 0..AUDIT_CACHE_CAP {
+            client.audit_cache.insert(format!("a{i}:u"), (Instant::now(), info("x")));
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let c = Arc::clone(&client);
+        std::thread::spawn(move || {
+            c.remember_artist_info("new:u".into(), info("new"));
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("audit_cache insert at cap deadlocked (shard guard held across remove)");
+        assert_eq!(client.audit_cache.len(), AUDIT_CACHE_CAP);
+        assert!(client.audit_cache.contains_key("new:u"));
     }
 }
 
