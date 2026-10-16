@@ -747,6 +747,51 @@ mod integration_tests {
     }
 
     #[tokio::test]
+    async fn artist_info_fetch_double_encodes_plus_in_names() {
+        // Last.fm decodes the query string twice: a correctly encoded "%2B"
+        // arrives as "+" and is then read as a space, so "Florence + The
+        // Machine" resolved to the variant page "Florence   The Machine"
+        // (19.8K listeners, 0 userplaycount) instead of the real one (4.0M).
+        // Only "%252B" survives. Mock servers decode once, so assert on the
+        // raw query string.
+        let captured: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let cap = Arc::clone(&captured);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route(
+            "/",
+            get(move |axum::extract::RawQuery(q): axum::extract::RawQuery| {
+                let cap = Arc::clone(&cap);
+                async move {
+                    cap.lock().unwrap().push(q.unwrap_or_default());
+                    axum::Json(serde_json::json!({
+                        "artist": {
+                            "name": "Florence + the Machine",
+                            "stats": { "listeners": "4007565", "playcount": "290819216" },
+                            "tags": { "tag": [] }
+                        }
+                    }))
+                }
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, mock).await.unwrap();
+        });
+        let _base = MockLastfmBase::set(addr);
+
+        let client = crate::lastfm::LastfmClient::new("k".into());
+        client
+            .fetch_artist_info("Florence + the Machine", "someuser")
+            .await
+            .expect("artist info fetch should succeed against the mock");
+        let qs = captured.lock().unwrap().join("&");
+        assert!(
+            qs.contains("artist=Florence%20%252B%20the%20Machine"),
+            "'+' must be double-encoded for Last.fm, got: {qs}"
+        );
+    }
+
+    #[tokio::test]
     async fn events_malformed_body_is_400() {
         let app = build_router(no_db_state());
         let resp = app.oneshot(ev_req("{not json")).await.unwrap();

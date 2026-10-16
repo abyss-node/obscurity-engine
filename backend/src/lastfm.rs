@@ -139,6 +139,16 @@ pub struct WeeklyChartArtist {
     pub playcount: String,
 }
 
+/// Percent-encode a Last.fm query value. Last.fm decodes the query string
+/// twice, so a correctly encoded `%2B` reaches its lookup as a space: "Florence
+/// + The Machine" resolved to the variant page "Florence   The Machine" (19.8K
+/// listeners, no user plays) instead of the real one (4.0M), and "Sultan +
+/// Shepard" likewise. Only `%252B` survives the second decode as a literal `+`.
+/// Every artist/track/tag/user value goes through here, never `urlencoding` directly.
+pub fn lf_enc(value: &str) -> String {
+    urlencoding::encode(value).replace("%2B", "%252B")
+}
+
 const LASTFM_API_URL: &str = "http://ws.audioscrobbler.com/2.0/";
 
 /// Base Last.fm API URL, overridable via `LASTFM_API_BASE` — same env var and
@@ -519,7 +529,7 @@ impl LastfmClient {
     ) -> Result<TopArtistsResponse, BoxError> {
         let url = format!(
             "{}?method=user.gettopartists&user={}&api_key={}&period={}&format=json&limit={}",
-            lastfm_api_base(), urlencoding::encode(username), self.api_key, period, limit
+            lastfm_api_base(), lf_enc(username), self.api_key, period, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
@@ -547,7 +557,7 @@ impl LastfmClient {
     ) -> Result<WeeklyArtistChartResponse, BoxError> {
         let url = format!(
             "{}?method=user.getweeklyartistchart&user={}&api_key={}&from={}&to={}&format=json",
-            lastfm_api_base(), urlencoding::encode(username), self.api_key, from, to
+            lastfm_api_base(), lf_enc(username), self.api_key, from, to
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
@@ -567,7 +577,7 @@ impl LastfmClient {
     ) -> Result<UserInfoResponse, BoxError> {
         let url = format!(
             "{}?method=user.getinfo&user={}&api_key={}&format=json",
-            lastfm_api_base(), urlencoding::encode(username), self.api_key
+            lastfm_api_base(), lf_enc(username), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
@@ -588,7 +598,7 @@ impl LastfmClient {
     ) -> Result<SimilarArtistsResponse, BoxError> {
         let url = format!(
             "{}?method=artist.getsimilar&artist={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL, urlencoding::encode(artist_name), self.api_key, limit
+            LASTFM_API_URL, lf_enc(artist_name), self.api_key, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         Ok(serde_json::from_str(&resp_text)?)
@@ -604,7 +614,7 @@ impl LastfmClient {
     pub async fn fetch_artist_mbid(&self, artist_name: &str) -> Result<Option<String>, BoxError> {
         let url = format!(
             "{}?method=artist.getinfo&artist={}&api_key={}&format=json",
-            LASTFM_API_URL, urlencoding::encode(artist_name), self.api_key
+            LASTFM_API_URL, lf_enc(artist_name), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: Value = serde_json::from_str(&resp_text)?;
@@ -641,7 +651,7 @@ impl LastfmClient {
         // to the canonical page; a no-op for names already canonical.
         let url = format!(
             "{}?method=artist.getinfo&artist={}&username={}&autocorrect=1&api_key={}&format=json",
-            lastfm_api_base(), urlencoding::encode(artist_name), urlencoding::encode(username), self.api_key
+            lastfm_api_base(), lf_enc(artist_name), lf_enc(username), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
         let response: crate::models::ArtistInfoResponse = serde_json::from_str(&resp_text)?;
@@ -681,7 +691,7 @@ impl LastfmClient {
     ) -> Result<TopTracksResponse, BoxError> {
         let url = format!(
             "{}?method=user.gettoptracks&user={}&api_key={}&period={}&format=json&limit={}",
-            lastfm_api_base(), urlencoding::encode(username), self.api_key, period, limit
+            lastfm_api_base(), lf_enc(username), self.api_key, period, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&resp_text)?;
@@ -704,9 +714,9 @@ impl LastfmClient {
         let url = format!(
             "{}?method=track.getinfo&artist={}&track={}&username={}&api_key={}&format=json",
             LASTFM_API_URL,
-            urlencoding::encode(artist),
-            urlencoding::encode(track),
-            urlencoding::encode(username),
+            lf_enc(artist),
+            lf_enc(track),
+            lf_enc(username),
             self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;
@@ -724,7 +734,7 @@ impl LastfmClient {
     ) -> Result<TopTracksResponse, BoxError> {
         let url = format!(
             "{}?method=artist.gettoptracks&artist={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL, urlencoding::encode(artist), self.api_key, limit
+            LASTFM_API_URL, lf_enc(artist), self.api_key, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&resp_text)?;
@@ -755,7 +765,7 @@ impl LastfmClient {
 
         let url = format!(
             "{}?method=artist.gettoptags&artist={}&api_key={}&format=json",
-            LASTFM_API_URL, urlencoding::encode(artist), self.api_key
+            LASTFM_API_URL, lf_enc(artist), self.api_key
         );
         let text = self.get_with_retry(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&text)?;
@@ -838,7 +848,7 @@ impl LastfmClient {
         }
         let url = format!(
             "{}?method=tag.gettopartists&tag={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL, urlencoding::encode(tag), self.api_key, limit
+            LASTFM_API_URL, lf_enc(tag), self.api_key, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;
