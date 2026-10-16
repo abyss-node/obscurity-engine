@@ -183,6 +183,25 @@ so a single run can't collide with itself inside one `INSERT` — Postgres
 rejects duplicate keys within a single statement. Across runs on the same
 day, the first observation wins; there is no "latest wins" update.
 
+## `artist_meta`
+
+MusicBrainz origin facts per artist, written by the `GET /api/artist-meta`
+background worker (migration `0002_artist_meta.sql`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `name_key` | TEXT PK | `normalize_artist_name` of the display name (same normaliser as dedup and the blend arm). |
+| `mbid` | TEXT | Null for a miss. |
+| `country_iso2` | TEXT | ISO 3166-1 alpha-2 or an MB pseudo-code. |
+| `area_name` | TEXT | |
+| `begin_year` | INTEGER | |
+| `artist_type` | TEXT | MB type verbatim. |
+| `fetched_at` | TIMESTAMPTZ NOT NULL | |
+
+A row with all four metadata columns NULL is a stored miss, retried after 30
+days. Rows with data never expire. Not user data: not touched by
+`DELETE /api/me/data`.
+
 ## Retention summary
 
 | Table | Retention |
@@ -190,6 +209,7 @@ day, the first observation wins; there is no "latest wins" update.
 | `sessions` | 90 days from creation (`expires_at`); no active cleanup job — expired rows simply stop authenticating. |
 | `recommendations` | No TTL on the row itself, but only referenceable by `POST /api/events` for 24h from `created_at` (`REC_TTL`) — after that, an event against it 410s. |
 | `saved_artists` / `dismissed_artists` | Until the user unsaves/undoes, or calls `DELETE /api/me/data` (full purge). |
+| `artist_meta` | Hits permanent; misses retried after 30 days. |
 | `events`, `impressions`, `runs`, `artist_observations` | No TTL — retained indefinitely, deleted only via `DELETE /api/me/data` (for rows keyed to that user) or manual ops. |
 
 `DELETE /api/me/data` (`Db::purge_user`) deletes all `runs` rows for the

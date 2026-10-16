@@ -286,3 +286,35 @@ where
         _ => Err(D::Error::custom("Expected number or string")),
     }
 }
+
+// ── GET /api/artist-meta ────────────────────────────────────────────────────
+
+/// MusicBrainz-derived origin facts for one artist. All four keys are ALWAYS
+/// serialized (null when unknown), never omitted.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ArtistMetaEntry {
+    /// ISO 3166-1 alpha-2, or an MB pseudo-code such as "XW"/"XE".
+    pub country_iso2: Option<String>,
+    pub area_name: Option<String>,
+    pub begin_year: Option<i32>,
+    /// MusicBrainz artist type, verbatim: "Person", "Group", "Orchestra", ...
+    pub artist_type: Option<String>,
+}
+
+impl ArtistMetaEntry {
+    pub fn is_empty(&self) -> bool {
+        self.country_iso2.is_none()
+            && self.area_name.is_none()
+            && self.begin_year.is_none()
+            && self.artist_type.is_none()
+    }
+}
+
+/// `meta` is keyed by each name exactly as requested; the value is `null` when
+/// nothing is known (unresolved or a stored miss). `pending` lists requested
+/// names still resolving in the background. Both keys always present.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ArtistMetaResponse {
+    pub meta: std::collections::BTreeMap<String, Option<ArtistMetaEntry>>,
+    pub pending: Vec<String>,
+}

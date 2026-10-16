@@ -235,6 +235,11 @@ async fn migrate_with_retry(url: String) {
 }
 
 impl Db {
+    /// Pool accessor for modules that own their own tables (`artist_meta`).
+    pub fn pool(&self) -> &PgPool {
+        &self.pool
+    }
+
     /// Best-effort connectivity probe for `/api/status` (ok vs error). Cheap
     /// `SELECT 1` bounded by the acquire timeout.
     pub async fn ping(&self) -> bool {

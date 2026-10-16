@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 mod api;
+mod artist_meta;
 mod auth;
 mod cache;
 mod db;
@@ -49,6 +50,9 @@ pub struct AppState {
     // ListenBrainz client, wired only when `candidate_source` needs it. `None`
     // for the default `lastfm` source (the blend arm is never constructed).
     pub listenbrainz: Option<Arc<ListenBrainzClient>>,
+    // Artist origin lookups (GET /api/artist-meta). Shares the blend arm's
+    // MusicBrainz pacer when blend is on, else owns a private client.
+    pub artist_meta: artist_meta::ArtistMetaService,
     // Result cache — in-memory by default, Redis-backed when REDIS_URL is set.
     // Keys are namespaced by the callers (`reverse_scrobble:…`, `tracks:…`).
     pub cache: cache::CacheStore,
@@ -90,6 +94,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(api::me_data_handler).delete(api::me_data_delete_handler),
         )
         .route("/api/status", get(api::status_handler))
+        .route("/api/artist-meta", get(artist_meta::artist_meta_handler))
         .with_state(state)
         // Coarse outer timeout — see REQUEST_TIMEOUT_SECS above. Applied here
         // (inside build_router) rather than only in main() so it covers every
@@ -221,6 +226,10 @@ async fn main() {
         None
     };
 
+    let artist_meta = artist_meta::ArtistMetaService::new(
+        listenbrainz.clone().unwrap_or_else(|| Arc::new(ListenBrainzClient::new())),
+    );
+
     let metrics = Arc::new(metrics::Metrics::new());
     let rate_limiter = Arc::new(ratelimit::RateLimiter::new());
     let state = Arc::new(AppState {
@@ -228,6 +237,7 @@ async fn main() {
         spotify,
         candidate_source,
         listenbrainz,
+        artist_meta,
         cache: cache_store,
         metrics: Arc::clone(&metrics),
         db,
@@ -369,6 +379,7 @@ mod integration_tests {
             spotify: None,
             candidate_source: CandidateSource::Lastfm,
             listenbrainz: None,
+            artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::new()), false),
             cache: cache::CacheStore::InMemory(cache::InMemoryStore::new()),
             metrics: Arc::new(metrics::Metrics::new()),
             db,
@@ -395,6 +406,7 @@ mod integration_tests {
             spotify: None,
             candidate_source: CandidateSource::Blend,
             listenbrainz: Some(Arc::new(lb)),
+            artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::new()), false),
             cache: cache::CacheStore::InMemory(cache::InMemoryStore::new()),
             metrics: Arc::new(metrics::Metrics::new()),
             db: None,
@@ -484,6 +496,7 @@ mod integration_tests {
         assert_eq!(json["lastfm_auth"], "disabled");
         // Default candidate source is lastfm → LB reports "disabled".
         assert_eq!(json["listenbrainz"], "disabled");
+        assert_eq!(json["musicbrainz"], "ok");
         assert_eq!(json["key_pool"]["keys"], 1);
         assert!(json["version"].is_string());
     }

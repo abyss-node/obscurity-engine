@@ -434,6 +434,7 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
             "spotify": spotify,
             "lastfm_auth": lastfm_auth,
             "listenbrainz": listenbrainz,
+            "musicbrainz": crate::artist_meta::status_str(&state),
             "key_pool": { "keys": state.client.key_count() },
             "version": env!("CARGO_PKG_VERSION"),
         })),

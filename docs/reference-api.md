@@ -339,6 +339,7 @@ features seem to silently fail — see
   "spotify": "ok",         // "ok" (SPOTIFY_CLIENT_ID + SECRET set) | "disabled" (no error state)
   "lastfm_auth": "ok",     // "ok" (LASTFM_API_SECRET set) | "disabled" (no error state)
   "listenbrainz": "disabled", // "disabled" (CANDIDATE_SOURCE=lastfm/unset) | "ok" (blend arm live) | "error" (selected but LB currently failing)
+  "musicbrainz": "ok",     // "ok" | "degraded" (the last artist-meta MusicBrainz call failed transiently); never "disabled", no MB call per status request
   "key_pool": { "keys": 3 },
   "version": "0.1.0"       // CARGO_PKG_VERSION
 }
@@ -358,6 +359,61 @@ ListenBrainz calls are failing. The status endpoint never itself calls
 ListenBrainz — the flag is updated by real discovery traffic. Because the blend
 arm is **fail-open** (see below), `"error"` here does **not** mean discovery is
 down: requests still succeed on Last.fm-only candidates, just without the blend.
+
+### `GET /api/artist-meta`
+
+No auth. Artist origin facts (country, area, begin year, type) from
+MusicBrainz, filled in after discovery results render so discovery latency is
+unchanged. Design: [design-artist-geo-2026-10-16.md](design-artist-geo-2026-10-16.md).
+
+**Request.** Repeated `name=` query params, URL-encoded (`+` or `%20` for
+space), 1 to 25 distinct names, each at most 200 chars. Repeated params, not a
+comma-separated `names=`, because artist names contain commas. Blank names are
+skipped and duplicates collapse. Zero names, more than 25, an over-long name or
+invalid UTF-8 returns `400` with the usual `{error, code}` envelope.
+
+```
+GET /api/artist-meta?name=Entombed&name=Crosby%2C+Stills+%26+Nash
+```
+
+**Response** (`200`, both top-level keys always present):
+
+```jsonc
+{
+  "meta": {
+    "Entombed": {                    // key = the name exactly as requested
+      "country_iso2": "SE",          // string | null; ISO 3166-1 alpha-2, or an MB pseudo-code (XW, XE)
+      "area_name": "Sweden",         // string | null
+      "begin_year": 1987,            // number | null
+      "artist_type": "Group"         // string | null; MB type verbatim (Person, Group, Orchestra, ...)
+    },
+    "Some Unknown Band": null        // null = nothing known: not resolved yet, or resolved with no match
+  },
+  "pending": ["Some Unknown Band"]   // requested names still resolving; re-poll these
+}
+```
+
+Inside an object, all four keys are always emitted (null when unknown). An
+object is only returned when at least one of the four is non-null. A name that
+is `null` in `meta` and absent from `pending` is a settled miss (do not poll
+it again).
+
+**Behaviour.** Answers immediately from storage and never waits on
+MusicBrainz. Uncached names are queued to one background worker (bounded queue
+of 256; concurrent requests for the same name share one lookup) and appear in
+`pending`; the next poll picks up stored results. Typical cost is about 1 to
+1.5 s of MusicBrainz time per artist, so a cold batch of 10 settles in roughly
+12 to 20 s. Resolution order: Last.fm `artist.getinfo` mbid, then MusicBrainz
+lookup by mbid; if Last.fm has no mbid (or MB 404s it), MusicBrainz name search
+accepted at score >= 80. Misses are stored and retried after 30 days; transient
+failures (MB 503/5xx, timeout) are not stored and retry on the next poll.
+Storage is Postgres `artist_meta` when `DATABASE_URL` is set, else the
+`CacheStore` (30-day TTL); the endpoint works with neither configured.
+
+**Sharing MusicBrainz with the blend arm.** MB allows 1 req/s per IP, so these
+lookups use the ListenBrainz blend arm's own semaphore and pacer and yield to
+it: they only take the semaphore while no blend lookup is queued, and give up
+(transient, retried later) after 60 s of continuous blend traffic.
 
 ## Caching
 

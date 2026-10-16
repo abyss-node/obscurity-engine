@@ -37,7 +37,7 @@
 //! explicitly asks for ~1 req/s) is serialized behind a 1s pacer. A descriptive
 //! User-Agent is sent on both hosts (both ask for one).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use reqwest::Client;
@@ -75,7 +75,7 @@ const LB_SIMILAR_CONCURRENCY: usize = 4;
 const MB_MIN_INTERVAL: Duration = Duration::from_millis(1050);
 /// MusicBrainz search score below this is a weak match — don't attach the wrong
 /// artist (mirrors the eval's threshold).
-const MB_SCORE_FLOOR: i64 = 80;
+pub(crate) const MB_SCORE_FLOOR: i64 = 80;
 
 /// The candidate-generation source, selected by the `CANDIDATE_SOURCE` env var.
 /// Default (and any unset/invalid value) is `Lastfm` — exactly today's behavior.
@@ -119,6 +119,17 @@ impl CandidateSource {
             Self::Blend => "blend",
         }
     }
+}
+
+/// Outcome of a low-priority MusicBrainz call that did not produce JSON.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MbError {
+    /// 404/400: the mbid does not exist — a definitive answer.
+    NotFound,
+    /// Transport error, 5xx, 429, or unparseable body — retry later, never cache.
+    Transient,
+    /// Blend traffic kept the semaphore busy for the whole wait budget.
+    Starved,
 }
 
 /// A minimum-interval pacer: serializes callers so at most one request per
@@ -168,6 +179,10 @@ pub struct ListenBrainzClient {
     /// Serializes MusicBrainz to one caller at a time (paired with `mb_pacer`).
     mb_sem: Semaphore,
     mb_pacer: Pacer,
+    /// Blend-arm callers currently queued for (or about to queue for) `mb_sem`.
+    /// Low-priority callers (`mb_get_low_priority`) only take the semaphore
+    /// while this is zero, so blend work always goes first.
+    mb_blend_waiting: AtomicUsize,
     /// Liveness signal for `/api/status`: set true on any successful LB fetch,
     /// false when a similar-artists call fails at the transport/5xx level. A 404
     /// (unknown mbid) is a legitimate miss and does NOT flip this. Starts true so
@@ -204,6 +219,7 @@ impl ListenBrainzClient {
             sim_sem: Semaphore::new(LB_SIMILAR_CONCURRENCY),
             mb_sem: Semaphore::new(1),
             mb_pacer: Pacer::new(MB_MIN_INTERVAL),
+            mb_blend_waiting: AtomicUsize::new(0),
             healthy: AtomicBool::new(true),
             similar_url,
             mb_url,
@@ -220,6 +236,11 @@ impl ListenBrainzClient {
     #[cfg(test)]
     pub fn mark_unhealthy(&self) {
         self.healthy.store(false, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub fn test_set_blend_waiting(&self, n: usize) {
+        self.mb_blend_waiting.store(n, Ordering::SeqCst);
     }
 
     // ── MBID resolution: Last.fm mbid (free) → MusicBrainz search ────────────
@@ -257,7 +278,11 @@ impl ListenBrainzClient {
     }
 
     async fn mb_search(&self, name: &str) -> Option<String> {
-        let _permit = self.mb_sem.acquire().await.ok()?;
+        // Announce before queueing so a low-priority holder-to-be sees us.
+        self.mb_blend_waiting.fetch_add(1, Ordering::SeqCst);
+        let permit = self.mb_sem.acquire().await;
+        self.mb_blend_waiting.fetch_sub(1, Ordering::SeqCst);
+        let _permit = permit.ok()?;
         self.mb_pacer.wait().await;
         let query = format!("artist:\"{}\"", name);
         let resp = match self
@@ -284,6 +309,55 @@ impl ListenBrainzClient {
             return None;
         }
         best.get("id").and_then(|i| i.as_str()).map(str::to_string)
+    }
+
+    /// MusicBrainz artist endpoint base (`.../ws/2/artist/`); an mbid appended
+    /// to it is the lookup URL, the bare base is the search URL.
+    pub fn mb_base_url(&self) -> &str {
+        &self.mb_url
+    }
+
+    /// GET against MusicBrainz through the SAME `mb_sem` + `mb_pacer` as the
+    /// blend arm, but yielding to it: the semaphore is only taken (via
+    /// `try_acquire`) while no blend lookup is queued, otherwise this polls
+    /// every 150 ms. A blend lookup arriving while a low-priority call holds the
+    /// permit waits at most one paced call. Gives up with `MbError::Starved`
+    /// after `max_wait` of continuous blend traffic (caller treats as transient).
+    pub async fn mb_get_low_priority(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        max_wait: Duration,
+    ) -> Result<Value, MbError> {
+        let deadline = Instant::now() + max_wait;
+        let _permit = loop {
+            if self.mb_blend_waiting.load(Ordering::SeqCst) == 0 {
+                if let Ok(p) = self.mb_sem.try_acquire() {
+                    break p;
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(MbError::Starved);
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        };
+        self.mb_pacer.wait().await;
+        let resp = self
+            .http
+            .get(url)
+            .query(query)
+            .send()
+            .await
+            .map_err(|_| MbError::Transient)?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::BAD_REQUEST {
+            return Err(MbError::NotFound);
+        }
+        if !status.is_success() {
+            // 503 (MB rate limit), 5xx, 429 — transient, never a stored miss.
+            return Err(MbError::Transient);
+        }
+        resp.json().await.map_err(|_| MbError::Transient)
     }
 
     // ── similar-artists ──────────────────────────────────────────────────────
