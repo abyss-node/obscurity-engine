@@ -22,7 +22,7 @@ const NEUTRAL_DOT = "#7A7265"; // dot fill, needs only 3:1 non-text contrast
 const NEUTRAL_DOT_BORDER = "#5A5249";
 const NEUTRAL_LABEL = "#9A9082";
 const NEUTRAL_LABEL_HOVER = "#B5AC9C";
-const QUADRANT = "#8A8071"; // = --dim
+const QUADRANT = "#A39A8A"; // = --muted: quadrant titles sit one step above their --dim subtitles
 const GRIDLINE = "#1A1916"; // = --surface2
 
 type Dot = {
@@ -70,7 +70,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
         return {
           name: a.name,
           x: 8 + (conviction / 100) * 84,
-          y: 92 - (stickiness / 100) * 84, // invert: high stickiness → top
+          y: 84 - (stickiness / 100) * 76, // invert: high stickiness → top; floor at 84% keeps dots and labels clear of the bottom quadrant titles
           size: obscurityDotSize(a.total_listeners),
           dual: !!a.cross_validated,
           labelRight: conviction < 70,
@@ -154,19 +154,19 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
             <div className="absolute left-0 right-0" style={{ top: "50%", height: 1, background: GRIDLINE }} />
 
             {/* Quadrant labels */}
-            <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, top: 16 }}>
+            <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, top: 16, maxWidth: "calc(50% - 24px)" }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: "var(--accent)", letterSpacing: "0.18em" }}>keepers</span>
               <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>love now · love later</span>
             </div>
-            <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, top: 16 }}>
+            <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, top: 16, maxWidth: "calc(50% - 24px)" }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>growers</span>
               <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>slow burn</span>
             </div>
-            <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, bottom: 34 }}>
+            <div className="absolute flex flex-col gap-[3px] text-right" style={{ right: 18, bottom: 34, maxWidth: "calc(50% - 24px)" }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>quick hits</span>
               <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>instant · may fade</span>
             </div>
-            <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, bottom: 34 }}>
+            <div className="absolute flex flex-col gap-[3px]" style={{ left: 18, bottom: 34, maxWidth: "calc(50% - 24px)" }}>
               <span className="font-mono text-[11px] uppercase" style={{ color: QUADRANT, letterSpacing: "0.18em" }}>wildcards</span>
               <span className="font-mono text-[11px]" style={{ color: "var(--dim)" }}>a gamble</span>
             </div>

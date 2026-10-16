@@ -125,12 +125,12 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                 {meta}
               </div>
 
-              <div className="flex items-end gap-6 mt-5">
+              <div className="flex items-end gap-3 mt-5">
                 <div className="flex flex-col gap-1.5">
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--text)" }}>
                     {conviction}
                   </span>
-                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-normal uppercase" style={{ color: "var(--dim)" }}>
                     conviction
                   </span>
                 </div>
@@ -138,7 +138,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--muted)" }}>
                     {stickiness}
                   </span>
-                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-normal uppercase" style={{ color: "var(--dim)" }}>
                     stickiness
                   </span>
                 </div>
@@ -146,7 +146,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                   <span className="font-mono text-[22px] font-medium leading-none" style={{ color: "var(--muted)" }}>
                     {formatListeners(artist.total_listeners)}
                   </span>
-                  <span className="font-mono text-[11px] tracking-[0.16em] uppercase" style={{ color: "var(--dim)" }}>
+                  <span className="font-mono text-[11px] tracking-normal uppercase" style={{ color: "var(--dim)" }}>
                     listeners
                   </span>
                 </div>

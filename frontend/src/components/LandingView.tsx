@@ -150,17 +150,17 @@ export default function LandingView({
 
         {/* Onboarding links */}
         <div className="w-full flex flex-col items-center gap-5">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <a
               href="https://www.last.fm/join"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
+              className="font-mono text-[11px] tracking-widest whitespace-nowrap transition-opacity duration-150 hover:opacity-60"
               style={{ color: "var(--accent)" }}
             >
               new to last.fm? create account →
             </a>
-            <span className="font-mono text-[11px]" style={{ color: "var(--border)" }}>|</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
             <button
               onClick={() => { setShowSetup((s) => !s); setShowApiKey(false); }}
               className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
@@ -168,7 +168,7 @@ export default function LandingView({
             >
               connect your music {showSetup ? "▲" : "▼"}
             </button>
-            <span className="font-mono text-[11px]" style={{ color: "var(--border)" }}>|</span>
+            <span className="font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
             <button
               onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
               className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
@@ -214,7 +214,7 @@ export default function LandingView({
                       <>submit → copy the 32-character api key</>,
                     ].map((step, i) => (
                       <li key={i} className="flex gap-2 font-mono text-[11px] tracking-wider leading-relaxed" style={{ color: "var(--dim)" }}>
-                        <span style={{ color: "var(--dim)" }}>{i + 1}.</span>
+                        <span style={{ color: "var(--muted)" }}>{i + 1}.</span>
                         <span>{step}</span>
                       </li>
                     ))}

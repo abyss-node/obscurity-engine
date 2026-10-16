@@ -26,7 +26,7 @@ interface ResultsTopBarProps {
 const SEP = (extraClass = "") => (
   <span
     className={`font-mono text-xs shrink-0 hidden min-[720px]:inline ${extraClass}`}
-    style={{ color: "var(--border)" }}
+    style={{ color: "var(--border)" /* decorative */ }}
   >
     |
   </span>
@@ -84,7 +84,7 @@ export default function ResultsTopBar({
       </button>
       <span
         className="font-mono text-xs shrink-0 hidden min-[850px]:inline"
-        style={{ color: "var(--border)" }}
+        style={{ color: "var(--border)" /* decorative */ }}
       >
         |
       </span>
@@ -103,7 +103,7 @@ export default function ResultsTopBar({
       </button>
       <span
         className="font-mono text-xs shrink-0 hidden min-[1030px]:inline"
-        style={{ color: "var(--border)" }}
+        style={{ color: "var(--border)" /* decorative */ }}
       >
         |
       </span>

@@ -36,7 +36,7 @@ function contrast(a: string, b: string): number {
 
 describe("text token contrast", () => {
   const tokens = rootTokens();
-  const textTokens = ["text", "muted", "dim", "accent", "discovery"];
+  const textTokens = ["text", "muted", "dim", "accent", "accent-bright", "discovery"];
   const surfaces = ["bg", "surface", "surface2"];
 
   it("parses the tokens it checks", () => {
@@ -54,41 +54,103 @@ describe("text token contrast", () => {
   }
 });
 
-function sourceFiles(dir: string): string[] {
+const FONT_BASE_PX = 16;
+
+function toPx(value: string, unit: string | undefined): number {
+  const n = parseFloat(value);
+  return unit === "rem" || unit === "em" ? n * FONT_BASE_PX : n;
+}
+
+function sourceFiles(dir: string, exts: RegExp): string[] {
   return readdirSync(dir).flatMap((name) => {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) return sourceFiles(p);
-    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [p] : [];
+    if (statSync(p).isDirectory()) return sourceFiles(p, exts);
+    return exts.test(name) && !/\.test\.tsx?$/.test(name) ? [p] : [];
   });
 }
 
-describe("font size floor", () => {
-  const files = sourceFiles(SRC);
+type Line = { file: string; no: number; text: string };
 
+function lines(files: string[]): Line[] {
+  return files.flatMap((f) =>
+    readFileSync(f, "utf8")
+      .split(/\r?\n/)
+      .map((text, i) => ({ file: relative(SRC, f), no: i + 1, text })),
+  );
+}
+
+const codeLines = () => lines(sourceFiles(SRC, /\.(tsx?|css)$/));
+const fmt = (l: Line, m: string) => `${l.file}:${l.no} ${m}`;
+
+describe("font size floor", () => {
   it("scans source files", () => {
-    expect(files.length).toBeGreaterThan(10);
+    expect(codeLines().length).toBeGreaterThan(1000);
   });
 
-  it(`has no text-[Npx] class below ${MIN_FONT_PX}px`, () => {
+  it(`has no Tailwind text-[size] class below ${MIN_FONT_PX}px (px, rem, em, length: prefix)`, () => {
     const hits: string[] = [];
-    for (const f of files) {
-      readFileSync(f, "utf8").split(/\r?\n/).forEach((line, i) => {
-        for (const m of line.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)) {
-          if (parseFloat(m[1]) < MIN_FONT_PX) hits.push(`${relative(SRC, f)}:${i + 1} ${m[0]}`);
-        }
-      });
+    for (const l of codeLines()) {
+      for (const m of l.text.matchAll(/text-\[(?:length:)?(\d*\.?\d+)(px|rem|em)\]/g)) {
+        if (toPx(m[1], m[2]) < MIN_FONT_PX) hits.push(fmt(l, m[0]));
+      }
     }
     expect(hits).toEqual([]);
   });
 
-  it(`has no fontSize below ${MIN_FONT_PX}px (numeric or string)`, () => {
+  it(`has no inline fontSize or CSS font-size below ${MIN_FONT_PX}px`, () => {
     const hits: string[] = [];
-    for (const f of files) {
-      readFileSync(f, "utf8").split(/\r?\n/).forEach((line, i) => {
-        for (const m of line.matchAll(/fontSize\s*[:=]\s*\{?\s*["'`]?(\d+(?:\.\d+)?)(px)?["'`]?/g)) {
-          if (parseFloat(m[1]) < MIN_FONT_PX) hits.push(`${relative(SRC, f)}:${i + 1} ${m[0]}`);
+    for (const l of codeLines()) {
+      for (const m of l.text.matchAll(
+        /(?:fontSize\s*[:=]\s*\{?\s*|font-size\s*:\s*)["'`]?(\d*\.?\d+)(px|rem|em)?["'`]?/g,
+      )) {
+        if (toPx(m[1], m[2]) < MIN_FONT_PX) hits.push(fmt(l, m[0]));
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+describe("text colour usage", () => {
+  const tokens = rootTokens();
+  const surfaces = ["bg", "surface", "surface2"].map((n) => tokens[n]);
+  const allowedTextTokens = new Set(["text", "muted", "dim", "accent", "accent-bright", "discovery"]);
+
+  function hexOf(raw: string): string | null {
+    const h = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(raw);
+    if (!h) return null;
+    const d = h[1];
+    return "#" + (d.length === 3 ? [...d].map((c) => c + c).join("") : d);
+  }
+
+  function rgbOf(r: string, g: string, b: string): string {
+    return "#" + [r, g, b].map((v) => Number(v).toString(16).padStart(2, "0")).join("");
+  }
+
+  it("every colour set on text meets 4.5:1 and uses a text-safe token", () => {
+    const hits: string[] = [];
+    for (const l of codeLines()) {
+      // Token definitions are checked by the token test above.
+      if (/^\s*--[\w-]+\s*:/.test(l.text)) continue;
+      const decorative = /\/\*\s*decorative\s*\*\//.test(l.text);
+      const tails: string[] = [];
+      for (const m of l.text.matchAll(/(?<![-\w])color\s*:(.*)$/g)) tails.push(m[1].split(/,\s*[A-Za-z]+\s*:/)[0]);
+      for (const m of l.text.matchAll(/(?<![-\w])text-\[((?:color:)?(?:#[0-9a-fA-F]{3,6}|var\(--[\w-]+\)))\]/g)) tails.push(m[1]);
+      for (const tail of tails) {
+        for (const m of tail.matchAll(/var\(--([\w-]+)\)/g)) {
+          if (!allowedTextTokens.has(m[1]) && !decorative) {
+            hits.push(fmt(l, `--${m[1]} used as text colour (mark /* decorative */ if it is a glyph, not text)`));
+          }
         }
-      });
+        const colours = [
+          ...[...tail.matchAll(/#[0-9a-fA-F]{3,6}/g)].map((m) => hexOf(m[0])),
+          ...[...tail.matchAll(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g)].map((m) => rgbOf(m[1], m[2], m[3])),
+        ];
+        for (const hex of colours) {
+          if (!hex || decorative) continue;
+          const worst = Math.min(...surfaces.map((s) => contrast(hex, s)));
+          if (worst < MIN_CONTRAST) hits.push(fmt(l, `${hex} is ${worst.toFixed(2)}:1`));
+        }
+      }
     }
     expect(hits).toEqual([]);
   });

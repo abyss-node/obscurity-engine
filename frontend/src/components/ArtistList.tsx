@@ -83,13 +83,13 @@ export default function ArtistList({
     <div className="w-full flex flex-col gap-5">
       {/* Sort tabs */}
       <div
-        className="sticky top-[68px] min-[720px]:top-12 z-30 flex items-center gap-3 min-[720px]:gap-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8 overflow-x-auto"
+        className="sticky top-[68px] min-[720px]:top-12 z-30 flex flex-wrap items-center gap-x-3 gap-y-1 min-[720px]:gap-x-6 py-3 -mx-4 px-4 sm:-mx-8 sm:px-8"
         style={{ background: "var(--bg)" }}
       >
         <span className="font-mono text-[11px] tracking-widest uppercase shrink-0" style={{ color: "var(--dim)" }}>
           sort by
         </span>
-        <div className="flex items-center gap-4 min-[720px]:gap-5 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 min-[720px]:gap-x-5">
           {SORT_OPTIONS.map((opt) => {
             const active = sortBy === opt.id;
             return (
@@ -129,8 +129,8 @@ export default function ArtistList({
               instead of both centered-inward) guarantees they never touch.
               Desktop columns (104px/74px) have room to spare, so
               tracking-widest + text-center is restored unchanged ≥720px. */}
-          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-widest uppercase text-right min-[720px]:text-center" style={{ color: "var(--dim)" }}>conviction</span>
-          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-widest uppercase text-left min-[720px]:text-center" style={{ color: "var(--dim)" }}>listeners</span>
+          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-[0.02em] uppercase text-right min-[720px]:text-center" style={{ color: "var(--dim)" }} title="conviction" aria-label="conviction"><span aria-hidden="true" className="min-[720px]:hidden">conv</span><span aria-hidden="true" className="hidden min-[720px]:inline">conviction</span></span>
+          <span className="font-mono text-[11px] tracking-normal min-[720px]:tracking-[0.02em] uppercase text-left min-[720px]:text-center" style={{ color: "var(--dim)" }} title="listeners" aria-label="listeners"><span aria-hidden="true" className="min-[720px]:hidden">lstn</span><span aria-hidden="true" className="hidden min-[720px]:inline">listeners</span></span>
           <span />
         </div>
 
