@@ -21,6 +21,7 @@ mod handlers;
 mod lastfm;
 mod listenbrainz;
 mod metrics;
+mod non_music;
 mod models;
 mod pipeline;
 mod ratelimit;

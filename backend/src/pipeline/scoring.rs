@@ -190,16 +190,48 @@ async fn fetch_and_score(
         }
     }
 
+    Ok(score_all(raw, seeds, tag_candidates, seed_tag_profile, under_threshold, &seed_norms))
+}
+
+/// Everything between "info fetched" and "ranked list": the non-music filter,
+/// the listener/played/seed exclusions, scoring, sort and name dedup. Runs
+/// before `post_process` truncates to MAX_RECOMMENDATIONS, so every drop here
+/// is backfilled from the next-ranked candidates.
+fn score_all(
+    raw: Vec<(Artist, Vec<String>)>,
+    seeds: &Seeds,
+    tag_candidates: &HashSet<String>,
+    seed_tag_profile: &HashMap<String, f64>,
+    under_threshold: Option<u64>,
+    seed_norms: &HashSet<String>,
+) -> Vec<DiscoveryResponseItem> {
     // Map of normalised name → listener count, used to verify collab components.
     // e.g. "Kendrick Lamar & SZA" → check "kendrick lamar" and "sza" individually.
     let listener_map: HashMap<String, u64> = raw.iter()
         .map(|(a, _)| (normalize_artist_name(&a.name), a.stats.listeners))
         .collect();
 
+    // Podcasts, spoken-word and label/channel "artists" pass the ceiling and
+    // played checks, so they are dropped here, at the same stage.
+    let before = raw.len();
+    let raw: Vec<(Artist, Vec<String>)> = raw.into_iter()
+        .filter(|(a, _)| {
+            let tags: Vec<&str> = a.tags.as_ref()
+                .map(|t| t.tag.iter().map(|x| x.name.as_str()).collect())
+                .unwrap_or_default();
+            !crate::non_music::is_non_music(&a.name, &tags)
+        })
+        .collect();
+    let dropped = before - raw.len();
+    if dropped > 0 {
+        // One line per request, not per candidate.
+        println!("SCORING: dropped {} non-music candidates", dropped);
+    }
+
     let mut scored_artists: Vec<DiscoveryResponseItem> = raw
         .into_iter()
         .filter_map(|(artist, recommenders)| {
-            score_candidate(artist, recommenders, seeds, tag_candidates, seed_tag_profile, &listener_map, under_threshold, &seed_norms)
+            score_candidate(artist, recommenders, seeds, tag_candidates, seed_tag_profile, &listener_map, under_threshold, seed_norms)
         })
         .collect();
 
@@ -215,7 +247,7 @@ async fn fetch_and_score(
     // entry per normalized name (list is already sorted by composite desc).
     dedup_scored_by_name(&mut scored_artists);
 
-    Ok(scored_artists)
+    scored_artists
 }
 
 /// Drop later duplicates of the same normalized artist name, preserving order.
@@ -563,4 +595,47 @@ fn compute_depth_score(artists: &[DiscoveryResponseItem]) -> f64 {
         obscurity * a.composite_score
     }).sum();
     ((weighted_sum / total_weight) * 100.0).min(100.0)
+}
+
+#[cfg(test)]
+mod non_music_pipeline_tests {
+    use super::*;
+    use crate::models::{Stats, Tag, Tags};
+
+    fn artist(name: &str, tags: &[&str]) -> Artist {
+        Artist {
+            name: name.to_string(),
+            stats: Stats { listeners: 5_000, playcount: 50_000, userplaycount: Some("0".into()) },
+            tags: Some(Tags { tag: tags.iter().map(|t| Tag { name: t.to_string() }).collect() }),
+            stickiness_score: None,
+        }
+    }
+
+    /// 30 real-looking candidates plus 3 non-music ones that every other check
+    /// lets through and that out-rank the music (more recommenders). After
+    /// scoring and the cap, none may appear and the list must still be full.
+    #[test]
+    fn non_music_candidates_are_dropped_and_the_cap_backfills() {
+        let mut raw: Vec<(Artist, Vec<String>)> = Vec::new();
+        let mut weights = HashMap::new();
+        for s in ["s1", "s2", "s3", "s4"] { weights.insert(s.to_string(), 1.0); }
+        let all: Vec<String> = weights.keys().cloned().collect();
+        for i in 0..30 {
+            let genre = format!("genre{i}");
+            raw.push((artist(&format!("Band {i}"), &[genre.as_str()]), vec!["s1".into()]));
+        }
+        raw.push((artist("Giant Bomb", &["podcast", "video games", "comedy"]), all.clone()));
+        raw.push((artist("T-Series", &["techno", "Rave"]), all.clone()));
+        raw.push((artist("Sounds of Isha", &["misc", "All", "nugget", "Hindu", "speech"]), all.clone()));
+
+        let seeds = Seeds { weights, names: vec![], total_artist_count: None, total_scrobbles: None };
+        let scored = score_all(raw, &seeds, &HashSet::new(), &HashMap::new(), None, &HashSet::new());
+        let (resp, _reserve) = post_process(scored, 4, HashMap::new());
+
+        let names: Vec<&str> = resp.artists.iter().map(|a| a.name.as_str()).collect();
+        for bad in ["Giant Bomb", "T-Series", "Sounds of Isha"] {
+            assert!(!names.contains(&bad), "{bad} leaked into {names:?}");
+        }
+        assert_eq!(resp.artists.len(), MAX_RECOMMENDATIONS, "cap must backfill from the next-ranked music");
+    }
 }
