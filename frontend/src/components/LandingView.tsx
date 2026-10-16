@@ -160,7 +160,7 @@ export default function LandingView({
             >
               new to last.fm? create account →
             </a>
-            <span className="font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
+            <span className="hidden sm:inline font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
             <button
               onClick={() => { setShowSetup((s) => !s); setShowApiKey(false); }}
               className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"
@@ -168,7 +168,7 @@ export default function LandingView({
             >
               connect your music {showSetup ? "▲" : "▼"}
             </button>
-            <span className="font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
+            <span className="hidden sm:inline font-mono text-[11px]" style={{ color: "var(--border)" /* decorative */ }}>|</span>
             <button
               onClick={() => { setShowApiKey((s) => !s); setShowSetup(false); }}
               className="font-mono text-[11px] tracking-widest transition-opacity duration-150 hover:opacity-60"

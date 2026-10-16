@@ -70,7 +70,7 @@ export default function DiscoveryMatrix({ artists, onArtistClick }: DiscoveryMat
         return {
           name: a.name,
           x: 8 + (conviction / 100) * 84,
-          y: 84 - (stickiness / 100) * 76, // invert: high stickiness → top; floor at 84% keeps dots and labels clear of the bottom quadrant titles
+          y: 92 - (stickiness / 100) * 84, // invert: high stickiness → top; stickiness 50 must land on the 50% midline
           size: obscurityDotSize(a.total_listeners),
           dual: !!a.cross_validated,
           labelRight: conviction < 70,
