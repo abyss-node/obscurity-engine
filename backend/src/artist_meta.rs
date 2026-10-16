@@ -763,13 +763,12 @@ mod tests {
     #[tokio::test]
     async fn poll_only_of_already_queued_names_respawns_dead_worker() {
         let st = test_state(mock_mb().await);
-        // current_thread runtime: the freshly spawned worker has not run yet, so
-        // the name is claimed and still sitting in the channel when we kill it.
-        let first = snapshot(&st, &["Entombed".to_string()]).await;
-        assert_eq!(first.pending.len(), 1);
-        let h = st.artist_meta.worker.lock().unwrap().take().unwrap();
-        h.abort();
-        let _ = h.await;
+        // State after a worker death: the name is claimed and queued, and no
+        // worker is running (none was ever started here).
+        let svc = &st.artist_meta;
+        assert!(svc.claim(&name_key("Entombed")));
+        svc.tx.try_send("Entombed".to_string()).unwrap();
+        assert!(svc.worker.lock().unwrap().is_none());
         // Poll contains ONLY the already-claimed name (claim() fails for it).
         let mut filled = None;
         for _ in 0..60 {
