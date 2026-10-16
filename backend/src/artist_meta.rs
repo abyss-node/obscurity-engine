@@ -33,7 +33,9 @@
 //! leave a name pending forever.
 //!
 //! ## Flood bounds
-//! Per-IP token bucket (60-token burst, 0.5/s) on the endpoint. Resolutions are
+//! Per-IP token bucket keyed on the left-most `X-Forwarded-For` hop (the same
+//! `client_ip` as `/api/events`; client-supplied, but Render sets XFF itself)
+//! on the endpoint, 60-token burst refilling at 0.5/s. Resolutions are
 //! serial at about 1 per second, so entries enter the no-DB in-memory store at
 //! no more than that rate regardless of how many junk names are requested;
 //! they expire after 30 days.
@@ -396,10 +398,13 @@ pub async fn snapshot(state: &Arc<AppState>, names: &[String]) -> ArtistMetaResp
                 meta.insert(name.clone(), None);
                 pending.push(name.clone());
                 let svc = &state.artist_meta;
+                // Every poll with pending names checks the worker (cheap
+                // JoinHandle check), so names already queued behind a dead
+                // worker are drained again even when this poll claims nothing.
+                ensure_worker(state);
                 // Claim before sending so concurrent viewers don't double-fetch;
                 // a name already in flight is simply pending.
                 if svc.claim(key) {
-                    ensure_worker(state);
                     if svc.tx.try_send(name.clone()).is_err() {
                         svc.release(key);
                     }
@@ -753,6 +758,29 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
         assert!(filled.is_some(), "a respawned worker resolved the queued names");
+    }
+
+    #[tokio::test]
+    async fn poll_only_of_already_queued_names_respawns_dead_worker() {
+        let st = test_state(mock_mb().await);
+        // current_thread runtime: the freshly spawned worker has not run yet, so
+        // the name is claimed and still sitting in the channel when we kill it.
+        let first = snapshot(&st, &["Entombed".to_string()]).await;
+        assert_eq!(first.pending.len(), 1);
+        let h = st.artist_meta.worker.lock().unwrap().take().unwrap();
+        h.abort();
+        let _ = h.await;
+        // Poll contains ONLY the already-claimed name (claim() fails for it).
+        let mut filled = None;
+        for _ in 0..60 {
+            let r = snapshot(&st, &["Entombed".to_string()]).await;
+            if r.pending.is_empty() {
+                filled = r.meta["Entombed"].clone();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        assert!(filled.is_some(), "poll-only request must respawn the worker");
     }
 
     #[tokio::test]
