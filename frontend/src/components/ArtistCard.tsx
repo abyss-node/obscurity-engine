@@ -161,11 +161,13 @@ export default function ArtistCard({
               {artist.name}
             </span>
             <span
-              className="min-[720px]:hidden font-mono text-[11px] leading-[14px] tracking-wider uppercase mt-1 min-h-[14px] break-words"
+              className="min-[720px]:hidden flex flex-col font-mono text-[11px] leading-[14px] tracking-wider uppercase mt-1 min-h-[28px] min-w-0"
               style={{ color: "var(--dim)" }}
+              title={origin || undefined}
               data-testid="origin-mobile"
             >
-              {origin || " "}
+              <span className="truncate">{originParts.line1 || " "}</span>
+              <span className="truncate">{originParts.line2 || " "}</span>
             </span>
           </span>
         </span>
@@ -185,8 +187,8 @@ export default function ArtistCard({
           title={origin || undefined}
           data-testid="origin-desktop"
         >
-          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.country || " "}</span>
-          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.detail || " "}</span>
+          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.line1 || " "}</span>
+          <span className="truncate" style={{ color: "var(--dim)" }}>{originParts.line2 || " "}</span>
         </span>
 
         {/* conviction */}

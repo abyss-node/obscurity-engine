@@ -167,7 +167,8 @@ describe("ArtistCard — Bandcamp link", () => {
 
 describe("ArtistCard — origin (MusicBrainz meta)", () => {
   const base = { artist: makeArtist({ top_tags: ["swedish death metal"] }), rank: 1, expanded: false, onToggle: () => {} };
-  const lines = () => Array.from(screen.getByTestId("origin-desktop").children).map((c) => c.textContent);
+  const linesOf = (id: string) => Array.from(screen.getByTestId(id).children).map((c) => c.textContent);
+  const lines = () => linesOf("origin-desktop");
 
   it("shows the tag guess on line 1 when there is no meta", () => {
     render(<ArtistCard {...base} />);
@@ -182,12 +183,25 @@ describe("ArtistCard — origin (MusicBrainz meta)", () => {
       />
     );
     expect(lines()).toEqual(["Germany", "2014 · band"]);
-    expect(screen.getByTestId("origin-mobile")).toHaveTextContent("Germany · 2014 · band");
+    expect(linesOf("origin-mobile")).toEqual(["Germany", "2014 · band"]);
   });
 
   it("always renders both lines (reserved height) even with nothing known", () => {
     render(<ArtistCard {...base} artist={makeArtist({ top_tags: ["slowcore"] })} />);
     expect(lines()).toEqual([" ", " "]);
-    expect(screen.getByTestId("origin-mobile").textContent).toBe(" ");
+    expect(linesOf("origin-mobile")).toEqual([" ", " "]);
+  });
+
+  it("with no country, year/type takes line 1 on both layouts", () => {
+    render(
+      <ArtistCard {...base} artist={makeArtist({ top_tags: ["slowcore"] })} meta={{ country_iso2: null, area_name: null, begin_year: 1954, artist_type: "Person" }} />
+    );
+    expect(lines()).toEqual(["1954 · solo", " "]);
+    expect(linesOf("origin-mobile")).toEqual(["1954 · solo", " "]);
+  });
+
+  it("normalises tag-guess spellings to Intl names", () => {
+    render(<ArtistCard {...base} artist={makeArtist({ top_tags: ["american indie"] })} />);
+    expect(lines()[0]).toBe("United States");
   });
 });

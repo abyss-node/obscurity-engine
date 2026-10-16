@@ -6,7 +6,10 @@ import { MAX_META_NAMES, fetchArtistMeta, metaRequestNames } from "./artistMeta"
 
 // Delays before re-polls while names are pending: initial request, then
 // 2s, 4s, 8s, 8s — five requests at most.
-export const POLL_DELAYS_MS = [2000, 4000, 8000, 8000];
+export const POLL_DELAYS_MS = [2000, 4000, 8000];
+// Keep polling a name while the backend reports it pending (it resolves them
+// serially, 1-2 s each), until this long after the name's first request.
+export const POLL_BUDGET_MS = 90_000;
 
 // Session-wide cache of settled answers (a real result or a settled miss).
 // Pending names are never stored, so a later mount retries them.
@@ -35,6 +38,7 @@ export function resetArtistMetaCache() {
   cache.clear();
   holders.clear();
   attempts.clear();
+  firstRequestAt.clear();
   poller?.ctrl.abort();
   poller = null;
   unsupported = false;
@@ -45,13 +49,13 @@ export function resetArtistMetaCache() {
 // while any held, uncached name still has requests left, and is aborted (and
 // forgotten) synchronously the moment nothing is held, so a new effect can
 // always start a fresh one. Names joining mid-poll wake it immediately.
-const MAX_REQUESTS = POLL_DELAYS_MS.length + 1;
+const firstRequestAt = new Map<string, number>();
 const holders = new Map<string, number>();
 const attempts = new Map<string, number>();
 let poller: { ctrl: AbortController; wake: () => void } | null = null;
 
 function eligible(): string[] {
-  return [...holders.keys()].filter((n) => !cache.has(n) && (attempts.get(n) ?? 0) < MAX_REQUESTS);
+  return [...holders.keys()].filter((n) => !cache.has(n) && Date.now() - (firstRequestAt.get(n) ?? Date.now()) < POLL_BUDGET_MS);
 }
 
 function acquire(names: string[]) {
@@ -66,6 +70,7 @@ function release(names: string[]) {
     if (left > 0) { holders.set(n, left); continue; }
     holders.delete(n);
     attempts.delete(n);
+    firstRequestAt.delete(n);
   }
   if (holders.size === 0 && poller) {
     poller.ctrl.abort();
@@ -85,7 +90,11 @@ function startPoller() {
       while (!signal.aborted && !unsupported) {
         const batch = eligible().slice(0, MAX_META_NAMES);
         if (!batch.length) return;
-        batch.forEach((n) => attempts.set(n, (attempts.get(n) ?? 0) + 1));
+        const now = Date.now();
+        batch.forEach((n) => {
+          attempts.set(n, (attempts.get(n) ?? 0) + 1);
+          if (!firstRequestAt.has(n)) firstRequestAt.set(n, now);
+        });
         const result = await fetchArtistMeta(apiUrl, batch, signal);
         if (signal.aborted) return;
         if (result.kind === "unsupported") { unsupported = true; return; }

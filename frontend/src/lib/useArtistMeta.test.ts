@@ -74,11 +74,36 @@ describe("useArtistMeta", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("gives up after five requests while still pending", async () => {
+  it("keeps polling a pending name past the old 5-request cap, and fills when it settles at ~60s", async () => {
+    let t0 = -1;
+    fetchMock.mockImplementation(async () => {
+      if (t0 < 0) t0 = Date.now();
+      return Date.now() - t0 >= 60_000 ? ok({ A: SE }, []) : ok({ A: null }, ["A"]);
+    });
+    const { result } = renderHook(() => useArtistMeta(["A"]));
+    await flush(59_000);
+    expect(result.current("A")).toBeUndefined();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(5);
+    await flush(10_000);
+    expect(result.current("A")).toEqual(SE);
+  });
+
+  it("backoff is capped at 8s", async () => {
+    fetchMock.mockResolvedValue(ok({ A: null }, ["A"]));
+    renderHook(() => useArtistMeta(["A"]));
+    await flush(30_000);
+    const before = fetchMock.mock.calls.length;
+    await flush(16_000);
+    expect(fetchMock.mock.calls.length - before).toBe(2);
+  });
+
+  it("a name that never settles stops at ~90s and keeps no meta", async () => {
     fetchMock.mockResolvedValue(ok({ A: null }, ["A"]));
     const { result } = renderHook(() => useArtistMeta(["A"]));
-    await flush(120_000);
-    expect(fetchMock).toHaveBeenCalledTimes(POLL_DELAYS_MS.length + 1);
+    await flush(100_000);
+    const calls = fetchMock.mock.calls.length;
+    await flush(60_000);
+    expect(fetchMock.mock.calls.length).toBe(calls);
     expect(result.current("A")).toBeUndefined();
   });
 
