@@ -32,7 +32,8 @@ export function countryNameFromIso(iso2: string): string | null {
 
 function metaCountry(meta: ArtistMeta): string | null {
   if (!meta.country_iso2) return null;
-  return countryNameFromIso(meta.country_iso2) ?? (meta.area_name?.trim() || null);
+  const area = meta.area_name?.trim().replace(/^\[(.*)\]$/, "$1").trim();
+  return countryNameFromIso(meta.country_iso2) ?? (area || null);
 }
 
 /**

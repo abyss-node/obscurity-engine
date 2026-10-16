@@ -46,9 +46,9 @@ describe("formatArtistOrigin", () => {
     expect(formatArtistOrigin(m(), null)).toBe("");
   });
   it("falls back to area_name for pseudo-codes Intl rejects", () => {
-    expect(formatArtistOrigin(m({ country_iso2: "XW", area_name: "[Worldwide]" }), null)).toBe("[Worldwide]");
+    expect(formatArtistOrigin(m({ country_iso2: "XW", area_name: "[Worldwide]" }), null)).toBe("Worldwide");
     expect(formatArtistOrigin(m({ country_iso2: "XE", area_name: "[Europe]", artist_type: "Group" }), null))
-      .toBe("[Europe] · band");
+      .toBe("Europe · band");
   });
   it("falls back to area_name when Intl throws", () => {
     const RealIntl = Intl;

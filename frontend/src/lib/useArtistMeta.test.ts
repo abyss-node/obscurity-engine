@@ -127,4 +127,26 @@ describe("useArtistMeta", () => {
     await flush();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("two consumers asking for the same names share one request; one unmounting does not starve the other", async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok({ A: null }, ["A"]))
+      .mockResolvedValueOnce(ok({ A: SE }, []));
+    const first = renderHook(() => useArtistMeta(["A"]));
+    const second = renderHook(() => useArtistMeta(["A"]));
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    first.unmount();
+    await flush(POLL_DELAYS_MS[0]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(second.result.current("A")).toEqual(SE);
+  });
+
+  it("keys results by the requested string exactly", async () => {
+    fetchMock.mockResolvedValue(ok({ "Sigur Rós": SE }, []));
+    const { result } = renderHook(() => useArtistMeta(["Sigur Rós"]));
+    await flush();
+    expect(result.current("Sigur Rós")).toEqual(SE);
+    expect(result.current("sigur ros")).toBeUndefined();
+  });
 });
