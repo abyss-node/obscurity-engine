@@ -58,7 +58,7 @@ already 16-31 s against the frontend's 90 s timeout.
    - A miss is stored too (null country, `fetched_at`) and retried after
      30 days, so unresolvable artists don't burn MB calls on every discovery.
 3. **Separate endpoint, filled in after results render.**
-   - `GET /api/artist-meta?names=a,b,c` (max 25) returns what is stored
+   - `GET /api/artist-meta?name=a&name=b&name=c` (repeated `name=`, max 25) returns what is stored
      immediately, plus `pending: [...]` for names it is still resolving.
    - The frontend calls it once results arrive (top 10 shown, the next 15 on
      "view more"), then re-polls a couple of times while `pending` is

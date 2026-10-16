@@ -27,6 +27,16 @@
 //! The in-flight set is a `std::sync::Mutex<HashSet>` that is never held across
 //! an await. The worker is one task fed by a bounded channel (256); a full
 //! queue drops the name (it stays in `pending` and is re-offered next poll).
+//! The receiver is shared, and every request checks the worker's `JoinHandle`
+//! and respawns it if it has exited, so a panic cannot silence the feature.
+//! In-flight claims are released by a drop guard, so a panic or cancel cannot
+//! leave a name pending forever.
+//!
+//! ## Flood bounds
+//! Per-IP token bucket (60-token burst, 0.5/s) on the endpoint. Resolutions are
+//! serial at about 1 per second, so entries enter the no-DB in-memory store at
+//! no more than that rate regardless of how many junk names are requested;
+//! they expire after 30 days.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,15 +44,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::{RawQuery, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::listenbrainz::{ListenBrainzClient, MbError, MB_SCORE_FLOOR};
+use crate::ratelimit::{Decision, RateLimiter};
 use crate::models::{ArtistMetaEntry, ArtistMetaResponse, ErrorResponse};
 use crate::utils::normalize_artist_name;
 use crate::AppState;
@@ -141,7 +153,18 @@ pub struct ArtistMetaService {
     mb_ok: AtomicBool,
     in_flight: Mutex<HashSet<String>>,
     tx: mpsc::Sender<String>,
-    rx: Mutex<Option<mpsc::Receiver<String>>>,
+    rx: Arc<tokio::sync::Mutex<mpsc::Receiver<String>>>,
+    worker: Mutex<Option<JoinHandle<()>>>,
+    limiter: RateLimiter,
+}
+
+/// Releases an in-flight claim when dropped (normal end, panic, or abort).
+struct ClaimGuard<'a>(&'a ArtistMetaService, String);
+
+impl Drop for ClaimGuard<'_> {
+    fn drop(&mut self) {
+        self.0.release(&self.1);
+    }
 }
 
 type Row = (
@@ -167,7 +190,9 @@ impl ArtistMetaService {
             mb_ok: AtomicBool::new(true),
             in_flight: Mutex::new(HashSet::new()),
             tx,
-            rx: Mutex::new(Some(rx)),
+            rx: Arc::new(tokio::sync::Mutex::new(rx)),
+            worker: Mutex::new(None),
+            limiter: RateLimiter::with_params(60.0, 0.5),
         }
     }
 
@@ -179,8 +204,12 @@ impl ArtistMetaService {
     fn note(&self, e: Option<MbError>) {
         match e {
             None => self.mb_ok.store(true, Ordering::Relaxed),
-            Some(MbError::Transient) => self.mb_ok.store(false, Ordering::Relaxed),
-            Some(_) => {}
+            // Starved means blend traffic (or a stuck counter) kept lookups out
+            // for the whole budget: surface it rather than reporting ok.
+            Some(MbError::Transient) | Some(MbError::Starved) => {
+                self.mb_ok.store(false, Ordering::Relaxed)
+            }
+            Some(MbError::NotFound) => {}
         }
     }
 
@@ -310,15 +339,22 @@ async fn write_stored(state: &AppState, key: &str, s: &Stored) {
 
 // ── worker ──────────────────────────────────────────────────────────────────
 
-/// Start the single resolver task on first use (needs a runtime, so not in the
-/// constructor).
+/// Start the single resolver task on first use, and again whenever it has
+/// exited (needs a runtime, so not in the constructor).
 fn ensure_worker(state: &Arc<AppState>) {
-    let rx = state.artist_meta.rx.lock().unwrap_or_else(|e| e.into_inner()).take();
-    if let Some(mut rx) = rx {
-        let state = Arc::clone(state);
-        tokio::spawn(async move {
-            while let Some(name) = rx.recv().await {
+    let mut slot = state.artist_meta.worker.lock().unwrap_or_else(|e| e.into_inner());
+    if slot.as_ref().map_or(false, |h| !h.is_finished()) {
+        return;
+    }
+    let rx = Arc::clone(&state.artist_meta.rx);
+    let state = Arc::clone(state);
+    *slot = Some(tokio::spawn(async move {
+        let mut rx = rx.lock().await;
+        loop {
+            let Some(name) = rx.recv().await else { break };
+            {
                 let key = name_key(&name);
+                let _claim = ClaimGuard(&state.artist_meta, key.clone());
                 let tier1 = if state.artist_meta.lastfm_tier {
                     state.client.fetch_artist_mbid(&name).await.ok().flatten()
                 } else {
@@ -339,10 +375,9 @@ fn ensure_worker(state: &Arc<AppState>) {
                     }
                     Outcome::Transient => {}
                 }
-                state.artist_meta.release(&key);
             }
-        });
-    }
+        }
+    }));
 }
 
 /// Answer from storage and enqueue what is missing. Never awaits MusicBrainz.
@@ -387,11 +422,11 @@ pub fn parse_names(raw: Option<&str>) -> Result<Vec<String>, &'static str> {
     let mut out: Vec<String> = Vec::new();
     for pair in raw.unwrap_or("").split('&') {
         let Some(v) = pair.strip_prefix("name=") else { continue };
+        // Kept exactly as requested (untrimmed): it is the key in the response.
         let decoded = urlencoding::decode(&v.replace('+', " "))
             .map_err(|_| "name is not valid UTF-8")?
             .into_owned();
-        let decoded = decoded.trim().to_string();
-        if decoded.is_empty() {
+        if decoded.trim().is_empty() {
             continue;
         }
         if decoded.chars().count() > MAX_NAME_LEN {
@@ -412,8 +447,19 @@ pub fn parse_names(raw: Option<&str>) -> Result<Vec<String>, &'static str> {
 
 pub async fn artist_meta_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     RawQuery(raw): RawQuery,
 ) -> Response {
+    let ip = crate::api::client_ip(&headers);
+    if let Decision::Deny { retry_after_secs } = state.artist_meta.limiter.check(&ip) {
+        let code = StatusCode::TOO_MANY_REQUESTS;
+        let mut resp = (code, Json(ErrorResponse { error: "rate limit exceeded".into(), code: code.as_u16() }))
+            .into_response();
+        if let Ok(v) = header::HeaderValue::from_str(&retry_after_secs.to_string()) {
+            resp.headers_mut().insert(header::RETRY_AFTER, v);
+        }
+        return resp;
+    }
     let names = match parse_names(raw.as_deref()) {
         Ok(n) => n,
         Err(m) => return bad(m),
@@ -686,6 +732,63 @@ mod tests {
         let old = Stored { mbid: None, entry: ArtistMetaEntry::default(), fetched_at: Utc::now() - chrono::Duration::days(31) };
         write_stored(&st, &key, &old).await;
         assert_eq!(snapshot(&st, &[uniq.clone()]).await.pending, vec![uniq.clone()]);
+    }
+
+    #[tokio::test]
+    async fn worker_is_respawned_after_it_dies_and_claims_do_not_stick() {
+        let st = test_state(mock_mb().await);
+        let first = snapshot(&st, &["Entombed".to_string()]).await;
+        assert_eq!(first.pending.len(), 1);
+        // Kill the worker (as a panic would), then ask again.
+        let h = st.artist_meta.worker.lock().unwrap().take().unwrap();
+        h.abort();
+        let _ = h.await;
+        let mut filled = None;
+        for _ in 0..60 {
+            let r = snapshot(&st, &["Entombed".to_string(), "Other Band".to_string()]).await;
+            if r.pending.is_empty() {
+                filled = r.meta["Entombed"].clone();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        assert!(filled.is_some(), "a respawned worker resolved the queued names");
+    }
+
+    #[tokio::test]
+    async fn starved_marks_degraded_and_endpoint_rate_limits() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+        let s = svc(mock_mb().await);
+        s.note(Some(MbError::Starved));
+        assert!(!s.mb_ok(), "starvation must be visible on /api/status");
+        let app = crate::build_router(test_state("unused".into()));
+        let mut last = StatusCode::OK;
+        for _ in 0..70 {
+            last = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/artist-meta?name=zzz")
+                        .header("x-forwarded-for", "198.51.100.7")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status();
+            if last == StatusCode::TOO_MANY_REQUESTS {
+                break;
+            }
+        }
+        assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[test]
+    fn parse_names_keeps_key_exactly_as_requested() {
+        let n = parse_names(Some("name=%20Padded%20&name=+++")).unwrap();
+        assert_eq!(n, vec![" Padded ".to_string()]);
     }
 
     #[tokio::test]

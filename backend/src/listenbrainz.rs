@@ -121,6 +121,22 @@ impl CandidateSource {
     }
 }
 
+/// RAII registration in the blend-waiting counter.
+struct WaitingGuard<'a>(&'a AtomicUsize);
+
+impl<'a> WaitingGuard<'a> {
+    fn new(c: &'a AtomicUsize) -> Self {
+        c.fetch_add(1, Ordering::SeqCst);
+        Self(c)
+    }
+}
+
+impl Drop for WaitingGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Outcome of a low-priority MusicBrainz call that did not produce JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MbError {
@@ -239,6 +255,11 @@ impl ListenBrainzClient {
     }
 
     #[cfg(test)]
+    pub fn test_blend_waiting(&self) -> usize {
+        self.mb_blend_waiting.load(Ordering::SeqCst)
+    }
+
+    #[cfg(test)]
     pub fn test_set_blend_waiting(&self, n: usize) {
         self.mb_blend_waiting.store(n, Ordering::SeqCst);
     }
@@ -278,10 +299,14 @@ impl ListenBrainzClient {
     }
 
     async fn mb_search(&self, name: &str) -> Option<String> {
-        // Announce before queueing so a low-priority holder-to-be sees us.
-        self.mb_blend_waiting.fetch_add(1, Ordering::SeqCst);
-        let permit = self.mb_sem.acquire().await;
-        self.mb_blend_waiting.fetch_sub(1, Ordering::SeqCst);
+        // Announce before queueing so a low-priority caller sees us. The guard
+        // decrements on drop, so this future being cancelled mid-wait (LB budget
+        // expiry drops queued seeds, client disconnect, request timeout) cannot
+        // leak the count and starve low-priority callers forever.
+        let permit = {
+            let _waiting = WaitingGuard::new(&self.mb_blend_waiting);
+            self.mb_sem.acquire().await
+        };
         let _permit = permit.ok()?;
         self.mb_pacer.wait().await;
         let query = format!("artist:\"{}\"", name);
@@ -648,6 +673,36 @@ mod tests {
         let out = client.similar("mbid1", 20, &cache, &metrics).await;
         assert!(out.is_empty(), "transport error degrades to no candidates (fail-open)");
         assert!(!client.healthy(), "transport failure flips health to error");
+    }
+
+    #[tokio::test]
+    async fn cancelled_blend_search_does_not_leak_waiting_count() {
+        use std::sync::Arc;
+        let client = Arc::new(ListenBrainzClient::with_urls("unused".into(), "http://127.0.0.1:9/".into()));
+        // A holder owns the single MB permit, so blend searches queue behind it.
+        let holder = client.mb_sem.acquire().await.unwrap();
+        // The REAL blend path registers as waiting...
+        let c2 = Arc::clone(&client);
+        let queued = tokio::spawn(async move { c2.mb_search("x").await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(client.test_blend_waiting(), 1, "blend side must register while queued");
+        // ...and low priority yields to it.
+        let r = client
+            .mb_get_low_priority("http://127.0.0.1:9/", &[], Duration::from_millis(200))
+            .await;
+        assert_eq!(r.unwrap_err(), MbError::Starved);
+        // Cancel it mid-wait (what the 8s LB budget does to queued seeds).
+        queued.abort();
+        let _ = queued.await;
+        // Also via timeout-drop of a bare future.
+        let _ = tokio::time::timeout(Duration::from_millis(100), client.mb_search("y")).await;
+        assert_eq!(client.test_blend_waiting(), 0, "cancellation must not leak the count");
+        drop(holder);
+        // Low priority proceeds (connection refused is Transient, not Starved).
+        let r = client
+            .mb_get_low_priority("http://127.0.0.1:9/", &[], Duration::from_millis(500))
+            .await;
+        assert_eq!(r.unwrap_err(), MbError::Transient);
     }
 
     #[tokio::test]

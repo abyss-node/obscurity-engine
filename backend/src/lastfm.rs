@@ -613,7 +613,7 @@ impl LastfmClient {
     /// so a single unresolvable seed never fails the additive LB path.
     pub async fn fetch_artist_mbid(&self, artist_name: &str) -> Result<Option<String>, BoxError> {
         let url = format!(
-            "{}?method=artist.getinfo&artist={}&api_key={}&format=json",
+            "{}?method=artist.getinfo&artist={}&autocorrect=1&api_key={}&format=json",
             LASTFM_API_URL, lf_enc(artist_name), self.api_key
         );
         let resp_text = self.get_with_retry(&url).await?;

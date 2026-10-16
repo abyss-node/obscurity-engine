@@ -393,6 +393,11 @@ GET /api/artist-meta?name=Entombed&name=Crosby%2C+Stills+%26+Nash
 }
 ```
 
+Keys are the decoded names byte-for-byte as sent (not trimmed). Rate limit:
+per IP, 60-request burst refilling at 0.5/s; over it returns `429` with
+`Retry-After`. `/api/status` `musicbrainz` reports `"degraded"` after a
+transient MB failure or after a lookup was starved out by blend traffic.
+
 Inside an object, all four keys are always emitted (null when unknown). An
 object is only returned when at least one of the four is non-null. A name that
 is `null` in `meta` and absent from `pending` is a settled miss (do not poll
