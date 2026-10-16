@@ -29,12 +29,14 @@
 //      with company. "news" needs a NEWS_CONTEXT_TAGS tag in the top 5,
 //      "youtube" needs a CHANNEL_CONTEXT_TAGS tag in the top 5, and in both
 //      cases no music genre or MUSIC_EVIDENCE_TAGS tag may be in the top 3.
-//   5. Name patterns, for channels with no tags at all ("Bloomberg Market
-//      Minute", "BBC News 08:00", "music.youtube.com"): a broadcast time next
-//      to "news"/"radio", a final word of "tv", "podcast", "news", "minute" or
-//      "radio" on a name of at least two words, or a bare domain name. Each is
-//      overridden by a music genre or MUSIC_EVIDENCE_TAGS tag in the top 3, so
-//      "Bad News" (heavy metal) and "Local News" (vaporwave, ambient) stay.
+//   5. Name patterns, each overridden by a music marker in the top 3 tags: a
+//      broadcast time next to "news"/"radio" ("BBC News 08:00"); a final word
+//      of "tv", "news", "minute" or "radio" on a name of two or more words,
+//      only with a channel-ish tag in the top 5; "podcast" as the final word,
+//      with or without tags; a bare domain name, only when tagless or
+//      channel-tagged. Tagless bands named "Broadleaf Radio" or "Daily News"
+//      are real, so a suffix alone never drops. Tagless channels such as
+//      "Bloomberg Market Minute" go in NON_MUSIC_NAMES instead.
 // Accepted misses: spoken-word-only talk channels with no STRONG tag
 // (RealLifeLore is handled by name), and channels whose only tag is "news" or
 // "youtube" with a name that fits no pattern (a lone tag cannot be told from
@@ -89,7 +91,7 @@ pub const NON_MUSIC_NAMES: &[&str] = &[
     // Talk channels whose tags carry no STRONG marker.
     "Sounds of Isha", "RealLifeLore",
     // Video and news channels whose tags are absent or a lone "youtube"/"News".
-    "Drumeo", "Marques Brownlee", "Fireship", "jacksepticeye", "DougDoug",
+    "Drumeo", "Bloomberg Market Minute", "Marques Brownlee", "Fireship", "jacksepticeye", "DougDoug",
     "DougDougDoug", "Lex Fridman", "Good Mythical Morning", "Vinesauce",
     "PowerfulJRE", "Asmongold Clips", "Amy Goodman", "Reuters", "Politico",
     "Inside Edition", "Al Jazeera", "Kurzgesagt",
@@ -111,17 +113,17 @@ pub const NEWS_CONTEXT_TAGS: &[&str] = &[
 /// Tags that, next to "youtube", mark a video channel rather than a musician.
 pub const CHANNEL_CONTEXT_TAGS: &[&str] = &[
     "gaming", "gamer", "gameplay", "video games", "video game", "lets play",
-    "let s play", "minecraft", "science", "education", "educational", "tech",
+    "let s play", "science", "education", "educational", "tech",
     "technology", "commentary", "commentary channel", "vlog", "vlogger",
     "documentary", "streamer", "livestreamer", "twitch", "reaction", "review",
-    "politics", "political", "psychology", "history", "youtuber", "youtubers",
+    "politics", "political", "psychology", "history",
     "news", "fitness", "tutorial", "tutorials",
 ];
 
 /// Tags that show a musician without being a genre in `MUSIC_GENRE_TAGS`.
 /// Used only by the news, YouTube and name-pattern clauses.
 pub const MUSIC_EVIDENCE_TAGS: &[&str] = &[
-    "instrumental", "cover", "covers", "acoustic", "soundtrack", "jpop",
+    "instrumental", "chiptune", "cover", "covers", "acoustic", "soundtrack", "jpop",
     "kpop", "j rock", "female vocalists", "male vocalists", "vaporwave",
     "chillwave", "chillout", "lofi", "boyband", "singer", "composer",
     "beats", "dance", "vocal", "guitar", "piano", "violin",
@@ -195,20 +197,42 @@ fn has_broadcast_time(lower: &str) -> bool {
     })
 }
 
-/// Names that read as a broadcast, a channel or a web address.
-fn channel_like_name(name: &str) -> bool {
+/// Any tag that points at spoken-word, news or video content.
+fn has_channel_tag(norm: &[String]) -> bool {
+    norm.iter().any(|t| {
+        let t = t.as_str();
+        t == "youtube"
+            || t == "news"
+            || t.ends_with(" news")
+            || STRONG_TAGS.contains(&t)
+            || AMBIGUOUS_TAGS.contains(&t)
+            || NEWS_CONTEXT_TAGS.contains(&t)
+            || CHANNEL_CONTEXT_TAGS.contains(&t)
+    })
+}
+
+/// Names that read as a broadcast, a channel or a web address. A name alone
+/// is weak evidence (Broadleaf Radio, Nightshift TV and Daily News are bands),
+/// so the suffix and domain patterns also need a channel-ish tag, or no tags
+/// at all for a domain or a "podcast" suffix.
+fn channel_like_name(name: &str, norm: &[String]) -> bool {
     let lower = name.trim().to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
     if has_broadcast_time(&lower) && words.iter().any(|w| *w == "news" || *w == "radio") {
         return true;
     }
-    if words.len() >= 2 && words.last().is_some_and(|w| CHANNEL_NAME_SUFFIXES.contains(w)) {
-        return true;
+    if words.len() >= 2 {
+        if let Some(last) = words.last().filter(|w| CHANNEL_NAME_SUFFIXES.contains(w)) {
+            if *last == "podcast" || has_channel_tag(norm) {
+                return true;
+            }
+        }
     }
     words.len() == 1
         && lower.len() > 4
         && lower.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
         && DOMAIN_SUFFIXES.iter().any(|d| lower.len() > d.len() && lower.ends_with(d))
+        && (norm.is_empty() || has_channel_tag(norm))
 }
 
 /// True when the artist should never be recommended. `tags` are in Last.fm order.
@@ -222,7 +246,7 @@ pub fn is_non_music<S: AsRef<str>>(name: &str, tags: &[S]) -> bool {
         .map(|t| normalize_tag(t.as_ref()))
         .collect();
     if !music_in_lead(&norm)
-        && (news_channel(&norm) || youtube_channel(&norm) || channel_like_name(name))
+        && (news_channel(&norm) || youtube_channel(&norm) || channel_like_name(name, &norm))
     {
         return true;
     }
@@ -347,6 +371,14 @@ mod tests {
 
     #[test]
     fn name_patterns_yield_to_music_tags() {
+        // Real musicians from a live out-of-sample run, caught by an earlier draft.
+        assert!(!is_non_music("Broadleaf Radio", NO_TAGS));
+        assert!(!is_non_music("Motel Radio", &["louisiana", "New Orleans"]));
+        assert!(!is_non_music("King Radio", &["calypso", "All", "trinidad", "trinidad and tobago", "world"]));
+        assert!(!is_non_music("10111.org", &["video glitch", "electroacoustic", "sound art", "switzerland", "Extreme"]));
+        assert!(!is_non_music("Kacper Blonsky", &["youtube", "polish", "poland", "youtuber", "polskie"]));
+        assert!(!is_non_music("ThnxCya", &["childhood", "nostalgic", "goat", "youtube", "minecraft"]));
+        assert!(!is_non_music("yammy", &["chiptune", "youtube", "minecraft", "youtuber", "Roblox"]));
         assert!(!is_non_music("Bad News", &["heavy metal", "comedy", "noise", "industrial", "80's"]));
         assert!(!is_non_music("Local News", &["vaporwave", "ambient", "jazz", "electronic", "discover"]));
         assert!(!is_non_music("Fuji Grid TV", &["vaporwave", "electronic", "mediagaze", "chillwave", "ecco jamz"]));
