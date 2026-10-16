@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Artist } from "../lib/types";
+import { Artist, ArtistMeta } from "../lib/types";
 import { motion, AnimatePresence } from "framer-motion";
-import { firstGenreTag, isGeoTag, formatGeoTag, countryFromTags } from "../lib/geoTags";
+import { firstGenreTag, isGeoTag, countryFromTags } from "../lib/geoTags";
+import { formatArtistOrigin } from "../lib/artistMeta";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent, canPersistActions } from "../lib/capability";
 import { postEvent } from "../lib/events";
@@ -25,6 +26,8 @@ interface ArtistCardProps {
   onSave?: () => void;
   onUnsave?: () => void;
   onDismiss?: () => void;
+  /** MusicBrainz origin facts; undefined/null while unknown (tag guess shows instead). */
+  meta?: ArtistMeta | null;
 }
 
 /** A resolved listen/find destination. Last.fm + Spotify always render; the
@@ -46,7 +49,7 @@ const StatBlock = ({ value, caption }: { value: string; caption: string }) => (
 );
 
 const ledgerCols =
-  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_172px_70px_74px_22px]";
 
 export default function ArtistCard({
   artist,
@@ -61,6 +64,7 @@ export default function ArtistCard({
   onSave,
   onUnsave,
   onDismiss,
+  meta = null,
 }: ArtistCardProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -71,7 +75,7 @@ export default function ArtistCard({
   }, [isFocused]);
 
   const primaryTag = firstGenreTag(artist.top_tags);
-  const country = countryFromTags(artist.top_tags) ?? "";
+  const origin = formatArtistOrigin(meta, countryFromTags(artist.top_tags));
   const extraGenres = artist.top_tags
     .filter((t) => !isGeoTag(t) && t.length <= 25 && t.toLowerCase() !== (primaryTag ?? "").toLowerCase())
     .slice(0, 6);
@@ -150,8 +154,20 @@ export default function ArtistCard({
               ●
             </span>
           )}
-          <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
-            {artist.name}
+          <span className="flex flex-col min-w-0">
+            <span className="font-serif font-semibold text-[15px] min-[720px]:text-[18px] leading-tight break-words min-[720px]:truncate" style={{ color: "var(--text)" }}>
+              {artist.name}
+            </span>
+            {origin && (
+              <span
+                className="min-[720px]:hidden font-mono text-[11px] tracking-wider uppercase truncate mt-1"
+                style={{ color: "var(--dim)" }}
+                title={origin}
+                data-testid="origin-mobile"
+              >
+                {origin}
+              </span>
+            )}
           </span>
         </span>
 
@@ -167,8 +183,10 @@ export default function ArtistCard({
         <span
           className="hidden min-[720px]:block font-mono text-[11px] tracking-widest uppercase truncate"
           style={{ color: "var(--dim)" }}
+          title={origin || undefined}
+          data-testid="origin-desktop"
         >
-          {country ? formatGeoTag(country) : ""}
+          {origin}
         </span>
 
         {/* conviction */}

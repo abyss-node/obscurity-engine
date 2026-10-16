@@ -164,3 +164,29 @@ describe("ArtistCard — Bandcamp link", () => {
     });
   });
 });
+
+describe("ArtistCard — origin (MusicBrainz meta)", () => {
+  const base = { artist: makeArtist({ top_tags: ["swedish death metal"] }), rank: 1, expanded: false, onToggle: () => {} };
+
+  it("shows the tag guess when there is no meta", () => {
+    render(<ArtistCard {...base} />);
+    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("Sweden");
+  });
+
+  it("shows country, year and type from meta, MB country winning over the tag guess", () => {
+    render(
+      <ArtistCard
+        {...base}
+        meta={{ country_iso2: "DE", area_name: "Germany", begin_year: 2014, artist_type: "Group" }}
+      />
+    );
+    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("Germany · 2014 · band");
+    expect(screen.getByTestId("origin-mobile")).toHaveTextContent("Germany · 2014 · band");
+  });
+
+  it("renders nothing for an artist with neither tag nor meta", () => {
+    render(<ArtistCard {...base} artist={makeArtist({ top_tags: ["slowcore"] })} />);
+    expect(screen.getByTestId("origin-desktop")).toHaveTextContent("");
+    expect(screen.queryByTestId("origin-mobile")).not.toBeInTheDocument();
+  });
+});

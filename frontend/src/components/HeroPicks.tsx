@@ -5,7 +5,9 @@ import { Artist } from "../lib/types";
 import { normConviction, normStickiness, formatListeners } from "../lib/scoring";
 import { canFireRecEvent } from "../lib/capability";
 import { postEvent } from "../lib/events";
-import { firstGenreTag, formatGeoTag, countryFromTags } from "../lib/geoTags";
+import { formatArtistOrigin } from "../lib/artistMeta";
+import { useArtistMeta } from "../lib/useArtistMeta";
+import { firstGenreTag, countryFromTags } from "../lib/geoTags";
 
 interface HeroPicksProps {
   artists: Artist[];
@@ -43,6 +45,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
     () => [...artists].sort((a, b) => b.composite_score - a.composite_score).slice(0, 3),
     [artists]
   );
+  const metaFor = useArtistMeta(top3.length < 3 ? [] : top3.map((a) => a.name));
 
   if (top3.length < 3) return null;
 
@@ -87,9 +90,8 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
           const conviction = normConviction(artist);
           const stickiness = normStickiness(artist);
           const primaryTag = firstGenreTag(artist.top_tags);
-          const countryKey = countryFromTags(artist.top_tags);
-          const country = countryKey ? formatGeoTag(countryKey) : "";
-          const meta = [primaryTag, country].filter(Boolean).join(" · ");
+          const origin = formatArtistOrigin(metaFor(artist.name), countryFromTags(artist.top_tags));
+          const meta = [primaryTag, origin].filter(Boolean).join(" · ");
           const links = linksFor(artist);
           const seeds = (artist.source_seeds ?? []).slice(0, 2).map((s) => s.name);
 
@@ -121,7 +123,7 @@ export default function HeroPicks({ artists, depthScore, runId = null }: HeroPic
                 {artist.name}
               </div>
 
-              <div className="font-mono text-[11px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }}>
+              <div className="font-mono text-[11px] tracking-[0.14em] uppercase mt-2.5" style={{ color: "var(--muted)" }} title={meta}>
                 {meta}
               </div>
 

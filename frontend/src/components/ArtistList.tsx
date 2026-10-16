@@ -8,6 +8,7 @@ import DismissedRow from "./DismissedRow";
 import Tooltip from "./Tooltip";
 import { useDismissal } from "../lib/useDismissal";
 import { useSaved } from "../lib/useSaved";
+import { useArtistMeta } from "../lib/useArtistMeta";
 import type { Session } from "../lib/session";
 
 // Default-visible rows; "view more" reveals the rest (engine returns up to 25).
@@ -37,7 +38,7 @@ const SORT_OPTIONS = [
 // Shared grid template — column header row must line up with each ledger row.
 // Keep in sync with `ledgerCols` in ArtistCard.tsx.
 const ledgerCols =
-  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_104px_70px_74px_22px]";
+  "grid-cols-[20px_minmax(0,1fr)_40px_46px_16px] min-[720px]:grid-cols-[26px_minmax(0,1fr)_148px_172px_70px_74px_22px]";
 
 export default function ArtistList({
   artists,
@@ -78,6 +79,9 @@ export default function ArtistList({
 
   const visible = activeArtists.slice(0, shown);
   const remaining = activeArtists.length - visible.length;
+
+  // Origin facts for the rows on screen (top 10; the rest after "view more").
+  const metaFor = useArtistMeta(visible.map((a) => a.name));
 
   return (
     <div className="w-full flex flex-col gap-5">
@@ -158,6 +162,7 @@ export default function ArtistList({
                   onSave={() => save(artist)}
                   onUnsave={() => unsave(artist)}
                   onDismiss={() => dismiss(artist)}
+                  meta={metaFor(artist.name)}
                 />
               )}
             </motion.div>

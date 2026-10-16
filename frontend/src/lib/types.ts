@@ -99,3 +99,22 @@ export const PERIOD_WINDOWS: Record<string, string> = {
   "12month": "1-year window",
   overall: "all-time",
 };
+
+// GET /api/artist-meta — mirrors the backend response by hand (backend branch
+// feat/artist-meta-backend). Origin facts from MusicBrainz, filled in after
+// discovery results render.
+export interface ArtistMeta {
+  /** ISO 3166-1 alpha-2, or an MB pseudo-code (XW, XE). */
+  country_iso2: string | null;
+  area_name: string | null;
+  begin_year: number | null;
+  /** MusicBrainz type verbatim (Person, Group, Orchestra, ...). */
+  artist_type: string | null;
+}
+
+export interface ArtistMetaResponse {
+  /** Key = the name exactly as requested. null = nothing known (unresolved or settled miss). */
+  meta: Record<string, ArtistMeta | null>;
+  /** Requested names still resolving. A null meta entry absent from here is a settled miss. */
+  pending: string[];
+}
