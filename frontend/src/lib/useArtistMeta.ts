@@ -5,7 +5,7 @@ import type { ArtistMeta } from "./types";
 import { MAX_META_NAMES, fetchArtistMeta, metaRequestNames } from "./artistMeta";
 
 // Delays before re-polls while names are pending: initial request, then
-// 2s, 4s, 8s, 8s — five requests at most.
+// 2s, 4s, then every 8s until POLL_BUDGET_MS runs out.
 export const POLL_DELAYS_MS = [2000, 4000, 8000];
 // Keep polling a name while the backend reports it pending (it resolves them
 // serially, 1-2 s each), until this long after the name's first request.
