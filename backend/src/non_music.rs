@@ -42,7 +42,7 @@ pub const DECISIVE_WINDOW: usize = 5;
 pub const NON_MUSIC_NAMES: &[&str] = &[
     "T-Series", "Zee Music Company", "Saregama", "Saregama Music",
     "Tips Official", "Tips Music", "Sony Music India", "Speed Records",
-    "Venus", "Shemaroo", "Eros Now Music", "YRF", "Times Music",
+    "Shemaroo", "Eros Now Music", "YRF", "Times Music",
     "Lahari Music", "Aditya Music", "Think Music India", "White Hill Music",
     "Desi Music Factory", "Geet MP3", "Bollywood Classics",
 ];
