@@ -598,7 +598,7 @@ impl LastfmClient {
     ) -> Result<SimilarArtistsResponse, BoxError> {
         let url = format!(
             "{}?method=artist.getsimilar&artist={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL, lf_enc(artist_name), self.api_key, limit
+            lastfm_api_base(), lf_enc(artist_name), self.api_key, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         Ok(serde_json::from_str(&resp_text)?)
@@ -765,7 +765,7 @@ impl LastfmClient {
 
         let url = format!(
             "{}?method=artist.gettoptags&artist={}&api_key={}&format=json",
-            LASTFM_API_URL, lf_enc(artist), self.api_key
+            lastfm_api_base(), lf_enc(artist), self.api_key
         );
         let text = self.get_with_retry(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&text)?;
@@ -848,7 +848,7 @@ impl LastfmClient {
         }
         let url = format!(
             "{}?method=tag.gettopartists&tag={}&api_key={}&format=json&limit={}",
-            LASTFM_API_URL, lf_enc(tag), self.api_key, limit
+            lastfm_api_base(), lf_enc(tag), self.api_key, limit
         );
         let resp_text = self.get_with_retry(&url).await?;
         let response: TagTopArtistsResponse = serde_json::from_str(&resp_text)?;

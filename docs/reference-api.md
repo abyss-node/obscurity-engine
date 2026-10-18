@@ -337,6 +337,7 @@ features seem to silently fail — see
   "postgres": "ok",        // "disabled" (no DATABASE_URL) | "ok" (SELECT 1 succeeds) | "error" (set but unreachable/malformed)
   "redis": "disabled",     // "disabled" (no REDIS_URL) | "ok" | "error"
   "spotify": "ok",         // "ok" (SPOTIFY_CLIENT_ID + SECRET set) | "disabled" (no error state)
+  "deezer": "ok",          // "ok" | "degraded" (cooldown active or a live Deezer call failed in the last minute) | "disabled" (DEEZER_VETO=off); local state only, no Deezer call per status request
   "lastfm_auth": "ok",     // "ok" (LASTFM_API_SECRET set) | "disabled" (no error state)
   "listenbrainz": "disabled", // "disabled" (CANDIDATE_SOURCE=lastfm/unset) | "ok" (blend arm live) | "error" (selected but LB currently failing)
   "musicbrainz": "ok",     // "ok" | "degraded" (the last artist-meta MusicBrainz call failed transiently); never "disabled", no MB call per status request

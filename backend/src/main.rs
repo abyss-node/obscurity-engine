@@ -515,6 +515,84 @@ mod integration_tests {
         assert!(json["version"].is_string());
     }
 
+    /// Full handler path with mock Last.fm and mock Deezer: an undercounted
+    /// Punjabi star ranks first, the Deezer veto removes it, an out-of-scope
+    /// metal band with more fans and an indie Indian act stay, and the list
+    /// still fills to 25. Removing the veto call from `score_and_rank` or
+    /// passing `None` from the handler fails this test.
+    #[tokio::test]
+    async fn discovery_handler_applies_deezer_veto_end_to_end() {
+        use crate::deezer::testutil::{spawn, Mode};
+        use axum::extract::Query;
+        use std::collections::HashMap;
+
+        async fn lastfm(Query(q): Query<HashMap<String, String>>) -> axum::Json<serde_json::Value> {
+            let method = q.get("method").map(String::as_str).unwrap_or("");
+            let v = match method {
+                "user.gettopartists" => serde_json::json!({
+                    "topartists": {"artist": [{"name": "Seed One", "url": "", "playcount": "500"}],
+                                   "@attr": {"total": "1"}}}),
+                "user.getinfo" => serde_json::json!({"user": {"playcount": "1000", "artist_count": "100"}}),
+                "artist.getsimilar" => {
+                    let mut names: Vec<String> = (0..28).map(|i| format!("Band {i}")).collect();
+                    names.extend(["Punjabi Star", "Metal Band", "Indie Indian"].map(String::from));
+                    let list: Vec<_> = names.iter()
+                        .map(|n| serde_json::json!({"name": n, "url": "", "match": "0.9"}))
+                        .collect();
+                    serde_json::json!({"similarartists": {"artist": list}})
+                }
+                "artist.getinfo" => {
+                    let name = q.get("artist").cloned().unwrap_or_default();
+                    let (tags, plays): (Vec<&str>, u64) = match name.as_str() {
+                        "Punjabi Star" => (vec!["punjabi", "pop"], 9_000_000),
+                        "Metal Band" => (vec!["death metal"], 8_000_000),
+                        "Indie Indian" => (vec!["indian", "indie"], 7_000_000),
+                        n if n.starts_with("Band ") => (vec![n], 50_000),
+                        _ => (vec!["rock"], 50_000),
+                    };
+                    let tag: Vec<_> = tags.iter().map(|t| serde_json::json!({"name": t})).collect();
+                    serde_json::json!({"artist": {"name": name,
+                        "stats": {"listeners": "5000", "playcount": plays.to_string(), "userplaycount": "0"},
+                        "tags": {"tag": tag}}})
+                }
+                "artist.gettoptags" => serde_json::json!({"toptags": {"tag": [{"name": "rock"}]}}),
+                "tag.gettopartists" => serde_json::json!({"topartists": {"artist": []}}),
+                _ => serde_json::json!({"error": 6, "message": "unmocked"}),
+            };
+            axum::Json(v)
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route("/", get(lastfm));
+        tokio::spawn(async move { axum::serve(listener, mock).await.unwrap(); });
+        let _base = MockLastfmBase::set(addr);
+
+        let (dz_base, dz_hits) = spawn(
+            &[("Punjabi Star", 4_208), ("Metal Band", 5_000), ("Indie Indian", 500)],
+            Mode::Normal,
+        ).await;
+        let mut state = no_db_state();
+        Arc::get_mut(&mut state).unwrap().deezer =
+            Some(Arc::new(deezer::DeezerClient::new(&dz_base, 2000)));
+        let app = build_router(state);
+        let (status, json) = status_of(
+            app,
+            Request::builder()
+                .uri("/api/discovery?username=someone&period=7day")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{json}");
+        let names: Vec<&str> = json["artists"].as_array().unwrap()
+            .iter().map(|a| a["name"].as_str().unwrap()).collect();
+        assert!(!names.contains(&"Punjabi Star"), "veto not applied: {names:?}");
+        assert!(names.contains(&"Metal Band"), "{names:?}");
+        assert!(names.contains(&"Indie Indian"), "{names:?}");
+        assert_eq!(names.len(), 25, "list must backfill: {names:?}");
+        assert_eq!(dz_hits.load(std::sync::atomic::Ordering::SeqCst), 2, "only in-scope names are looked up");
+    }
+
     #[tokio::test]
     async fn discovery_nonexistent_user_is_404_not_generic_500() {
         // Last.fm error code 6 on user.gettopartists means "user not found" — a

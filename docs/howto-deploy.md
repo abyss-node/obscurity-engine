@@ -180,6 +180,9 @@ username end to end.
 | `KEY_STORE_PATH` | backend | no | file path on a persistent disk where opt-in user-contributed keys are saved/reloaded |
 | `SPOTIFY_CLIENT_ID` | backend | no | direct Spotify artist links + preview |
 | `SPOTIFY_CLIENT_SECRET` | backend | no | same |
+| `DEEZER_VETO` | backend | no | `off` disables the Deezer fan-count veto for South Asian candidates; default on, no key needed |
+| `DEEZER_VETO_FANS` | backend | no | Deezer fan count at which an in-scope artist is dropped (default `2000`) |
+| `DEEZER_API_BASE` | backend | no | Deezer API base URL override (default `https://api.deezer.com`) |
 | `CANDIDATE_SOURCE` | backend | no | candidate-generation source: `lastfm` (default) / `listenbrainz` / `blend`; unset or invalid → `lastfm` (today's behavior). See below |
 | `REDIS_URL` | backend | no | Redis-backed result cache; unset → in-memory (graceful fallback) |
 | `DATABASE_URL` | backend | no | Postgres persistence (identity, events, saved/dismissed, observations); unset → every persistence endpoint hides or `503`s (graceful fallback) |

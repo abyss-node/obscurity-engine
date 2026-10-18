@@ -21,7 +21,6 @@
 // reports quota exhaustion as HTTP 200 with `{"error":{"code":4,...}}`.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
@@ -43,33 +42,50 @@ const CONCURRENCY: usize = 4;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 /// Total wall-clock the veto stage may add to one discovery.
 pub const VETO_BUDGET: Duration = Duration::from_secs(4);
-/// How many in-scope candidates (in rank order) are checked per request.
-const MAX_CHECKED: usize = 60;
 /// Self-imposed ceiling, under Deezer's 50 per 5 s per IP, shared by all requests.
 const WINDOW: Duration = Duration::from_secs(5);
 const WINDOW_MAX_CALLS: usize = 40;
+/// How many in-scope candidates (in rank order) are checked per request: one
+/// full window of calls, so a cold request never asks for more than it may
+/// make. The window is shared across requests; a discovery that arrives while
+/// another has spent it finds the window full for its uncached names and keeps
+/// them (fail-open) rather than waiting.
+const MAX_CHECKED: usize = WINDOW_MAX_CALLS;
 const FOUND_TTL: Duration = Duration::from_secs(30 * 24 * 3600);
 const UNKNOWN_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
 const QUOTA_COOLDOWN: Duration = Duration::from_secs(10);
+/// How long a failed live call keeps `/api/status` at degraded.
+const FAILURE_MEMORY: Duration = Duration::from_secs(60);
 const DEFAULT_429_COOLDOWN: Duration = Duration::from_secs(30);
 
-/// Last.fm tags (compared lowercase, whole-tag, hyphens and underscores read as
-/// spaces) that put a candidate in scope. Only the first five tags count.
+/// Core scope tags (compared lowercase, whole-tag, hyphens and underscores read
+/// as spaces). Only the first five Last.fm tags count.
 ///
 /// Included: language, nationality and film-industry tags whose audiences live
 /// on non-scrobbling platforms (Punjabi, Hindi, Bollywood, Pakistani, Bengali,
-/// Tamil, Telugu and so on), plus the devotional/folk forms that sit in the same
-/// mainstream ecosystem (sufi, qawwali, ghazal).
+/// Tamil, Telugu and so on).
 ///
 /// Left out on purpose: carnatic and hindustani classical, which are niche
-/// scenes with a different audience; any genre tag on its own (metal, rock,
-/// hip hop), which would pull in Western niche acts.
+/// scenes with a different audience; any bare genre tag (metal, rock, hip hop),
+/// which would pull in Western niche acts; and sufi, qawwali and ghazal, which
+/// alone also tag Turkish and Arabic devotional acts (ilahi, nasheed) whose
+/// Deezer audiences are real and not undercounted. Those three therefore never
+/// put an artist in scope by themselves; an artist who is South Asian carries a
+/// core tag as well.
 pub const SCOPE_TAGS: &[&str] = &[
     "punjabi", "punjabi pop", "bhangra", "bollywood", "filmi", "hindi", "hindie",
     "indian", "india", "indian pop", "desi", "desi hip hop",
     "pakistani", "pakistan", "urdu", "bengali", "bangladeshi",
     "tamil", "telugu", "kannada", "malayalam", "marathi", "gujarati",
-    "kollywood", "tollywood", "sufi", "qawwali", "ghazal",
+    "kollywood", "tollywood",
+];
+
+/// Any of these in the first five tags puts the artist out of scope even next
+/// to a core tag: the sufi/ghazal/urdu tags are shared with Turkish and Arabic
+/// acts, and Deezer covers those audiences properly.
+pub const EXCLUDE_TAGS: &[&str] = &[
+    "turkish", "turkey", "arabic", "arab", "egyptian", "kuwaiti", "nasheed",
+    "nasheeds", "anasheed", "ilahi", "ilahiler",
 ];
 
 const TAG_WINDOW: usize = 5;
@@ -82,11 +98,12 @@ fn norm_tag(tag: &str) -> String {
         .join(" ")
 }
 
-/// Whether any of the first five tags is a South Asian scope tag.
+/// Whether the first five tags mark a South Asian artist: a core scope tag
+/// and no Turkish/Arabic exclusion tag.
 pub fn in_scope<S: AsRef<str>>(tags: &[S]) -> bool {
-    tags.iter()
-        .take(TAG_WINDOW)
-        .any(|t| SCOPE_TAGS.contains(&norm_tag(t.as_ref()).as_str()))
+    let norm: Vec<String> = tags.iter().take(TAG_WINDOW).map(|t| norm_tag(t.as_ref())).collect();
+    !norm.iter().any(|t| EXCLUDE_TAGS.contains(&t.as_str()))
+        && norm.iter().any(|t| SCOPE_TAGS.contains(&t.as_str()))
 }
 
 /// Cached lookup result. `fans: None` is a successful search with no exact
@@ -94,6 +111,12 @@ pub fn in_scope<S: AsRef<str>>(tags: &[S]) -> bool {
 #[derive(Serialize, Deserialize)]
 struct CachedFans {
     fans: Option<u64>,
+}
+
+/// Match-only key: the normalized name with spaces removed, so "K K" and "KK"
+/// agree. Not used for the cache key, which keeps the spaces.
+fn match_key(name: &str) -> String {
+    normalize_artist_name(name).replace(' ', "")
 }
 
 fn cache_key(norm_name: &str) -> String {
@@ -107,7 +130,7 @@ pub struct DeezerClient {
     sem: Semaphore,
     calls: StdMutex<VecDeque<Instant>>,
     cooldown_until: StdMutex<Option<Instant>>,
-    last_failed: AtomicBool,
+    last_failure: StdMutex<Option<Instant>>,
 }
 
 /// What `apply_veto` needs from the application state.
@@ -153,7 +176,7 @@ impl DeezerClient {
             sem: Semaphore::new(CONCURRENCY),
             calls: StdMutex::new(VecDeque::new()),
             cooldown_until: StdMutex::new(None),
-            last_failed: AtomicBool::new(false),
+            last_failure: StdMutex::new(None),
         }
     }
 
@@ -161,10 +184,25 @@ impl DeezerClient {
         self.veto_fans
     }
 
-    /// True while a cooldown is active or the last live call failed. Reads
-    /// local state only, so `/api/status` never triggers a Deezer request.
+    /// True while a cooldown is active or a live call failed within the last
+    /// `FAILURE_MEMORY`. Reads local state only, so `/api/status` never
+    /// triggers a Deezer request, and it recovers on its own after cache-only
+    /// traffic.
     pub fn degraded(&self) -> bool {
-        self.in_cooldown() || self.last_failed.load(Ordering::Relaxed)
+        let recent = self
+            .last_failure
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some_and(|t| t.elapsed() < FAILURE_MEMORY);
+        self.in_cooldown() || recent
+    }
+
+    fn note_failure(&self) {
+        *self.last_failure.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+    }
+
+    fn note_success(&self) {
+        *self.last_failure.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     fn in_cooldown(&self) -> bool {
@@ -217,11 +255,11 @@ impl DeezerClient {
         if self.in_cooldown() || !self.take_slot() {
             return None;
         }
-        match self.search(name, &norm).await {
+        match self.search(name).await {
             Some(fans) => {
                 let ttl = if fans.is_some() { FOUND_TTL } else { UNKNOWN_TTL };
                 cache.put_json(&key, &CachedFans { fans }, ttl).await;
-                self.last_failed.store(false, Ordering::Relaxed);
+                self.note_success();
                 fans
             }
             None => None,
@@ -230,7 +268,8 @@ impl DeezerClient {
 
     /// `Some(Some(n))` exact match, `Some(None)` searched and no exact match,
     /// `None` the call failed (nothing to cache).
-    async fn search(&self, name: &str, norm: &str) -> Option<Option<u64>> {
+    async fn search(&self, name: &str) -> Option<Option<u64>> {
+        let norm_key = match_key(name);
         let resp = match self
             .http
             .get(format!("{}/search/artist", self.base))
@@ -240,7 +279,7 @@ impl DeezerClient {
         {
             Ok(r) => r,
             Err(_) => {
-                self.last_failed.store(true, Ordering::Relaxed);
+                self.note_failure();
                 return None;
             }
         };
@@ -254,21 +293,21 @@ impl DeezerClient {
                 .map(Duration::from_secs)
                 .unwrap_or(DEFAULT_429_COOLDOWN);
             self.start_cooldown(secs.max(Duration::from_secs(1)));
-            self.last_failed.store(true, Ordering::Relaxed);
+            self.note_failure();
             eprintln!("Deezer 429: cooling down {}s, veto fails open meanwhile", secs.as_secs());
             return None;
         }
         let body = match resp.text().await {
             Ok(b) if status.is_success() => b,
             _ => {
-                self.last_failed.store(true, Ordering::Relaxed);
+                self.note_failure();
                 return None;
             }
         };
         let v: serde_json::Value = match serde_json::from_str(&body) {
             Ok(v) => v,
             Err(_) => {
-                self.last_failed.store(true, Ordering::Relaxed);
+                self.note_failure();
                 return None;
             }
         };
@@ -278,7 +317,7 @@ impl DeezerClient {
                 self.start_cooldown(QUOTA_COOLDOWN);
                 eprintln!("Deezer quota error (code 4): cooling down {}s", QUOTA_COOLDOWN.as_secs());
             }
-            self.last_failed.store(true, Ordering::Relaxed);
+            self.note_failure();
             return None;
         }
         let fans = v
@@ -288,7 +327,7 @@ impl DeezerClient {
                 items.iter().find(|it| {
                     it.get("name")
                         .and_then(|n| n.as_str())
-                        .is_some_and(|n| normalize_artist_name(n) == norm)
+                        .is_some_and(|n| match_key(n) == norm_key)
                 })
             })
             .and_then(|it| it.get("nb_fan").and_then(|f| f.as_u64()));
@@ -378,7 +417,7 @@ pub(crate) mod testutil {
 
     #[derive(Clone)]
     struct Mock {
-        fans: Arc<HashMap<String, u64>>,
+        fans: Arc<HashMap<String, (String, u64)>>,
         hits: Arc<AtomicUsize>,
         mode: Mode,
     }
@@ -397,8 +436,8 @@ pub(crate) mod testutil {
         let name = q.get("q").cloned().unwrap_or_default();
         // A non-matching decoy first, as the real API returns near-matches.
         let mut data = vec![json!({"name": format!("{name} Tribute Band"), "nb_fan": 999_999})];
-        if let Some(f) = m.fans.get(&name) {
-            data.push(json!({"name": name, "nb_fan": f}));
+        if let Some((shown, f)) = m.fans.get(&name) {
+            data.push(json!({"name": shown, "nb_fan": f}));
         }
         Json(json!({"data": data, "total": data.len()})).into_response()
     }
@@ -407,7 +446,16 @@ pub(crate) mod testutil {
     pub async fn spawn(fans: &[(&str, u64)], mode: Mode) -> (String, Arc<AtomicUsize>) {
         let hits = Arc::new(AtomicUsize::new(0));
         let mock = Mock {
-            fans: Arc::new(fans.iter().map(|(n, f)| (n.to_string(), *f)).collect()),
+            // "query=>Returned Name" makes the mock answer a lookup for `query`
+            // under a differently spelled artist name.
+            fans: Arc::new(
+                fans.iter()
+                    .map(|(n, f)| {
+                        let (q, shown) = n.split_once("=>").unwrap_or((n, n));
+                        (q.to_string(), (shown.to_string(), *f))
+                    })
+                    .collect(),
+            ),
             hits: Arc::clone(&hits),
             mode,
         };
@@ -472,6 +520,19 @@ mod tests {
     }
 
     #[test]
+    fn sufi_family_alone_is_out_of_scope_and_turkish_arabic_is_excluded() {
+        assert!(!in_scope(&["sufi", "qawwali", "ghazal"]));
+        assert!(!in_scope(&["sufi"]));
+        assert!(in_scope(&["sufi", "pakistani"]));
+        assert!(in_scope(&["qawwali", "urdu"]));
+        // Turkish/Arabic devotional acts, including ones that carry "urdu".
+        assert!(!in_scope(&["ilahi", "sufi", "turkish"]));
+        assert!(!in_scope(&["nasheed", "sufi", "urdu"]));
+        assert!(!in_scope(&["urdu", "arabic", "sufi"]));
+        assert!(!in_scope(&["sufi", "kuwaiti", "islamic"]));
+    }
+
+    #[test]
     fn settings_kill_switch_and_threshold() {
         assert!(DeezerClient::from_settings(Some("off"), None, None).is_none());
         assert!(DeezerClient::from_settings(Some(" OFF "), None, None).is_none());
@@ -492,6 +553,66 @@ mod tests {
         // Decoy-only response ("X Tribute Band") is not an exact match.
         assert_eq!(d.fan_count(&c, "Nobody Here").await, None);
         assert_eq!(normalize_artist_name("Vishal & Shekhar"), normalize_artist_name("vishal and shekhar!"));
+    }
+
+    #[tokio::test]
+    async fn spaces_are_ignored_when_matching_names() {
+        let (base, _) = spawn(&[("K K=>KK", 7000), ("Jal -The Band=>Jal", 4000), ("Kay Kay=>KK", 1)], Mode::Normal).await;
+        let d = DeezerClient::new(&base, 2000);
+        let c = mem();
+        assert_eq!(d.fan_count(&c, "K K").await, Some(7000));
+        // Still exact otherwise: a different spelling is not a match.
+        assert_eq!(d.fan_count(&c, "Jal -The Band").await, None);
+        assert_eq!(d.fan_count(&c, "Kay Kay").await, None);
+    }
+
+    #[tokio::test]
+    async fn status_recovers_after_failure_memory_and_cooldown_expire() {
+        let (base, _) = spawn(&[], Mode::Http429).await;
+        let d = DeezerClient::new(&base, 2000);
+        let c = mem();
+        d.fan_count(&c, "A").await;
+        assert!(d.degraded());
+        // Age both markers past their windows; no live success needed.
+        *d.cooldown_until.lock().unwrap() = Some(Instant::now() - Duration::from_secs(1));
+        *d.last_failure.lock().unwrap() = Some(Instant::now() - FAILURE_MEMORY - Duration::from_secs(1));
+        assert!(!d.degraded());
+    }
+
+    #[tokio::test]
+    async fn errors_and_no_match_keep_the_candidate() {
+        // 429: lookup fails.
+        let (base, _) = spawn(&[], Mode::Http429).await;
+        let d = DeezerClient::new(&base, 2000);
+        let c = mem();
+        let cfg = Some(VetoConfig { deezer: &d, cache: &c });
+        let out = apply_veto(vec![item("Star", &["punjabi"])], cfg).await;
+        assert_eq!(out.len(), 1, "a Deezer error must not veto");
+        // Quota error code 4.
+        let (base, _) = spawn(&[], Mode::QuotaError).await;
+        let d = DeezerClient::new(&base, 2000);
+        let cfg = Some(VetoConfig { deezer: &d, cache: &c });
+        let out = apply_veto(vec![item("Star Two", &["punjabi"])], cfg).await;
+        assert_eq!(out.len(), 1);
+        // Searched fine, no exact match.
+        let (base, _) = spawn(&[], Mode::Normal).await;
+        let d = DeezerClient::new(&base, 2000);
+        let cfg = Some(VetoConfig { deezer: &d, cache: &c });
+        let out = apply_veto(vec![item("Star Three", &["punjabi"])], cfg).await;
+        assert_eq!(out.len(), 1, "no match must not veto");
+    }
+
+    #[tokio::test]
+    async fn cold_request_makes_at_most_one_window_of_calls() {
+        let (base, hits) = spawn(&[], Mode::Normal).await;
+        let d = DeezerClient::new(&base, 2000);
+        let c = mem();
+        let cfg = Some(VetoConfig { deezer: &d, cache: &c });
+        let input: Vec<_> = (0..70).map(|i| item(&format!("Artist {i}"), &["indian"])).collect();
+        let out = apply_veto(input, cfg).await;
+        assert_eq!(out.len(), 70);
+        assert_eq!(hits.load(Ordering::SeqCst), MAX_CHECKED);
+        assert!(MAX_CHECKED <= WINDOW_MAX_CALLS);
     }
 
     #[tokio::test]
