@@ -413,6 +413,13 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
         Some(_) => "error",
         None => "disabled",
     };
+    // deezer: disabled (DEEZER_VETO=off) / degraded (cooldown or last live call
+    // failed) / ok. Local state only; no Deezer request is made from here.
+    let deezer = match &state.deezer {
+        None => "disabled",
+        Some(d) if d.degraded() => "degraded",
+        Some(_) => "ok",
+    };
     let lastfm_auth = if state.lastfm_secret.is_some() { "ok" } else { "disabled" };
     // listenbrainz: disabled (source=lastfm) / ok (blend arm live) / error (blend
     // arm selected but LB currently failing). Reflects the client health flag,
@@ -432,6 +439,7 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
             "postgres": postgres,
             "redis": redis,
             "spotify": spotify,
+            "deezer": deezer,
             "lastfm_auth": lastfm_auth,
             "listenbrainz": listenbrainz,
             "musicbrainz": crate::artist_meta::status_str(&state),

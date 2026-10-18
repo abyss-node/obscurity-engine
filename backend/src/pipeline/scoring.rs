@@ -55,9 +55,13 @@ pub async fn score_and_rank(
     seeds: &Seeds,
     tag_candidates: &HashSet<String>,
     under_threshold: Option<u64>,
+    veto: Option<crate::deezer::VetoConfig<'_>>,
 ) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
     let seed_tag_profile = build_seed_tag_profile(client, seeds).await?;
     let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, &seed_tag_profile, under_threshold).await?;
+    // After ranking, before post_process truncates to the cap: a vetoed star
+    // is replaced by the next-ranked candidate rather than leaving a short list.
+    let scored = crate::deezer::apply_veto(scored, veto).await;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
 }
 
@@ -637,5 +641,47 @@ mod non_music_pipeline_tests {
             assert!(!names.contains(&bad), "{bad} leaked into {names:?}");
         }
         assert_eq!(resp.artists.len(), MAX_RECOMMENDATIONS, "cap must backfill from the next-ranked music");
+    }
+
+    /// Last.fm undercounts South Asian stars. Three high-ranking candidates
+    /// (a Punjabi star with 4,208 Deezer fans, a metal band with 5,000 fans and
+    /// no South Asian tag, an Indian indie act with 500) go through the same
+    /// stages as `score_and_rank`: the star is replaced by the next-ranked
+    /// candidate, the other two stay, and the list is still full.
+    #[tokio::test]
+    async fn deezer_veto_drops_undercounted_star_and_the_cap_backfills() {
+        use crate::cache::{CacheStore, InMemoryStore};
+        use crate::deezer::testutil::{spawn, Mode};
+        use crate::deezer::{DeezerClient, VetoConfig};
+
+        let mut raw: Vec<(Artist, Vec<String>)> = Vec::new();
+        let mut weights = HashMap::new();
+        for s in ["s1", "s2", "s3", "s4"] { weights.insert(s.to_string(), 1.0); }
+        let all: Vec<String> = weights.keys().cloned().collect();
+        for i in 0..30 {
+            let genre = format!("genre{i}");
+            raw.push((artist(&format!("Band {i}"), &[genre.as_str()]), vec!["s1".into()]));
+        }
+        raw.push((artist("Arjan Star", &["punjabi", "pop"]), all.clone()));
+        raw.push((artist("Metal Band", &["death metal"]), all.clone()));
+        raw.push((artist("Indie Indian", &["indian", "indie"]), all.clone()));
+
+        let seeds = Seeds { weights, names: vec![], total_artist_count: None, total_scrobbles: None };
+        let (base, _hits) = spawn(
+            &[("Arjan Star", 4_208), ("Metal Band", 5_000), ("Indie Indian", 500)],
+            Mode::Normal,
+        ).await;
+        let deezer = DeezerClient::new(&base, 2000);
+        let cache = CacheStore::InMemory(InMemoryStore::new());
+
+        let scored = score_all(raw, &seeds, &HashSet::new(), &HashMap::new(), None, &HashSet::new());
+        let scored = crate::deezer::apply_veto(scored, Some(VetoConfig { deezer: &deezer, cache: &cache })).await;
+        let (resp, _reserve) = post_process(scored, 4, HashMap::new());
+
+        let names: Vec<&str> = resp.artists.iter().map(|a| a.name.as_str()).collect();
+        assert!(!names.contains(&"Arjan Star"), "star leaked into {names:?}");
+        assert!(names.contains(&"Metal Band"), "out-of-scope metal band must be kept: {names:?}");
+        assert!(names.contains(&"Indie Indian"), "indie Indian act must be kept: {names:?}");
+        assert_eq!(resp.artists.len(), MAX_RECOMMENDATIONS, "cap must backfill after the veto");
     }
 }

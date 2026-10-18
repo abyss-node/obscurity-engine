@@ -60,6 +60,8 @@ pub async fn discover_obscure_artists(
     // Candidate-source blend config. `None` = today's Last.fm-only behavior
     // (byte-identical). `Some(..)` blends in ListenBrainz per `CANDIDATE_SOURCE`.
     blend: Option<BlendConfig<'_>>,
+    // Deezer fan-count veto for South Asian candidates; `None` disables it.
+    veto: Option<crate::deezer::VetoConfig<'_>>,
     // Returns the response (top 25, unchanged) plus the post-diversity reserve
     // (26+) used only to backfill the authenticated dismissal filter.
 ) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
@@ -105,7 +107,7 @@ pub async fn discover_obscure_artists(
 
     let tag_candidates = tag_graph::fetch(&client, &username, &seeds).await?;
     let candidate_map = candidates::build_candidates(&client, &seeds.names, blend.as_ref()).await?;
-    scoring::score_and_rank(&client, &username, candidate_map, &seeds, &tag_candidates, under_threshold).await
+    scoring::score_and_rank(&client, &username, candidate_map, &seeds, &tag_candidates, under_threshold, veto).await
 }
 
 pub async fn discover_obscure_tracks(

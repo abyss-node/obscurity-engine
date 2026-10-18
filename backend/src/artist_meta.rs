@@ -643,6 +643,7 @@ mod tests {
         Arc::new(AppState {
             client: Arc::new(LastfmClient::with_keys(vec!["TESTKEY".into()], None)),
             spotify: None,
+            deezer: None,
             candidate_source: CandidateSource::Lastfm,
             listenbrainz: None,
             artist_meta: ArtistMetaService::build(lb, false),

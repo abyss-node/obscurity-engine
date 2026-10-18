@@ -17,6 +17,7 @@ mod artist_meta;
 mod auth;
 mod cache;
 mod db;
+mod deezer;
 mod geo_tags;
 mod handlers;
 mod lastfm;
@@ -44,6 +45,9 @@ use spotify::SpotifyClient;
 pub struct AppState {
     pub client: Arc<LastfmClient>,
     pub spotify: Option<Arc<SpotifyClient>>,
+    // Deezer fan-count veto for South Asian candidates Last.fm undercounts.
+    // `None` when DEEZER_VETO=off.
+    pub deezer: Option<Arc<deezer::DeezerClient>>,
     // Candidate-generation source (CANDIDATE_SOURCE env). Default `Lastfm` —
     // exactly today's behavior. The lever is flipped in prod only after review.
     pub candidate_source: CandidateSource,
@@ -167,6 +171,12 @@ async fn main() {
         }
     };
 
+    let deezer = deezer::DeezerClient::from_env().map(Arc::new);
+    match &deezer {
+        Some(d) => println!("Deezer veto: on (fans >= {})", d.veto_fans()),
+        None => println!("Deezer veto: disabled (DEEZER_VETO=off)"),
+    }
+
     // Postgres persistence (Phase 1). `None` when DATABASE_URL is unset — the
     // server then behaves exactly as before (graceful fallback). `db_configured`
     // records whether the var was set so /api/status can tell "disabled" (unset)
@@ -235,6 +245,7 @@ async fn main() {
     let state = Arc::new(AppState {
         client: Arc::new(LastfmClient::with_keys(api_keys, key_store)),
         spotify,
+        deezer,
         candidate_source,
         listenbrainz,
         artist_meta,
@@ -377,6 +388,7 @@ mod integration_tests {
         Arc::new(AppState {
             client: Arc::new(LastfmClient::with_keys(vec!["TESTKEY".to_string()], None)),
             spotify: None,
+            deezer: None,
             candidate_source: CandidateSource::Lastfm,
             listenbrainz: None,
             artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::new()), false),
@@ -404,6 +416,7 @@ mod integration_tests {
         Arc::new(AppState {
             client: Arc::new(LastfmClient::with_keys(vec!["TESTKEY".to_string()], None)),
             spotify: None,
+            deezer: None,
             candidate_source: CandidateSource::Blend,
             listenbrainz: Some(Arc::new(lb)),
             artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::new()), false),
@@ -493,6 +506,7 @@ mod integration_tests {
         assert_eq!(json["postgres"], "disabled");
         assert_eq!(json["redis"], "disabled");
         assert_eq!(json["spotify"], "disabled");
+        assert_eq!(json["deezer"], "disabled");
         assert_eq!(json["lastfm_auth"], "disabled");
         // Default candidate source is lastfm → LB reports "disabled".
         assert_eq!(json["listenbrainz"], "disabled");
