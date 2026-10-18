@@ -88,6 +88,10 @@ pub struct Artist {
     pub tags: Option<Tags>,
     #[serde(default)]
     pub stickiness_score: Option<f64>,
+    /// Last.fm's MusicBrainz id for the page; absent or empty for most small
+    /// artists. Never serialized to the wire (`Artist` is internal).
+    #[serde(default)]
+    pub mbid: Option<String>,
 }
 
 impl Artist {

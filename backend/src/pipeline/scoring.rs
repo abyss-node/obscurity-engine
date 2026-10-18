@@ -48,6 +48,7 @@ const DEFAULT_SHOWN: usize = 10;        // the obscurity index describes this de
 /// recommender candidates have near-zero conviction scores anyway.
 const MAX_CANDIDATES_FOR_INFO_FETCH: usize = 600;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn score_and_rank(
     client: &Arc<LastfmClient>,
     username: &str,
@@ -56,13 +57,37 @@ pub async fn score_and_rank(
     tag_candidates: &HashSet<String>,
     under_threshold: Option<u64>,
     veto: Option<crate::deezer::VetoConfig<'_>>,
+    split: Option<crate::split_veto::SplitConfig<'_>>,
 ) -> Result<(DiscoveryResponse, Vec<DiscoveryResponseItem>), Box<dyn std::error::Error + Send + Sync>> {
     let seed_tag_profile = build_seed_tag_profile(client, seeds).await?;
-    let scored = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, &seed_tag_profile, under_threshold).await?;
+    let (scored, mbids) = fetch_and_score(client, username, candidate_map, seeds, tag_candidates, &seed_tag_profile, under_threshold).await?;
     // After ranking, before post_process truncates to the cap: a vetoed star
     // is replaced by the next-ranked candidate rather than leaving a short list.
-    let scored = crate::deezer::apply_veto(scored, veto).await;
+    let scored = apply_vetoes(client, scored, &mbids, veto, split).await;
     Ok(post_process(scored, seeds.weights.len(), seed_tag_profile))
+}
+
+/// The post-score veto stage: the Deezer fan-count veto and the split-page
+/// vetoes run concurrently, so the stage costs the slower of the two rather
+/// than their sum. A candidate any veto drops is gone.
+async fn apply_vetoes(
+    client: &Arc<LastfmClient>,
+    scored: Vec<DiscoveryResponseItem>,
+    mbids: &HashMap<String, String>,
+    veto: Option<crate::deezer::VetoConfig<'_>>,
+    split: Option<crate::split_veto::SplitConfig<'_>>,
+) -> Vec<DiscoveryResponseItem> {
+    match split.filter(|c| c.switches.any()) {
+        Some(cfg) => {
+            let (kept, outcome) = tokio::join!(
+                crate::deezer::apply_veto(scored.clone(), veto),
+                crate::split_veto::run(&scored, client, mbids, cfg, crate::split_veto::SPLIT_BUDGET),
+            );
+            let drop = outcome.names();
+            kept.into_iter().filter(|a| !drop.contains(&a.name)).collect()
+        }
+        None => crate::deezer::apply_veto(scored, veto).await,
+    }
 }
 
 /// Fetch tags for the top N seed artists in parallel and build a weighted tag
@@ -141,7 +166,7 @@ async fn fetch_and_score(
     tag_candidates: &HashSet<String>,
     seed_tag_profile: &HashMap<String, f64>,
     under_threshold: Option<u64>,
-) -> Result<Vec<DiscoveryResponseItem>, BoxError> {
+) -> Result<(Vec<DiscoveryResponseItem>, HashMap<String, String>), BoxError> {
     // Normalized set of the user's own seed names — barred from recommendation
     // (matches the eval's `exclude_known = deep_known | seed_norms`). Built once
     // here rather than re-normalizing every seed inside the per-candidate loop.
@@ -194,7 +219,12 @@ async fn fetch_and_score(
         }
     }
 
-    Ok(score_all(raw, seeds, tag_candidates, seed_tag_profile, under_threshold, &seed_norms))
+    // Last.fm's mbid per candidate page, for the alias-split veto.
+    let mbids: HashMap<String, String> = raw
+        .iter()
+        .filter_map(|(a, _)| a.mbid.as_ref().filter(|m| !m.is_empty()).map(|m| (a.name.clone(), m.clone())))
+        .collect();
+    Ok((score_all(raw, seeds, tag_candidates, seed_tag_profile, under_threshold, &seed_norms), mbids))
 }
 
 /// Everything between "info fetched" and "ranked list": the non-music filter,
@@ -612,6 +642,7 @@ mod non_music_pipeline_tests {
             stats: Stats { listeners: 5_000, playcount: 50_000, userplaycount: Some("0".into()) },
             tags: Some(Tags { tag: tags.iter().map(|t| Tag { name: t.to_string() }).collect() }),
             stickiness_score: None,
+            mbid: None,
         }
     }
 

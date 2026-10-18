@@ -164,6 +164,15 @@ fn lastfm_api_base() -> String {
         .unwrap_or_else(|| LASTFM_API_URL.to_string())
 }
 
+/// What the split-page vetoes need from one `artist.getinfo` page.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArtistPage {
+    pub name: String,
+    pub listeners: u64,
+    pub mbid: Option<String>,
+    pub tags: Vec<String>,
+}
+
 /// A resolved Last.fm web-auth session (from `auth.getSession`).
 #[derive(Debug, Clone)]
 pub struct LastfmSession {
@@ -629,6 +638,52 @@ impl LastfmClient {
             .filter(|m| !m.is_empty()))
     }
 
+    /// One Last.fm artist page by name, without a username (public, so it is
+    /// cacheable across users). `autocorrect` false asks for the variant page
+    /// named exactly as given; true resolves to the canonical page. `Ok(None)`
+    /// is Last.fm's "artist not found" (error 6); every other failure is `Err`
+    /// so callers never cache it.
+    pub async fn fetch_artist_page(
+        &self,
+        artist_name: &str,
+        autocorrect: bool,
+    ) -> Result<Option<ArtistPage>, BoxError> {
+        let url = format!(
+            "{}?method=artist.getinfo&artist={}&autocorrect={}&api_key={}&format=json",
+            lastfm_api_base(), lf_enc(artist_name), u8::from(autocorrect), self.api_key
+        );
+        let text = self.get_with_retry(&url).await?;
+        let json: Value = serde_json::from_str(&text)?;
+        if let Some(code) = json.get("error").and_then(|c| c.as_u64()) {
+            return if code == 6 { Ok(None) } else { Err(format!("Last.fm error {code}").into()) };
+        }
+        let a = json.get("artist").ok_or("artist.getinfo: no artist object")?;
+        let listeners = a
+            .get("stats")
+            .and_then(|s| s.get("listeners"))
+            .and_then(|l| l.as_u64().or_else(|| l.as_str().and_then(|x| x.parse().ok())))
+            .ok_or("artist.getinfo: no listeners")?;
+        Ok(Some(ArtistPage {
+            name: a.get("name").and_then(|n| n.as_str()).unwrap_or(artist_name).to_string(),
+            listeners,
+            mbid: a
+                .get("mbid")
+                .and_then(|m| m.as_str())
+                .filter(|m| !m.is_empty())
+                .map(str::to_string),
+            tags: a
+                .get("tags")
+                .and_then(|t| t.get("tag"))
+                .and_then(|t| t.as_array())
+                .map(|t| {
+                    t.iter()
+                        .filter_map(|x| x.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }))
+    }
+
     pub async fn fetch_artist_info(
         &self,
         artist_name: &str,
@@ -868,6 +923,7 @@ mod audit_cache_tests {
                 stats: Stats { listeners: 1, playcount: 1, userplaycount: None },
                 tags: None,
                 stickiness_score: None,
+                mbid: None,
             },
         }
     }
@@ -956,5 +1012,31 @@ mod auth_sign_tests {
         let a = sign_params(&[("b", "2"), ("a", "1")], "s");
         let b = sign_params(&[("a", "1"), ("b", "2")], "s");
         assert_eq!(a, b);
+    }
+}
+
+/// `LASTFM_API_BASE` is process-global, so every test that points it at a mock
+/// server shares this lock: two tests with different mocks must not overlap,
+/// and one test's `remove_var` while another's request is in flight would send
+/// that request to the real Last.fm URL. The guard removes the var on drop, so
+/// a panicking assertion cannot leak the override into later tests.
+#[cfg(test)]
+pub(crate) mod test_base {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    pub struct MockLastfmBase(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+    impl MockLastfmBase {
+        pub fn set(addr: std::net::SocketAddr) -> Self {
+            let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
+            MockLastfmBase(guard)
+        }
+    }
+
+    impl Drop for MockLastfmBase {
+        fn drop(&mut self) {
+            std::env::remove_var("LASTFM_API_BASE");
+        }
     }
 }

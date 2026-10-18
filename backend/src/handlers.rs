@@ -19,6 +19,7 @@ use crate::cache;
 use crate::lastfm::{is_user_not_found_error, LastfmClient};
 use crate::models::{self, DiscoveryResponseItem};
 use crate::deezer::VetoConfig;
+use crate::split_veto::{SplitConfig, SplitSwitches};
 use crate::pipeline::{discover_obscure_artists, discover_obscure_tracks, BlendConfig};
 use crate::spotify::SpotifyClient;
 use crate::AppState;
@@ -127,6 +128,7 @@ pub async fn discovery_handler(
         deezer: d.as_ref(),
         cache: &state.cache,
     });
+    let split = Some(SplitConfig { state: &state, switches: SplitSwitches::from_env() });
     let blend: Option<BlendConfig> = state.listenbrainz.as_ref().map(|lb| BlendConfig {
         source: state.candidate_source,
         listenbrainz: lb.as_ref(),
@@ -144,7 +146,7 @@ pub async fn discovery_handler(
         // Cloned before the move into `discover_obscure_artists` below — needed
         // for the user-not-found error message.
         let username_for_err = query.username.clone();
-        return match discover_obscure_artists(client, query.username, query.period, appetite_mult, blend, veto).await {
+        return match discover_obscure_artists(client, query.username, query.period, appetite_mult, blend, veto, split).await {
             Ok((result, _reserve)) => {
                 let result = annotate_sparse_artists(result);
                 let result = attach_listen_links(&state.spotify, &state.cache, result).await;
@@ -195,7 +197,7 @@ pub async fn discovery_handler(
 
     // ── Cache miss ───────────────────────────────────────────────────────────
     println!("Cache miss: {}", cache_key);
-    match discover_obscure_artists(client, query.username.clone(), query.period.clone(), appetite_mult, blend, veto).await {
+    match discover_obscure_artists(client, query.username.clone(), query.period.clone(), appetite_mult, blend, veto, split).await {
         Ok((result, mut reserve)) => {
             let mut result = annotate_sparse_artists(result);
             result = attach_listen_links(&state.spotify, &state.cache, result).await;

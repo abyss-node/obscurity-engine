@@ -27,6 +27,7 @@ mod non_music;
 mod models;
 mod pipeline;
 mod ratelimit;
+mod split_veto;
 mod spotify;
 mod utils;
 
@@ -379,6 +380,10 @@ mod integration_tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
+    /// Nothing listens on port 9, so a background MusicBrainz lookup fails at
+    /// once instead of reaching the real service from a test.
+    const UNREACHABLE_MB: &str = "http://127.0.0.1:9/";
+
     fn base_state(
         db: Option<Arc<db::Db>>,
         db_configured: bool,
@@ -391,7 +396,7 @@ mod integration_tests {
             deezer: None,
             candidate_source: CandidateSource::Lastfm,
             listenbrainz: None,
-            artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::new()), false),
+            artist_meta: artist_meta::ArtistMetaService::build(Arc::new(ListenBrainzClient::with_urls("unused".into(), UNREACHABLE_MB.into())), false),
             cache: cache::CacheStore::InMemory(cache::InMemoryStore::new()),
             metrics: Arc::new(metrics::Metrics::new()),
             db,
@@ -459,28 +464,7 @@ mod integration_tests {
         (status, json)
     }
 
-    /// LASTFM_API_BASE is process-global, so tests that point it at a mock
-    /// server must not run concurrently — one test's remove_var while another's
-    /// request is in flight sends that request to the real Last.fm URL. The
-    /// guard serializes those tests and removes the var on drop, so a panicking
-    /// assertion can't leak the override into later tests either.
-    static LASTFM_API_BASE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    struct MockLastfmBase(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
-
-    impl MockLastfmBase {
-        fn set(addr: std::net::SocketAddr) -> Self {
-            let guard = LASTFM_API_BASE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-            std::env::set_var("LASTFM_API_BASE", format!("http://{}/", addr));
-            MockLastfmBase(guard)
-        }
-    }
-
-    impl Drop for MockLastfmBase {
-        fn drop(&mut self) {
-            std::env::remove_var("LASTFM_API_BASE");
-        }
-    }
+    use crate::lastfm::test_base::MockLastfmBase;
 
     fn ev_req(body: &str) -> Request<Body> {
         Request::builder()
@@ -591,6 +575,114 @@ mod integration_tests {
         assert!(names.contains(&"Indie Indian"), "{names:?}");
         assert_eq!(names.len(), 25, "list must backfill: {names:?}");
         assert_eq!(dz_hits.load(std::sync::atomic::Ordering::SeqCst), 2, "only in-scope names are looked up");
+    }
+
+    /// Full handler path with a mock Last.fm: a collab credit page and an alias
+    /// page rank among the candidates, their real audiences sit on other pages,
+    /// and both are removed while an unrelated artist with no MusicBrainz row is
+    /// kept (and queued) and the list still fills to 25. Removing the
+    /// `split_veto::run` call from the scoring stage, or passing `None` for the
+    /// split config in the handler, fails this test.
+    #[tokio::test]
+    async fn discovery_handler_applies_split_page_vetoes_end_to_end() {
+        use axum::extract::Query;
+        use std::collections::HashMap;
+
+        async fn lastfm(Query(q): Query<HashMap<String, String>>) -> axum::Json<serde_json::Value> {
+            let method = q.get("method").map(String::as_str).unwrap_or("");
+            let v = match method {
+                "user.gettopartists" => serde_json::json!({
+                    "topartists": {"artist": [{"name": "Seed One", "url": "", "playcount": "500"}],
+                                   "@attr": {"total": "1"}}}),
+                "user.getinfo" => serde_json::json!({"user": {"playcount": "1000", "artist_count": "100"}}),
+                "artist.getsimilar" => {
+                    let mut names: Vec<String> = (0..27).map(|i| format!("Band {i}")).collect();
+                    names.extend(["Asha Bhosle, Mohammed Rafi", "R.D. Burman", "Fresh Artist"].map(String::from));
+                    let list: Vec<_> = names.iter()
+                        .map(|n| serde_json::json!({"name": n, "url": "", "match": "0.9"}))
+                        .collect();
+                    serde_json::json!({"similarartists": {"artist": list}})
+                }
+                "artist.getinfo" => {
+                    let name = q.get("artist").cloned().unwrap_or_default();
+                    let autocorrect = q.get("autocorrect").is_some_and(|v| v == "1");
+                    // (listeners, mbid, tags)
+                    let (listeners, mbid, tags): (u64, &str, Vec<&str>) = match (name.as_str(), autocorrect) {
+                        ("Asha Bhosle, Mohammed Rafi", _) => (3_958, "", vec!["bollywood", "hindi", "indian"]),
+                        ("Asha Bhosle", true) => (172_778, "", vec!["bollywood", "hindi"]),
+                        ("Mohammed Rafi", true) => (137_790, "", vec!["bollywood", "ghazal"]),
+                        ("R.D. Burman", _) => (14_851, "m-rd", vec!["bollywood", "hindi"]),
+                        ("Rahul Dev Burman", false) => (10_661, "m-rd", vec!["bollywood"]),
+                        (n, _) if n.starts_with("Band ") => (5_000, "", vec![n]),
+                        _ => (5_000, "", vec!["rock"]),
+                    };
+                    let tag: Vec<_> = tags.iter().map(|t| serde_json::json!({"name": t})).collect();
+                    serde_json::json!({"artist": {"name": name, "mbid": mbid,
+                        "stats": {"listeners": listeners.to_string(), "playcount": if name.starts_with("Band ") { "50000" } else { "50000000" }, "userplaycount": "0"},
+                        "tags": {"tag": tag}}})
+                }
+                "artist.gettoptags" => serde_json::json!({"toptags": {"tag": [{"name": "rock"}]}}),
+                "tag.gettopartists" => serde_json::json!({"topartists": {"artist": []}}),
+                _ => serde_json::json!({"error": 6, "message": "unmocked"}),
+            };
+            axum::Json(v)
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mock = Router::new().route("/", get(lastfm));
+        tokio::spawn(async move { axum::serve(listener, mock).await.unwrap(); });
+        let _base = MockLastfmBase::set(addr);
+
+        // A MusicBrainz that holds every request for 5 s, so queued claims are
+        // still visible when the response arrives.
+        let mb = Router::new().route(
+            "/*any",
+            get(|| async {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                axum::Json(serde_json::json!({"artists": []}))
+            }),
+        );
+        let mb_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mb_url = format!("http://{}/", mb_listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(mb_listener, mb).await.unwrap(); });
+        let mut state = no_db_state();
+        Arc::get_mut(&mut state).unwrap().artist_meta = artist_meta::ArtistMetaService::build(
+            Arc::new(ListenBrainzClient::with_urls("unused".into(), mb_url)),
+            false,
+        );
+        // MusicBrainz already told us R.D. Burman's other names.
+        let row = artist_meta::Stored {
+            mbid: Some("m-rd".into()),
+            entry: models::ArtistMetaEntry::default(),
+            fetched_at: chrono::Utc::now(),
+            aliases: Some(vec!["Rahul Dev Burman".into(), "Pancham".into()]),
+        };
+        artist_meta::write_stored(&state, &artist_meta::name_key("R.D. Burman"), &row).await;
+        let app = build_router(Arc::clone(&state));
+        let (status, json) = status_of(
+            app,
+            Request::builder()
+                .uri("/api/discovery?username=someone&period=7day")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{json}");
+        let names: Vec<&str> = json["artists"].as_array().unwrap()
+            .iter().map(|a| a["name"].as_str().unwrap()).collect();
+        assert!(!names.contains(&"Asha Bhosle, Mohammed Rafi"), "collab veto not applied: {names:?}");
+        assert!(!names.contains(&"R.D. Burman"), "alias veto not applied: {names:?}");
+        assert!(names.contains(&"Fresh Artist"), "{names:?}");
+        assert_eq!(names.len(), 25, "list must backfill: {names:?}");
+        let queued = names
+            .iter()
+            .filter(|n| state.artist_meta.is_in_flight(&artist_meta::name_key(n)))
+            .count();
+        assert!(queued > 0, "candidates with no MusicBrainz row are queued for the background worker");
+        assert!(
+            !state.artist_meta.is_in_flight(&artist_meta::name_key("R.D. Burman")),
+            "a row with aliases needs no refresh"
+        );
     }
 
     #[tokio::test]

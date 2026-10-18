@@ -197,6 +197,7 @@ background worker (migration `0002_artist_meta.sql`).
 | `begin_year` | INTEGER | |
 | `artist_type` | TEXT | MB type verbatim. |
 | `fetched_at` | TIMESTAMPTZ NOT NULL | |
+| `aliases` | TEXT[] | Other names MusicBrainz knows (migration `0003_artist_meta_aliases.sql`); read by the alias-split veto. NULL = never fetched, `{}` = fetched, none. A row with an mbid and NULL aliases is re-queued to the worker. |
 
 A row with all four metadata columns NULL is a stored miss, retried after 30
 days. Rows with data never expire. Not user data: not touched by

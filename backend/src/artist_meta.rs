@@ -86,6 +86,11 @@ pub struct Stored {
     pub mbid: Option<String>,
     pub entry: ArtistMetaEntry,
     pub fetched_at: DateTime<Utc>,
+    /// Other names MusicBrainz knows the artist by (see `parse_mb_aliases`).
+    /// `None` = never fetched (rows written before aliases existed, or a
+    /// lookup that failed transiently); `Some(vec![])` = fetched, none.
+    #[serde(default)]
+    pub aliases: Option<Vec<String>>,
 }
 
 impl Stored {
@@ -102,7 +107,7 @@ impl Stored {
 /// Result of one MusicBrainz resolution.
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
-    Found { mbid: String, entry: ArtistMetaEntry },
+    Found { mbid: String, entry: ArtistMetaEntry, aliases: Option<Vec<String>> },
     /// Definitive: no MB entry matched. Stored as an all-null row.
     Miss,
     /// Do not store; retry on a later poll.
@@ -139,10 +144,59 @@ pub fn parse_mb_artist(v: &Value) -> ArtistMetaEntry {
     }
 }
 
+/// How many alias names are kept per artist; each costs one Last.fm page
+/// lookup in the alias-split veto.
+pub const MAX_ALIASES: usize = 8;
+
+fn alias_type_kept(al: &Value) -> bool {
+    matches!(al.get("type").and_then(|t| t.as_str()), None | Some("Artist name") | Some("Legal name"))
+}
+
+/// Alternate names from an MB artist lookup made with `inc=aliases`: aliases
+/// typed "Artist name" or "Legal name" (or untyped), then sort-name variants
+/// (each kept alias's and the artist's own). "Search hint" and other types are
+/// dropped because nobody lists an artist under them. `requested` (the name the
+/// lookup was for) is excluded, comparisons are case-insensitive and exact, and the list is
+/// capped at `MAX_ALIASES` with the primary name and real aliases ahead of
+/// sort-name variants.
+pub fn parse_mb_aliases(v: &Value, requested: &str) -> Vec<String> {
+    let clean = |x: Option<&Value>| {
+        x.and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+    };
+    // The name we resolved is never its own alias. MusicBrainz's primary name
+    // is one when it differs ("R.D. Burman" resolved to "Rahul Dev Burman"),
+    // because that page is exactly the other half of the split.
+    let mut seen: HashSet<String> = HashSet::from([requested.trim().to_lowercase()]);
+    let list: &[Value] = v.get("aliases").and_then(|a| a.as_array()).map_or(&[], |a| a.as_slice());
+    let kept = || list.iter().filter(|al| alias_type_kept(al));
+    let candidates = clean(v.get("name"))
+        .into_iter()
+        .chain(kept().filter_map(|al| clean(al.get("name"))))
+        .chain(kept().filter_map(|al| clean(al.get("sort-name"))))
+        .chain(clean(v.get("sort-name")));
+    let mut out: Vec<String> = Vec::new();
+    for name in candidates {
+        if seen.insert(name.to_lowercase()) {
+            out.push(name);
+        }
+    }
+    out.truncate(MAX_ALIASES);
+    out
+}
+
 /// Lucene phrase query for a search by name (quotes/backslashes escaped).
 fn search_query(name: &str) -> String {
     let esc = name.replace('\\', "\\\\").replace('"', "\\\"");
     format!("artist:\"{esc}\"")
+}
+
+/// Lucene phrase query against the alias field.
+fn alias_query(name: &str) -> String {
+    let esc = name.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("alias:\"{esc}\"")
 }
 
 // ── service ─────────────────────────────────────────────────────────────────
@@ -177,6 +231,7 @@ type Row = (
     Option<i32>,
     Option<String>,
     DateTime<Utc>,
+    Option<Vec<String>>,
 );
 
 impl ArtistMetaService {
@@ -220,41 +275,78 @@ impl ArtistMetaService {
         let base = self.lb.mb_base_url().to_string();
         if let Some(mbid) = tier1_mbid.filter(|m| !m.is_empty()) {
             let url = format!("{base}{mbid}");
-            let r = self.lb.mb_get_low_priority(&url, &[("fmt", "json")], STARVE_BUDGET).await;
+            let r = self
+                .lb
+                .mb_get_low_priority(&url, &[("fmt", "json"), ("inc", "aliases")], STARVE_BUDGET)
+                .await;
             self.note(r.as_ref().err().copied());
             match r {
-                Ok(v) => return Outcome::Found { mbid, entry: parse_mb_artist(&v) },
+                Ok(v) => {
+                    let aliases = Some(parse_mb_aliases(&v, name));
+                    return Outcome::Found { mbid, entry: parse_mb_artist(&v), aliases };
+                }
                 Err(MbError::NotFound) => {} // stale mbid on Last.fm: try search
                 Err(_) => return Outcome::Transient,
             }
         }
-        let q = search_query(name);
+        // Search by artist name; when that finds nothing, by alias. A Last.fm
+        // page named for an alias ("R.D. Burman") has no mbid and no artist-name
+        // match on MusicBrainz, but its alias does match the canonical entry.
+        let hit = match self.search_hit(&base, &search_query(name), false).await {
+            Ok(Some(h)) => h,
+            Ok(None) => match self.search_hit(&base, &alias_query(name), true).await {
+                Ok(Some(h)) => h,
+                Ok(None) => return Outcome::Miss,
+                Err(o) => return o,
+            },
+            Err(o) => return o,
+        };
+        let Some(id) = hit.get("id").and_then(|i| i.as_str()) else { return Outcome::Miss };
+        // A search hit does not reliably carry aliases, so ask the lookup
+        // endpoint. A failure here keeps the hit and leaves aliases unknown, to
+        // be filled by a later refresh.
+        let url = format!("{base}{id}");
+        let r = self
+            .lb
+            .mb_get_low_priority(&url, &[("fmt", "json"), ("inc", "aliases")], STARVE_BUDGET)
+            .await;
+        self.note(r.as_ref().err().copied());
+        let aliases = r.ok().map(|v| parse_mb_aliases(&v, name));
+        Outcome::Found { mbid: id.to_string(), entry: parse_mb_artist(&hit), aliases }
+    }
+
+    /// One MB search. `Ok(Some(hit))` when the result is acceptable, `Ok(None)`
+    /// for a definitive no, `Err` with the outcome to return on a transient
+    /// failure. A name search takes the top hit at or above `MB_SCORE_FLOOR`; an
+    /// alias search (`unambiguous`) additionally needs exactly one hit at or
+    /// above it, because an alias can be shared by several artists and a wrong
+    /// attribution would also put a wrong country on the map.
+    async fn search_hit(&self, base: &str, query: &str, unambiguous: bool) -> Result<Option<Value>, Outcome> {
         let r = self
             .lb
             .mb_get_low_priority(
-                &base,
-                &[("query", q.as_str()), ("fmt", "json"), ("limit", "3")],
+                base,
+                &[("query", query), ("fmt", "json"), ("limit", "3")],
                 STARVE_BUDGET,
             )
             .await;
         self.note(r.as_ref().err().copied());
         let v = match r {
             Ok(v) => v,
-            Err(MbError::NotFound) => return Outcome::Miss,
-            Err(_) => return Outcome::Transient,
+            Err(MbError::NotFound) => return Ok(None),
+            Err(_) => return Err(Outcome::Transient),
         };
-        let best = v.get("artists").and_then(|a| a.get(0));
-        let score = best
-            .and_then(|b| b.get("score"))
-            .and_then(|s| s.as_i64().or_else(|| s.as_str().and_then(|x| x.parse().ok())))
-            .unwrap_or(0);
-        match best {
-            Some(b) if score >= MB_SCORE_FLOOR => match b.get("id").and_then(|i| i.as_str()) {
-                Some(id) => Outcome::Found { mbid: id.to_string(), entry: parse_mb_artist(b) },
-                None => Outcome::Miss,
-            },
-            _ => Outcome::Miss,
-        }
+        let score_of = |b: &Value| {
+            b.get("score")
+                .and_then(|s| s.as_i64().or_else(|| s.as_str().and_then(|x| x.parse().ok())))
+                .unwrap_or(0)
+        };
+        let artists: &[Value] = v.get("artists").and_then(|a| a.as_array()).map_or(&[], |a| a.as_slice());
+        let strong = artists.iter().filter(|b| score_of(b) >= MB_SCORE_FLOOR).count();
+        Ok(match artists.first() {
+            Some(b) if score_of(b) >= MB_SCORE_FLOOR && (!unambiguous || strong == 1) => Some(b.clone()),
+            _ => None,
+        })
     }
 
     /// Reserve `key` for resolution. False when already in flight.
@@ -265,19 +357,24 @@ impl ArtistMetaService {
     fn release(&self, key: &str) {
         self.in_flight.lock().unwrap_or_else(|e| e.into_inner()).remove(key);
     }
+
+    /// Whether `key` is claimed (queued or being resolved).
+    pub fn is_in_flight(&self, key: &str) -> bool {
+        self.in_flight.lock().unwrap_or_else(|e| e.into_inner()).contains(key)
+    }
 }
 
 // ── storage ─────────────────────────────────────────────────────────────────
 
-fn cache_key(key: &str) -> String {
+pub(crate) fn cache_key(key: &str) -> String {
     format!("artist_meta:{key}")
 }
 
-async fn read_stored(state: &AppState, keys: &[String]) -> BTreeMap<String, Stored> {
+pub(crate) async fn read_stored(state: &AppState, keys: &[String]) -> BTreeMap<String, Stored> {
     let mut out = BTreeMap::new();
     if let Some(db) = &state.db {
         let rows: Result<Vec<Row>, _> = sqlx::query_as(
-            "SELECT name_key, mbid, country_iso2, area_name, begin_year, artist_type, fetched_at \
+            "SELECT name_key, mbid, country_iso2, area_name, begin_year, artist_type, fetched_at, aliases \
              FROM artist_meta WHERE name_key = ANY($1)",
         )
         .bind(keys)
@@ -285,7 +382,7 @@ async fn read_stored(state: &AppState, keys: &[String]) -> BTreeMap<String, Stor
         .await;
         match rows {
             Ok(rows) => {
-                for (k, mbid, c, a, y, t, at) in rows {
+                for (k, mbid, c, a, y, t, at, aliases) in rows {
                     out.insert(
                         k,
                         Stored {
@@ -297,6 +394,7 @@ async fn read_stored(state: &AppState, keys: &[String]) -> BTreeMap<String, Stor
                                 artist_type: t,
                             },
                             fetched_at: at,
+                            aliases,
                         },
                     );
                 }
@@ -313,14 +411,14 @@ async fn read_stored(state: &AppState, keys: &[String]) -> BTreeMap<String, Stor
     out
 }
 
-async fn write_stored(state: &AppState, key: &str, s: &Stored) {
+pub(crate) async fn write_stored(state: &AppState, key: &str, s: &Stored) {
     if let Some(db) = &state.db {
         let r = sqlx::query(
-            "INSERT INTO artist_meta (name_key, mbid, country_iso2, area_name, begin_year, artist_type, fetched_at) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7) \
+            "INSERT INTO artist_meta (name_key, mbid, country_iso2, area_name, begin_year, artist_type, fetched_at, aliases) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
              ON CONFLICT (name_key) DO UPDATE SET mbid=EXCLUDED.mbid, country_iso2=EXCLUDED.country_iso2, \
              area_name=EXCLUDED.area_name, begin_year=EXCLUDED.begin_year, artist_type=EXCLUDED.artist_type, \
-             fetched_at=EXCLUDED.fetched_at",
+             fetched_at=EXCLUDED.fetched_at, aliases=EXCLUDED.aliases",
         )
         .bind(key)
         .bind(&s.mbid)
@@ -329,6 +427,7 @@ async fn write_stored(state: &AppState, key: &str, s: &Stored) {
         .bind(s.entry.begin_year)
         .bind(&s.entry.artist_type)
         .bind(s.fetched_at)
+        .bind(&s.aliases)
         .execute(db.pool())
         .await;
         match r {
@@ -363,23 +462,48 @@ fn ensure_worker(state: &Arc<AppState>) {
                     None
                 };
                 match state.artist_meta.resolve(&name, tier1).await {
-                    Outcome::Found { mbid, entry } => {
-                        let s = Stored { mbid: Some(mbid), entry, fetched_at: Utc::now() };
+                    Outcome::Found { mbid, entry, aliases } => {
+                        let s = Stored { mbid: Some(mbid), entry, fetched_at: Utc::now(), aliases };
                         write_stored(&state, &key, &s).await;
                     }
                     Outcome::Miss => {
-                        let s = Stored {
-                            mbid: None,
-                            entry: ArtistMetaEntry::default(),
-                            fetched_at: Utc::now(),
-                        };
-                        write_stored(&state, &key, &s).await;
+                        // An alias refresh of a row that already has an mbid can
+                        // come back as a miss; never overwrite real data with one.
+                        let have = read_stored(&state, std::slice::from_ref(&key)).await;
+                        let has_mbid = have.get(&key).is_some_and(|h| h.mbid.is_some());
+                        if !has_mbid {
+                            let s = Stored {
+                                mbid: None,
+                                entry: ArtistMetaEntry::default(),
+                                fetched_at: Utc::now(),
+                                aliases: None,
+                            };
+                            write_stored(&state, &key, &s).await;
+                        }
                     }
                     Outcome::Transient => {}
                 }
             }
         }
     }));
+}
+
+/// Queue `name` for background resolution without waiting for it. Returns
+/// whether it was newly queued (false: already in flight, or the queue is
+/// full, in which case a later request offers it again). Never awaits, so a
+/// cancelled caller cannot leave a claim behind.
+pub fn enqueue_background(state: &Arc<AppState>, name: &str) -> bool {
+    ensure_worker(state);
+    let svc = &state.artist_meta;
+    let key = name_key(name);
+    if !svc.claim(&key) {
+        return false;
+    }
+    if svc.tx.try_send(name.to_string()).is_err() {
+        svc.release(&key);
+        return false;
+    }
+    true
 }
 
 /// Answer from storage and enqueue what is missing. Never awaits MusicBrainz.
@@ -495,6 +619,40 @@ mod tests {
     const NOTHING: &str = r#"{"id":"n1","name":"Nobody","type":null,"country":null,"area":null,
         "life-span":{"begin":null,"end":null,"ended":false}}"#;
 
+    const ALIASES: &str = r#"[
+        {"name":"Entombed AD","sort-name":"Entombed AD","type":"Artist name"},
+        {"name":"Nihilist","sort-name":"Nihilist","type":"Search hint"},
+        {"name":"Left Hand Path","sort-name":"Hand Path, Left","type":null},
+        {"name":"ENTOMBED","sort-name":"Entombed","type":"Artist name"}]"#;
+
+    #[test]
+    fn parse_aliases_keeps_artist_and_legal_names_then_sort_variants() {
+        let mut v: Value = serde_json::from_str(GROUP).unwrap();
+        v["sort-name"] = json!("Entombed, The");
+        v["aliases"] = serde_json::from_str(ALIASES).unwrap();
+        assert_eq!(
+            parse_mb_aliases(&v, "Entombed"),
+            vec!["Entombed AD", "Left Hand Path", "Hand Path, Left", "Entombed, The"],
+            "Search hint dropped, primary name and case-duplicates excluded, aliases before sort-names"
+        );
+        // No aliases key and no sort-name: nothing.
+        assert!(parse_mb_aliases(&serde_json::from_str(GROUP).unwrap(), "Entombed").is_empty());
+        // Resolved under a different name: MB's primary name is the first alias.
+        let mut v: Value = serde_json::from_str(GROUP).unwrap();
+        v["aliases"] = serde_json::from_str(ALIASES).unwrap();
+        let got = parse_mb_aliases(&v, "Entombed AD");
+        assert_eq!(got[0], "Entombed");
+        assert!(!got.contains(&"Entombed AD".to_string()));
+        // Capped, real aliases first.
+        let many: Vec<Value> = (0..20).map(|i| json!({"name": format!("Alias {i}"), "type": "Artist name"})).collect();
+        let v = json!({"name": "X", "aliases": many, "sort-name": "X, Y"});
+        let got = parse_mb_aliases(&v, "Other");
+        assert_eq!(got.len(), MAX_ALIASES);
+        assert_eq!(got[0], "X", "primary name leads");
+        assert_eq!(got[1], "Alias 0");
+        assert!(!got.contains(&"X, Y".to_string()));
+    }
+
     #[test]
     fn parses_group_with_country_and_begin() {
         let e = parse_mb_artist(&serde_json::from_str(GROUP).unwrap());
@@ -544,6 +702,7 @@ mod tests {
             mbid: None,
             entry: ArtistMetaEntry::default(),
             fetched_at: now - chrono::Duration::days(days),
+            aliases: None,
         };
         assert!(!miss(29).is_stale_miss(now));
         assert!(miss(31).is_stale_miss(now));
@@ -551,6 +710,7 @@ mod tests {
             mbid: Some("m".into()),
             entry: ArtistMetaEntry { country_iso2: Some("SE".into()), ..Default::default() },
             fetched_at: now - chrono::Duration::days(400),
+            aliases: None,
         };
         assert!(!hit.is_stale_miss(now), "hits never expire");
     }
@@ -578,6 +738,17 @@ mod tests {
                     if query.contains("nobody") {
                         return Json(json!({"artists":[{"id":"n","score":40}]}));
                     }
+                    // Alias-only artists: the artist-name search finds nothing, the
+                    // alias search finds the canonical entry (one hit, or two for "ambig").
+                    if query.contains("pancham") || query.contains("ambig") {
+                        if !query.starts_with("alias:") {
+                            return Json(json!({"artists":[]}));
+                        }
+                        let mut hit: Value = serde_json::from_str(GROUP).unwrap();
+                        hit["score"] = json!(96);
+                        let hits = if query.contains("ambig") { vec![hit.clone(), hit] } else { vec![hit] };
+                        return Json(json!({"artists": hits}));
+                    }
                     let mut hit: Value = serde_json::from_str(GROUP).unwrap();
                     hit["score"] = json!(96);
                     Json(json!({"artists":[hit]}))
@@ -585,14 +756,20 @@ mod tests {
             )
             .route(
                 "/:mbid",
-                get(|axum::extract::Path(mbid): axum::extract::Path<String>| async move {
+                get(|axum::extract::Path(mbid): axum::extract::Path<String>, Query(q): Query<HashMap<String, String>>| async move {
                     if mbid == "gone" {
                         return (StatusCode::NOT_FOUND, Json(json!({"error":"Not Found"}))).into_response();
                     }
                     if mbid == "boom" {
                         return (StatusCode::SERVICE_UNAVAILABLE, "slow down").into_response();
                     }
-                    Json(serde_json::from_str::<Value>(GROUP).unwrap()).into_response()
+                    let mut v: Value = serde_json::from_str(GROUP).unwrap();
+                    // Aliases come back only when the request asks for them, as on MB.
+                    if q.get("inc").is_some_and(|i| i == "aliases") {
+                        v["sort-name"] = json!("Entombed, The");
+                        v["aliases"] = serde_json::from_str(ALIASES).unwrap();
+                    }
+                    Json(v).into_response()
                 }),
             );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -607,7 +784,7 @@ mod tests {
     async fn resolve_by_mbid_search_miss_and_transient() {
         let s = svc(mock_mb().await);
         match s.resolve("Entombed", Some("abc".into())).await {
-            Outcome::Found { mbid, entry } => {
+            Outcome::Found { mbid, entry, .. } => {
                 assert_eq!(mbid, "abc");
                 assert_eq!(entry.country_iso2.as_deref(), Some("SE"));
             }
@@ -615,6 +792,29 @@ mod tests {
         }
         // Stale Last.fm mbid (404) falls back to search.
         assert!(matches!(s.resolve("Entombed", Some("gone".into())).await, Outcome::Found { .. }));
+        // Both resolution paths ask MB for aliases (the mock only returns them
+        // for `inc=aliases`): by mbid, and by search followed by a lookup.
+        let want = Some(vec!["Entombed AD", "Left Hand Path", "Hand Path, Left", "Entombed, The"]
+            .into_iter().map(String::from).collect::<Vec<_>>());
+        match s.resolve("Entombed", Some("abc".into())).await {
+            Outcome::Found { aliases, .. } => assert_eq!(aliases, want),
+            o => panic!("{o:?}"),
+        }
+        match s.resolve("Entombed", None).await {
+            Outcome::Found { aliases, .. } => assert_eq!(aliases, want),
+            o => panic!("{o:?}"),
+        }
+        // An alias-named page: no artist-name hit, one unambiguous alias hit. The
+        // canonical name leads the aliases because it is the other half of the split.
+        match s.resolve("Pancham", None).await {
+            Outcome::Found { mbid, aliases, .. } => {
+                assert_eq!(mbid, "b2f8-1");
+                assert_eq!(aliases.unwrap()[0], "Entombed");
+            }
+            o => panic!("{o:?}"),
+        }
+        // An alias shared by two strong hits is ambiguous: a miss, not a guess.
+        assert_eq!(s.resolve("Ambig", None).await, Outcome::Miss);
         // Search below the score floor is a definitive miss.
         assert_eq!(s.resolve("Nobody", None).await, Outcome::Miss);
         // 503 is transient and flips degraded; a later success restores ok.
@@ -635,6 +835,10 @@ mod tests {
         s.lb.test_set_blend_waiting(0);
         let r = s.lb.mb_get_low_priority(&base, &[("fmt", "json")], Duration::from_millis(400)).await;
         assert!(r.is_ok());
+    }
+
+    fn db_pool(st: &Arc<AppState>) -> &sqlx::PgPool {
+        st.db.as_ref().expect("db").pool()
     }
 
     fn test_state(lb_url: String) -> Arc<AppState> {
@@ -665,10 +869,11 @@ mod tests {
             mbid: Some("m".into()),
             entry: ArtistMetaEntry { country_iso2: Some("FI".into()), ..Default::default() },
             fetched_at: Utc::now(),
+            aliases: None,
         };
         st.cache.put_json(&cache_key(&name_key("Seeded Band")), &seeded, MISS_RETRY).await;
         // Fresh miss: returned as null and NOT pending.
-        let miss = Stored { mbid: None, entry: ArtistMetaEntry::default(), fetched_at: Utc::now() };
+        let miss = Stored { mbid: None, entry: ArtistMetaEntry::default(), fetched_at: Utc::now(), aliases: None };
         st.cache.put_json(&cache_key(&name_key("Known Miss")), &miss, MISS_RETRY).await;
 
         let names = vec!["Seeded Band".to_string(), "Known Miss".to_string(), "Entombed".to_string()];
@@ -695,6 +900,37 @@ mod tests {
         let e = filled.expect("resolved via mock MB and stored in CacheStore");
         assert_eq!(e.country_iso2.as_deref(), Some("SE"));
         assert_eq!(e.begin_year, Some(1987));
+    }
+
+    #[tokio::test]
+    async fn worker_stores_aliases_and_a_later_miss_never_erases_a_stored_mbid() {
+        let st = test_state(mock_mb().await);
+        assert!(enqueue_background(&st, "Entombed"));
+        assert!(!enqueue_background(&st, "Entombed"), "already in flight");
+        let key = name_key("Entombed");
+        let mut got = None;
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            if let Some(s) = read_stored(&st, std::slice::from_ref(&key)).await.remove(&key) {
+                got = Some(s);
+                break;
+            }
+        }
+        let s = got.expect("worker stored the row");
+        assert_eq!(s.aliases.as_ref().map(|a| a.len()), Some(4), "{s:?}");
+        // A name the mock cannot match (below the score floor) while a row with
+        // an mbid exists: the miss must not overwrite it.
+        let nobody = name_key("Nobody");
+        write_stored(&st, &nobody, &Stored { mbid: Some("keep".into()), ..s.clone() }).await;
+        assert!(enqueue_background(&st, "Nobody"));
+        for _ in 0..40 {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            if !st.artist_meta.is_in_flight(&nobody) {
+                break;
+            }
+        }
+        let after = read_stored(&st, std::slice::from_ref(&nobody)).await.remove(&nobody).unwrap();
+        assert_eq!(after.mbid.as_deref(), Some("keep"));
     }
 
     #[tokio::test]
@@ -727,15 +963,32 @@ mod tests {
                 artist_type: Some("Group".into()),
             },
             fetched_at: Utc::now(),
+            aliases: Some(vec!["Pgtest Alias".into(), "Pgtest, Alias".into()]),
         };
         write_stored(&st, &key, &hit).await;
         let r = snapshot(&st, &[uniq.clone()]).await;
         assert!(r.pending.is_empty());
         assert_eq!(r.meta[&uniq].as_ref().unwrap().begin_year, Some(1999));
+        let back = read_stored(&st, std::slice::from_ref(&key)).await.remove(&key).unwrap();
+        assert_eq!(back.aliases, Some(vec!["Pgtest Alias".to_string(), "Pgtest, Alias".to_string()]));
+        // The aliases column exists, is nullable and has no default (migration 0003).
+        let (nullable, ty): (String, String) = sqlx::query_as(
+            "SELECT is_nullable, data_type FROM information_schema.columns \
+             WHERE table_name = 'artist_meta' AND column_name = 'aliases'",
+        )
+        .fetch_one(db_pool(&st))
+        .await
+        .expect("aliases column added on boot");
+        assert_eq!((nullable.as_str(), ty.as_str()), ("YES", "ARRAY"));
+        // A row written without aliases reads back as unknown, not empty.
+        let none_key = name_key(&format!("{uniq} none"));
+        write_stored(&st, &none_key, &Stored { aliases: None, ..hit.clone() }).await;
+        let back = read_stored(&st, std::slice::from_ref(&none_key)).await.remove(&none_key).unwrap();
+        assert_eq!(back.aliases, None);
         // The DB (not the cache) holds it.
         assert!(st.cache.get_json::<Stored>(&cache_key(&key)).await.is_none());
         // A 31-day-old miss is pending again; a 1-day-old miss is not.
-        let old = Stored { mbid: None, entry: ArtistMetaEntry::default(), fetched_at: Utc::now() - chrono::Duration::days(31) };
+        let old = Stored { mbid: None, entry: ArtistMetaEntry::default(), fetched_at: Utc::now() - chrono::Duration::days(31), aliases: None };
         write_stored(&st, &key, &old).await;
         assert_eq!(snapshot(&st, &[uniq.clone()]).await.pending, vec![uniq.clone()]);
     }

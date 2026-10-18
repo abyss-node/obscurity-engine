@@ -90,7 +90,7 @@ pub const EXCLUDE_TAGS: &[&str] = &[
 
 const TAG_WINDOW: usize = 5;
 
-fn norm_tag(tag: &str) -> String {
+pub(crate) fn norm_tag(tag: &str) -> String {
     tag.to_lowercase()
         .replace(['-', '_'], " ")
         .split_whitespace()
