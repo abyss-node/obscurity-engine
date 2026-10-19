@@ -64,6 +64,22 @@ const NOT_FOUND_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
 /// Florence + The Machine). Longer separators first, so " feat. " wins over " feat ".
 const SEPARATORS: &[&str] = &[", ", " & ", " feat. ", " feat ", " ft. ", " featuring "];
 
+/// Collab members that are generic words, never a specific artist. Their
+/// Last.fm pages are unrelated homonyms ("S.P. Balasubrahmanyam, Jojo & Chorus"
+/// was vetoed through a 109K "Chorus" page on the shared "soundtrack" tag), and
+/// qawwali credits like "X & Party" are exactly the obscure acts to protect.
+/// "strings" is deliberately absent: Strings is a real Pakistani band.
+const GENERIC_MEMBERS: &[&str] = &[
+    "chorus", "orchestra", "his orchestra", "her orchestra", "the orchestra",
+    "ensemble", "choir", "band", "the band", "party", "troupe", "group",
+    "friends", "various artists", "sisters", "brothers",
+];
+
+fn is_generic_member(member: &str) -> bool {
+    let m = member.trim().to_lowercase();
+    GENERIC_MEMBERS.contains(&m.as_str())
+}
+
 /// Kill switches, read per request (`COLLAB_VETO=off`, `ALIAS_VETO=off`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SplitSwitches {
@@ -194,7 +210,8 @@ pub struct Veto {
 
 /// Collab rule for one name. `own_tags` are the collab page's own tags.
 async fn collab_verdict(lk: &Lookups<'_>, name: &str, own_tags: &[String]) -> Option<Veto> {
-    let members = split_collab(name);
+    let members: Vec<String> =
+        split_collab(name).into_iter().filter(|m| !is_generic_member(m)).collect();
     if members.is_empty() {
         return None;
     }
@@ -549,6 +566,10 @@ mod tests {
             (("Fine", true), page("Fine", 100, None, &["indie"])),
             (("Big Member", true), page("Big Member", 40_000, None, &["indie"])),
             (("Small Member", true), page("Small Member", 24_999, None, &["indie"])),
+            // Generic member: a huge homonym page sharing a broad tag must not veto.
+            (("Chorus", true), page("Chorus", 109_000, None, &["soundtrack"])),
+            (("Jojo", true), page("Jojo", 900, None, &["tamil"])),
+            (("S.P. Balasubrahmanyam", true), page("S.P. Balasubrahmanyam", 9_000, None, &["tamil"])),
         ])
         .await;
         let st = state(NO_MB);
@@ -559,6 +580,7 @@ mod tests {
             item("Lonely Artist", 3_000, &["folk"]),
             item("Broken & Fine", 3_000, &["indie"]),
             item("Big Member & Small Member", 3_000, &["indie"]),
+            item("S.P. Balasubrahmanyam, Jojo & Chorus", 1_200, &["tamil", "soundtrack"]),
         ];
         let out = run_with(&st, &items, COLLAB_ONLY, SPLIT_BUDGET).await;
         let names: Vec<_> = out.collab.iter().map(|v| v.name.as_str()).collect();
@@ -569,6 +591,7 @@ mod tests {
         let looked_up: Vec<String> = hits.lock().unwrap().iter().map(|(n, _)| n.clone()).collect();
         assert!(!looked_up.contains(&"simon and garfunkel".to_string()), "no split on and: {looked_up:?}");
         assert!(!looked_up.contains(&"lonely artist".to_string()), "single names untouched: {looked_up:?}");
+        assert!(!looked_up.contains(&"chorus".to_string()), "generic members never looked up: {looked_up:?}");
     }
 
     #[tokio::test]
