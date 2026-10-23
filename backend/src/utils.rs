@@ -5,6 +5,12 @@ pub fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|s| !s.is_empty())
 }
 
+/// Whether a kill-switch setting turns its feature off: `off`, trimmed and
+/// case-insensitive. Unset or any other value leaves the feature on.
+pub fn switch_is_off(setting: Option<&str>) -> bool {
+    setting.is_some_and(|v| v.trim().eq_ignore_ascii_case("off"))
+}
+
 /// Normalise an artist name to a stable key for deduplication.
 /// Lowercases, strips leading "the ", removes non-alphanumeric characters,
 /// and collapses whitespace — so "The Cure" and "cure" map to the same key.

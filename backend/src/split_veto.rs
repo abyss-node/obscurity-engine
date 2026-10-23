@@ -96,8 +96,7 @@ impl SplitSwitches {
     }
 
     pub fn from_settings(collab: Option<&str>, alias: Option<&str>) -> Self {
-        let on = |v: Option<&str>| !v.is_some_and(|v| v.trim().eq_ignore_ascii_case("off"));
-        Self { collab: on(collab), alias: on(alias) }
+        Self { collab: !crate::utils::switch_is_off(collab), alias: !crate::utils::switch_is_off(alias) }
     }
 
     pub fn any(&self) -> bool {

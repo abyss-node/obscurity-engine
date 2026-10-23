@@ -153,7 +153,7 @@ impl DeezerClient {
     }
 
     pub fn from_settings(veto: Option<&str>, fans: Option<&str>, base: Option<&str>) -> Option<Self> {
-        if veto.is_some_and(|v| v.trim().eq_ignore_ascii_case("off")) {
+        if crate::utils::switch_is_off(veto) {
             return None;
         }
         let veto_fans = fans
