@@ -154,7 +154,7 @@ async fn main() {
     println!("Last.fm key pool: {} key(s)", api_keys.len());
     // Optional persistence for user-contributed keys (set KEY_STORE_PATH to a
     // file on a Railway Volume so the opt-in pool survives redeploys).
-    let key_store = std::env::var("KEY_STORE_PATH").ok().filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
+    let key_store = crate::utils::env_nonempty("KEY_STORE_PATH").map(std::path::PathBuf::from);
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{}", port);
 
@@ -182,7 +182,7 @@ async fn main() {
     // server then behaves exactly as before (graceful fallback). `db_configured`
     // records whether the var was set so /api/status can tell "disabled" (unset)
     // from "error" (set but unreachable).
-    let db_configured = std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()).is_some();
+    let db_configured = crate::utils::env_nonempty("DATABASE_URL").is_some();
     let db = db::Db::connect().await.map(Arc::new);
     if !db_configured {
         println!("Persistence: disabled (DATABASE_URL not set)");
@@ -190,17 +190,18 @@ async fn main() {
 
     // Last.fm auth signing secret. Without it, POST /api/auth/session 503s and
     // the frontend hides the login entry.
-    let lastfm_secret = std::env::var("LASTFM_API_SECRET").ok().filter(|s| !s.is_empty());
+    let lastfm_secret = crate::utils::env_nonempty("LASTFM_API_SECRET");
     match &lastfm_secret {
         Some(_) => println!("Last.fm auth: enabled (LASTFM_API_SECRET set)"),
         None => println!("Last.fm auth: disabled (LASTFM_API_SECRET not set)"),
     }
 
-    let redis_configured = std::env::var("REDIS_URL").ok().filter(|s| !s.is_empty()).is_some();
+    let redis_url = crate::utils::env_nonempty("REDIS_URL");
+    let redis_configured = redis_url.is_some();
 
     // Select the cache backend: Redis when REDIS_URL is set (degrades to a miss
     // if Redis is unreachable), in-memory otherwise. Log the active store.
-    let cache_store = match std::env::var("REDIS_URL").ok().filter(|s| !s.is_empty()) {
+    let cache_store = match redis_url {
         Some(url) => match cache::RedisStore::new(&url) {
             Ok(store) => {
                 if store.ping().await {
@@ -1103,7 +1104,7 @@ mod integration_tests {
     // ── Live-Postgres tests (gated on DATABASE_URL) ─────────────────────────
 
     fn have_db() -> bool {
-        std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()).is_some()
+        crate::utils::env_nonempty("DATABASE_URL").is_some()
     }
 
     async fn connect_db_or_skip(name: &str) -> Option<Arc<db::Db>> {

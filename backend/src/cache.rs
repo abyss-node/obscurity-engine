@@ -306,7 +306,7 @@ mod tests {
     //    or the server is unreachable, so `cargo test` is green without Redis.
 
     fn redis_url() -> Option<String> {
-        std::env::var("REDIS_URL").ok().filter(|s| !s.is_empty())
+        crate::utils::env_nonempty("REDIS_URL")
     }
 
     async fn redis_store_or_skip(test: &str) -> Option<CacheStore> {

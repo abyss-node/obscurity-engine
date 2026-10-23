@@ -882,7 +882,7 @@ impl LastfmClient {
     /// `LASTFM_API_BASE` overrides the endpoint (used only by integration tests
     /// to point the auth flow at a local mock server); unset → the real API.
     pub async fn get_session(&self, token: &str, secret: &str) -> Result<LastfmSession, LastfmError> {
-        let base = std::env::var("LASTFM_API_BASE").ok().filter(|s| !s.is_empty());
+        let base = crate::utils::env_nonempty("LASTFM_API_BASE");
         let base = base.as_deref().unwrap_or(LASTFM_API_URL);
         self.get_session_at(base, token, secret).await
     }

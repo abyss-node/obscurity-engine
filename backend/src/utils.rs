@@ -1,5 +1,10 @@
 use crate::lastfm::TimePeriod;
 
+/// An environment variable's value, or `None` when it is unset or empty.
+pub fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|s| !s.is_empty())
+}
+
 /// Normalise an artist name to a stable key for deduplication.
 /// Lowercases, strips leading "the ", removes non-alphanumeric characters,
 /// and collapses whitespace — so "The Cure" and "cure" map to the same key.

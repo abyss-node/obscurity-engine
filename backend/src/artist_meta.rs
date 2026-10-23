@@ -936,7 +936,7 @@ mod tests {
     #[tokio::test]
     async fn postgres_roundtrip_and_stale_miss_retry() {
         // Live-Postgres test: skipped cleanly when DATABASE_URL is unset.
-        if std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty()).is_none() {
+        if crate::utils::env_nonempty("DATABASE_URL").is_none() {
             return;
         }
         let db = Arc::new(crate::db::Db::connect().await.expect("db"));

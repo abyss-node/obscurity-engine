@@ -157,7 +157,7 @@ impl Db {
     /// pool that recovers on its own); the migration failure is logged LOUDLY so
     /// a misconfiguration is never silent, and writes drop+log until it recovers.
     pub async fn connect() -> Option<Self> {
-        let url = std::env::var("DATABASE_URL").ok().filter(|s| !s.is_empty())?;
+        let url = crate::utils::env_nonempty("DATABASE_URL")?;
 
         // Lazy pool: constructing it never touches the network, so a DB that is
         // down at boot doesn't block startup.
