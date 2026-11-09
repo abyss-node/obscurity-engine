@@ -12,6 +12,8 @@ similar-artist graph and genre folksonomy.
 **Live:** [obscurity-engine.vercel.app](https://obscurity-engine.vercel.app)
 · **Docs:** [docs/](docs/)
 
+![Results for a real Last.fm history: top picks with conviction, stickiness and listener counts, then the full suggestion list](docs/images/results.png)
+
 ## Who it's for
 
 - **Listeners** tired of mainstream recommenders surfacing what they'd have
